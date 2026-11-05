@@ -1,0 +1,35 @@
+# USD per million tokens. The single source of prices: cassettes store usage, never dollars.
+# Source: Claude API skill model table (cached 2026-10-06) + prompt-caching economics.
+# Cache writes: 1.25x input (5-minute TTL), 2x input (1-hour TTL).
+# Re-check https://platform.claude.com/docs/en/about-claude/pricing when updating.
+as_of: "2026-10-06"
+models:
+  claude-opus-5-5:
+    input: 4.00
+    output: 20.00
+    cache_read: 0.20          # 0.05x input on Opus 5.5
+    cache_write_5m: 5.00
+    cache_write_1h: 8.00
+    context_window: 1000000
+    max_output: 128000
+    min_cacheable_tokens: 512
+  claude-sonnet-5-5:
+    input: 2.00
+    output: 10.00
+    cache_read: 0.20
+    cache_write_5m: 2.50
+    cache_write_1h: 4.00
+    context_window: 1000000
+    max_output: 128000
+    min_cacheable_tokens: 512
+  claude-haiku-5-5:
+    input: 0.10               # prompts up to 100K tokens
+    output: 0.50
+    input_over_100k: 0.50
+    output_over_100k: 2.50
+    cache_read: 0.01          # ASSUMED 0.1x input; verify against the pricing page
+    cache_write_5m: 0.125
+    cache_write_1h: 0.20
+    context_window: 1000000
+    max_output: 128000
+    min_cacheable_tokens: 512

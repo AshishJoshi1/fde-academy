@@ -62,10 +62,14 @@ def tracked_repos(text: str) -> list[Path]:
 
 
 def learner_db_line() -> str:
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / ".local" / "share")
-    db = Path(base) / "fde-academy" / "academy.db"
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        from academy_server.paths import db_path  # stdlib-only module
+        db = db_path()
+    except ImportError:
+        db = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "fde-academy" / "academy.db"
     if not db.exists():
-        return "Learner DB: not created yet (arrives with Milestone 1 step 1)."
+        return "Learner DB: not created yet. Start the app once with `python run.py`."
     labctl = ROOT / "tools" / "labctl.py"
     if labctl.exists():
         try:

@@ -1,0 +1,56 @@
+id: s01
+title: "One call: what actually comes back"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, messages, tokens, trace]
+run:
+  mode: replay
+  step: llm
+  cassettes: [happy]
+hints:
+  - "Print response.content[0].type. Is it always 'text'?"
+  - "Thinking tokens are billed as output tokens even when the thinking text is empty."
+checks:
+  - type: llm_calls
+    count: 1
+  - type: cost_below
+    usd: 0.02
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "Why does the code loop over response.content and keep only blocks whose type is 'text', instead of reading response.content[0].text?"
+    options:
+      - "Because the SDK returns blocks in random order"
+      - "Because on claude-opus-5-5 thinking is always on, so content can start with a thinking block that has no .text"
+      - "Because text blocks are always last"
+      - "Because response.content is a string, not a list"
+    answer: 1
+    concepts: [content-blocks, adaptive-thinking]
+    explanation: >
+      Opus 5.5 can't disable thinking. With the default display ("omitted") you get thinking blocks
+      with an empty thinking field, usually before the text. content[0] may not be text.
+  - id: q2
+    type: numeric
+    prompt: "A call to claude-opus-5-5 used 30 input tokens and 120 output tokens, with no caching. What did it cost in USD? ($4 / $20 per million tokens)"
+    answer: 0.00252
+    tol: 0.00001
+    unit: USD
+    concepts: [cost-estimation]
+    explanation: "30 x $4/1M = $0.00012, plus 120 x $20/1M = $0.0024, total $0.00252. Output dominates, and thinking counts as output."
+  - id: q3
+    type: mcq
+    prompt: "stop_reason came back as 'max_tokens'. What does that mean for the text you received?"
+    options:
+      - "It is complete; the model chose to stop"
+      - "It was cut off at the max_tokens limit and may be incomplete, mid-sentence or mid-tool-call"
+      - "The request was rejected for being too long"
+      - "The model is asking you to call a tool"
+    answer: 1
+    concepts: [stop-reason]
+    explanation: "Always branch on stop_reason before trusting content. 'end_turn' means finished, 'tool_use' means run the tools, and 'max_tokens' means truncated."
+tutor_notes: >
+  Common misconception: content[0].text is the answer. Another: thinking can be turned off on
+  Opus 5.5. It can't; lower output_config.effort instead. Point the learner at the Tokens panel
+  to see that output_tokens includes thinking.

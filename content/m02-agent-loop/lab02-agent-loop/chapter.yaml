@@ -1,0 +1,7 @@
+id: lab02
+title: "Lab 02: Step the agent loop"
+summary: >
+  One call, then the manual loop, parallel tool results in one message, a blocked write,
+  the SDK tool runner with an approval gate, and a strict tool schema.
+steps:
+  - s01-one-call

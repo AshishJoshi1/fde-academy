@@ -1,0 +1,15 @@
+{
+ "exported_at": "2026-11-05T21:30:42.658+00:00",
+ "format": "fde-academy-progress",
+ "schema_version": 1,
+ "tables": {
+  "check_results": [],
+  "code_snapshots": [],
+  "position": [],
+  "quiz_attempts": [],
+  "runs": [],
+  "spend": [],
+  "step_progress": [],
+  "tutor_turns": []
+ }
+}

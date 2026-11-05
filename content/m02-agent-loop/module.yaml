@@ -1,0 +1,9 @@
+id: m02
+title: "The Agent Loop"
+summary: >
+  Step the agent loop frame by frame: the model asks for a tool, your code returns a result,
+  the model asks again, then answers. Then block a tool, gate approvals, and tighten schemas
+  so a malformed call is impossible.
+order: 10
+chapters:
+  - lab02-agent-loop

@@ -21,6 +21,8 @@ FDE Academy is an interactive, local web app that teaches GenAI and agent engine
   - `web/` is the React + Vite + TS + Monaco frontend.
   - `content/` holds the lessons.
   - `tools/` holds `labctl` and `session_status.py`.
+- Run the app with `python run.py`. Run tests with `.venv/Scripts/python -X utf8 -m pytest`, and validate lessons with `.venv/Scripts/python -X utf8 tools/labctl.py content validate`.
+- `academy_server/__init__.py`, `paths.py`, `store/` and `labctl.py` must stay **stdlib-only**, because the SessionStart hook and `/today` run them with a bare system Python.
 - `.gitattributes` forces LF line endings. Cassette keys hash request bodies, so CRLF would break them.
 - Never commit secrets. The real API key lives only in the server process; lesson subprocesses get a dummy key and `ANTHROPIC_BASE_URL` pointing at the relay.
 - Prices come from `pricing.yaml`. Never hard-code dollars in code or cassettes; store usage.
