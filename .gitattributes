@@ -1,0 +1,13 @@
+* text=auto
+# Cassettes, lesson content and code must be byte-stable across Windows/macOS/Linux
+# (cassette keys hash request bodies; CRLF would change them).
+*.py text eol=lf
+*.jsonl text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.png binary
+*.db binary

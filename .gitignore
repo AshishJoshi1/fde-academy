@@ -1,0 +1,40 @@
+# Secrets: never commit
+.env
+.env.*
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Node / web
+web/node_modules/
+web/dist/
+
+# Runtime data (lives in %LOCALAPPDATA%\fde-academy, but guard anyway)
+*.db
+*.db-wal
+*.db-shm
+runs/
+api_requests.jsonl
+
+# Claude Code personal overrides
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# NOTE: progress/ (learner-progress.json export) IS committed in this private repo.
+# Remove it from history before ever publishing the product.
