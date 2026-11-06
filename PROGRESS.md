@@ -3,93 +3,105 @@
 This file is the single source of truth for where the build and the teaching stand. `/wrap` rewrites the "Current position" and "Last session" sections at the end of every session.
 
 ## Current position
-- **Teaching:** not started. The first module is **Module 02, The Agent Loop**, beginning with Lab 02 (`m02.lab02.s01` is written).
-- **Building:** Milestone 1 steps 0–1 are done (26 tests pass; the real server was smoke-tested through `run.py`).
-  - The request in progress, interrupted by `/wrap`: **Anthropic-style CSS for every UI page**. It comes before step 2.
-- **Next first action:** build the design system. **Done when** pytest passes and screenshots of `/`, `/design` and the unauthorized page look right in light and dark mode.
-  1. **Data palette:** validate the warm data palette with the dataviz validator: `node <dataviz skill>/scripts/validate_palette.js "<hexes>" --mode light --surface "#FAF9F5"`, then `--mode dark --surface "#262624"`.
-     - Candidates: sky `#6A9BCC`, clay `#D97757`, olive `#788C5D`, plus dark steps.
-     - Use them for the token meter's segments (system+tools / retrieved / history) and the trace's LLM-call / tool_use marks.
-     - Headroom is a neutral track. ok / is_error / blocked use the status colors (good / critical / warning), always with an icon and label.
-  2. **Stylesheet:** write `web/src/styles/academy.css`. This one file serves both the server pages now and the React app in step 5.
-     - Tokens: ivory `#FAF9F5`, oat `#F0EEE6`, hairline `#E8E6DC`, slate text `#141413`, secondary text `#5E5D59`, clay accent `#D97757`, link/accent text `#B05730` (4.7:1 on ivory).
-     - Type: system serif headings (Georgia / Palatino), system sans UI and numbers, mono for code.
-     - Dark mode through `prefers-color-scheme` and `[data-theme]`.
-     - No Anthropic logo or proprietary fonts.
-  3. **Wiring:**
-     - Serve the stylesheet at `/static/academy.css`, an open path since CSS isn't sensitive.
-     - Restyle the home placeholder.
-     - Return a styled HTML 401 page for browser navigation (the API keeps JSON).
-     - Add `/auth?next=` with a safe relative-path check.
-     - Add a `/design` style-guide page: palette, type, buttons, pills, tabs, code, a workbench mockup (code left, outcome tabs right), trace timeline, messages diff, token meter, the "Why?" chain and a quiz card.
-  4. **Check visually:** take screenshots with headless Edge (`msedge --headless=new --screenshot`).
-- **Then:** Milestone 1 step 2. Create `src/academy_server/runs/{sandbox,winjob,ipc,manager,events}.py` and `src/labkit/run.py`.
-  - The subprocess is launched with `Popen([venv_py, "-X", "utf8", "-u", "-m", "labkit.run", "main.py"])`, with an allowlisted environment, a Job Object and a 120 s limit.
-  - IPC is loopback TCP with a per-run token. Console output streams over SSE at `GET /api/runs/{id}/events`.
-  - **Done when** pytest proves: a timeout kills the whole process tree, a wrong IPC token is rejected, stdout arrives in order, and there's no real `ANTHROPIC_API_KEY` in the subprocess environment.
+- **How we work:** the learning lab is built lesson by lesson (`docs/PLAN.md`). Each lesson is its content, plus the app features it needs, plus Ashish doing it in the UI.
+- **Teaching:** Module 02, Lab 02, `m02.lab02.s01` "One call" is in progress.
+  - **Runs so far:**
+    - one at effort `low` (`stop_reason: end_turn`, blocks `['text']`, usage 22 in and 66 out, $0.001408);
+    - runs from the lab page;
+    - a run on `claude-haiku-4-5` that failed with a 400, because Haiku 4.5 has no `effort` parameter.
+  - **Covered:**
+    - the raw request JSON and the SDK's `idempotency_key`;
+    - the gateway's headers (budget, rate limits, cost, no `request-id`);
+    - why `content[0].text` is unsafe;
+    - why 4xx errors aren't retried (`_base_client.py:934`);
+    - per-model request shapes (`effort` on Opus 5.5 and Sonnet 5.5, `budget_tokens` on Haiku 4.5);
+    - reading a gateway-wrapped error.
+  - **Open:**
+    - the 13-token puzzle (66 output tokens against about 53 for the text), which becomes card E3;
+    - the stage-1 predictions (`x-stainless-retry-count`, relay cost against `x-litellm-response-cost-original`, the roughly 3 s before the first call), which go into card E1;
+    - the optional Haiku 4.5 challenge (make the code run on it).
+  - **Quiz q1–q3:** not asked yet. No misses recorded.
+- **Building:**
+  - The foundation is done.
+  - **s01 stage 1 is done:**
+    - **the runner** (`runs/`: Job Object process tree, time limit, allowlisted environment, console over SSE, code snapshot and events per run);
+    - **the thin relay** (`relay.py`: dummy key in, real key out, every request and response recorded in order, streams too, cost from `pricing.yaml`);
+    - **the lab page** `/lab/<step-id>`.
+  - **The simple editor on the lab page is done:** line numbers, Tab and Enter handling, Ctrl+S, Run saves first, Reset, and a 409 guard against overwriting a VS Code edit.
+  - The model picker shows what each model accepts. 82 tests pass.
+- **Next first action:** s01 stage 2, experiment cards and the quiz on the lab page (server-rendered HTML and vanilla JavaScript).
+  1. Replace the step schema's replay and cassette fields (`run.mode`, `run.cassettes`, the trace quiz type's `trace`) with `experiments:` (`docs/PLAN.md`, "Experiment format").
+  2. Write s01's cards in `content/m02-agent-loop/lab02-agent-loop/s01-one-call/step.yaml`:
+     - **E1 What comes back**, including the stage-1 predictions above;
+     - **E2 Turn up effort**;
+     - **E3 The missing tokens**, with a count-tokens tool on the page;
+     - **E4 Hit the cap** (`max_tokens=20`);
+     - candidate **E5 Switch the model**: on `claude-haiku-4-5` it's a 400, and Ashish fixes the code for that model.
+  3. Grade predictions against the run (block types, `stop_reason`, token counts, cost), and show the diff since the previous run.
+  4. Add quiz q1–q3 on the page, recorded in the store, with spaced review on the home page.
+  - **Done when** Ashish can play s01 end to end in the lab page, and pytest covers prediction grading, the diff and quiz recording.
+- **Then:** s01 stage 3, the tutor.
 
 ## Last session
-- **Date:** 2026-11-06 (first session)
+- **Date:** 2026-11-06 to 2026-11-07 (second session)
 - **Done:**
-  - Planned the product (`docs/PLAN.md`).
-  - Created the repo, CLAUDE.md, this file, the `/today`, `/wrap` and `/quiz` commands, and the SessionStart status hook. First push to GitHub done.
-  - Milestone 1 step 1:
-    - `run.py` bootstrap.
-    - FastAPI app with 3 security gates (Host allowlist, Origin check, per-launch token → SameSite=Strict cookie).
-    - SQLite store: WAL, migrations, autosaved drafts, "what I got wrong" queries, export/import.
-    - Strict pydantic lesson schema and loader.
-    - `labctl`.
-    - First lesson step `m02.lab02.s01` "One call".
-  - The SDK is `anthropic` 2.6.0: Bearer auth, `anthropic-version` 2026-10-21, and no `temperature` in `create()`.
-  - Started `/doctor`, paused before any change. Findings so far:
-    - The native install (2.1.318) is healthy.
-    - Background auto-updates are off (`autoUpdates: false`), and the latest-version lookup wasn't run.
-    - The 12 skills synced from claude.ai have never been used and cost about 1.76k est. tokens per session.
-    - About 45 claude.ai connectors are unauthenticated and unused.
-    - No slow hooks, and no denials that justify allow rules.
-    - /usage flagged subagent cost: 5 Explore/Plan spawns inherited Opus.
-    - Re-run `/doctor` to finish and apply.
+  - **Design system:**
+    - `web/src/styles/academy.css`, with a data palette validated for colour-blind readers in both modes;
+    - the `/design` style guide, a styled 401 page, `/auth?next=` with a safe-path check, and the restyled home page.
+  - **Re-planned to a learning lab built lesson by lesson:**
+    - `docs/PLAN.md` and `README.md` rewritten;
+    - cassettes and replay dropped; simple features first.
+  - **Gateway:** credentials in `%LOCALAPPDATA%\fde-academy\anthropic.env`, gateway facts in CLAUDE.md, and `claude-haiku-4-5` added to `pricing.yaml`.
+  - **Running lessons:** `tools/run_live.py`, and `playground/` tracked in git.
+  - **s01 stage 1:** runner, thin relay and lab page. Verified with end-to-end tests (real subprocesses, a fake gateway) and in headless Edge.
+  - **Stage 2, first part:** the simple editor and the model notes.
+  - **Fixed:** the `.gitignore` rule `runs/` also hid the `src/academy_server/runs/` package. It's now `/runs/`.
 - **Open questions:**
   - The programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk. I need it from you, or I'll rebuild it from App 2's summary.
-  - Before cassettes can be recorded, `ANTHROPIC_API_KEY` must be set.
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
 
-## Milestone 1: platform + Lab 02 vertical slice
-- [x] 0. Continuity: git, CLAUDE.md, PROGRESS.md, commands, hook, memories, first push
-- [x] 1. `run.py`, server shell, security token, SQLite and migrations, content loader, `labctl status/export/import`
-- [ ] 2. Sandbox subprocess, Job Object, IPC, Console over SSE
-- [ ] 3. Relay: pass-through, usage, cost, budget, cassettes, `labctl record/verify`
-- [ ] 4. Fixture host (vendored Meridian API, write logging, faults)
-- [ ] 5. Web panels: Messages diff, Trace, Token/Cost, loop diagram
-- [ ] 6. Stepper: pause points, approvals, `policy.json` toggle, fault arming
-- [ ] 6b. Cause → effect: call sites, `sys.monitoring` gutter, Variables, "Why?" chain, flow animation, Compare runs
-- [ ] 7. Built-in checks feeding progress
-- [ ] 8. Quiz engine (5 types) and the mistakes view
-- [ ] 9. Tutor panel
-- [ ] 10. Live cost estimate
-- [ ] 11. Lab 02 content (6 steps), cassettes recorded, Module 02 Lab quiz
+## Build: lesson by lesson (details in `docs/PLAN.md`)
+- [x] Foundation: continuity, `run.py`, server shell and security gates, store and migrations, content loader, `labctl`, design system, `tools/run_live.py`
+- s01 One call
+  - [x] 1. Runner and thin relay, plus the lab page
+  - [ ] 2. Experiment cards, quiz, run history, spaced review (on the lab page). The simple editor and model notes are done.
+  - [ ] 3. Tutor
+  - [ ] s01 content written as experiments E1–E4 (plus candidate E5). Replace the step schema's replay and cassette fields (`run.mode`, `run.cassettes`, the trace quiz type's `trace`) with `experiments:`
+  - [ ] Ashish completes s01 in the UI
+- [ ] s02 Manual loop
+- [ ] s03 Parallel tool calls
+- [ ] s04 Gate and block
+- [ ] s05 Tool runner and approval
+- [ ] s06 Strict schema
 
 ## Curriculum progress
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | – | – | – | 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (v1; experiments pending) | s01 in progress | – | 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
 | 05 Reference build | – | – | – | 04 proposal builder, deploy |
 
-## Quiz misses not yet in the database
-(Record here until `labctl quiz record` exists: module, question, your answer, correct answer, concept.)
-
 ## Decisions log
 - 2026-11-06:
-  - Teach Agent Loop first.
+  - Teach the Agent Loop first.
   - Local app, bring your own key.
-  - FastAPI + React + Monaco.
+  - FastAPI server. Server-rendered pages first; React and Monaco only if a lesson needs them.
   - Default `claude-opus-5-5`.
-  - Replay cassettes by default.
   - Private GitHub backup.
   - Commit and push at `/wrap` without asking.
-  - UI look: Anthropic-inspired warm-neutral design system (ivory/oat/slate, clay accent, serif headings), one stylesheet shared by the server pages and the React app; data colors validated with the dataviz validator.
+  - UI look: an Anthropic-inspired warm-neutral design system (ivory, oat and slate, a clay accent, serif headings) in one stylesheet; data colours validated with the dataviz validator.
+- 2026-11-06 (later):
+  - A learning lab for one learner, built lesson by lesson; each lesson adds only the features it needs (`docs/PLAN.md`).
+  - Live calls only: no cassettes, replay or recording. Budgets are left to the gateway.
+  - Experiments are lesson content (`experiments:` in `step.yaml`): predict, change one thing, run, compare, explain.
+  - The tutor uses Sonnet 5.5 through the gateway. Lesson code defaults to Opus 5.5.
+  - Ashish's code lives in `playground/<step-id>/`, tracked in git.
+  - Live calls go through the Bounteous LiteLLM gateway, with credentials in `%LOCALAPPDATA%\fde-academy\anthropic.env` and never in user-wide env vars (CLAUDE.md, "Gateway").
+- 2026-11-07:
+  - Simple features first: server-rendered pages, vanilla JavaScript, and a simple editor on the lab page (a textarea with Save), plus VS Code on the same files. The Monaco workbench comes later, only if a lesson needs it.
+  - The lab's model picker offers `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-4-5`, each with a note on what it accepts.
+  - `claude-haiku-4-5` is priced from the Claude API skill's model table ($1 in, $5 out per million tokens).

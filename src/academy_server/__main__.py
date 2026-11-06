@@ -46,12 +46,21 @@ def main(argv: list[str] | None = None) -> int:
     import uvicorn  # deferred so `--help` is instant
 
     from .app import AppSettings, create_app
+    from .credentials import CredentialsError, load_credentials
+    from .relay import Upstream
 
     port = _free_port(args.port)
     token = new_token()
     paths.data_dir().mkdir(parents=True, exist_ok=True)
+    try:
+        creds = load_credentials(paths.credentials_path())
+        upstream = Upstream(base_url=creds["ANTHROPIC_BASE_URL"], api_key=creds["ANTHROPIC_API_KEY"])
+        gateway_line = f"{upstream.base_url.split('://')[-1].rstrip('/')} (key from {paths.credentials_path()})"
+    except CredentialsError as exc:
+        upstream, gateway_line = None, f"NOT CONFIGURED: lesson model calls will get 503. {exc}"
     settings = AppSettings(token=token, port=port, content_dir=args.content, db_path=paths.db_path(),
-                           web_dist=paths.repo_root() / "web" / "dist", extra_origins=args.dev_origin)
+                           web_dist=paths.repo_root() / "web" / "dist", extra_origins=args.dev_origin,
+                           upstream=upstream)
     app = create_app(settings)
 
     url = f"http://127.0.0.1:{port}/auth?t={token}"
@@ -61,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n  FDE Academy  ->  {url}\n"
           f"  lessons: {len(tree.steps)} steps in {len(tree.modules)} module(s)"
           f"{f', {len(tree.errors)} content error(s): see /api/content/errors' if tree.errors else ''}\n"
+          f"  gateway: {gateway_line}\n"
           f"  data:    {paths.data_dir()}\n"
           f"  stop:    Ctrl+C   (progress autosaves; nothing is lost)\n", flush=True)
     if not args.no_browser:

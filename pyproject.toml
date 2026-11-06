@@ -32,6 +32,9 @@ labctl = "academy_server.labctl:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+academy_server = ["pages/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

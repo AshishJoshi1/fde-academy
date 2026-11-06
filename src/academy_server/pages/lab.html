@@ -1,0 +1,275 @@
+<!-- Lab page: edit your code, run it, watch its console, read every model call exactly.
+     Placeholders are filled (and HTML-escaped) by pages.lab_page(). Experiment cards and the quiz are added here in s01 stage 2. -->
+<section class="container page-head" style="padding-bottom:var(--sp-4)">
+  <div class="breadcrumb"><span>{{step_id}}</span></div>
+  <h1>{{title}}</h1>
+  <p class="lede">Your code: <code class="path">{{code_path}}</code>. Edit it below (Ctrl+S saves) or in VS Code.
+  Run saves first, then runs exactly what's on disk.</p>
+  {{gateway_note}}
+  <div class="row" style="margin-top:var(--sp-4)">
+    <label class="small secondary" for="model">Model</label>
+    <select class="select" id="model">{{model_options}}</select>
+    <button class="btn btn-primary" id="run" type="button">Run</button>
+    <button class="btn" id="stop" type="button" disabled>Stop</button>
+    <span class="pill pill-not_started" id="status">no run yet</span>
+    <span class="small secondary num" id="cost"></span>
+    <span class="spacer"></span>
+    <span class="small muted" id="run-id"></span>
+  </div>
+  <p class="small secondary" id="model-note" style="margin:var(--sp-2) 0 0"></p>
+</section>
+
+<section class="container" style="padding-bottom:var(--sp-7)">
+  <div class="workbench">
+    <div class="stack-lg" style="min-width:0">
+      <div class="pane">
+        <div class="pane-head" style="padding-left:var(--sp-2)">
+          <div class="tabs" role="tablist" aria-label="Files" id="file-tabs"></div>
+          <span class="spacer"></span>
+          <span class="small muted" id="save-state"></span>
+          <button class="btn btn-sm" id="save" type="button" title="Ctrl+S">Save</button>
+          <button class="btn btn-sm btn-ghost" id="reset" type="button">Reset to starter</button>
+        </div>
+        <div class="editor-box">
+          <pre class="editor-gutter" id="gutter" aria-hidden="true"></pre>
+          <textarea class="editor-input" id="code" spellcheck="false" wrap="off" autocapitalize="off"
+                    autocomplete="off" aria-label="Your code"></textarea>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><h3 class="card-title">Console</h3></div>
+        <div class="pane-body"><div class="console" id="console"><span class="meta">Press Run. Output appears here as it happens.</span></div></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="pane-head"><h3 class="card-title">Model calls</h3><span class="spacer"></span><span class="small muted" id="calls-count"></span></div>
+      <div class="pane-body stack" id="calls"><p class="small muted">Each call your code makes appears here: the exact request, then the exact response.</p></div>
+    </div>
+  </div>
+</section>
+
+<script>
+// The editor: one textarea per file, saved straight to playground/<step-id>/.
+(function () {
+  var STEP = {{step_id_json}};
+  var $ = function (id) { return document.getElementById(id); };
+  var files = {}, order = [], current = null;
+  var area = $("code"), gutter = $("gutter"), state = $("save-state");
+
+  function url(name) { return "/api/steps/" + encodeURIComponent(STEP) + "/files/" + encodeURIComponent(name); }
+  function setState(text, cls) { state.textContent = text; state.className = "small " + (cls || "muted"); }
+  function isDirty(name) { return !!files[name] && files[name].code !== files[name].saved; }
+  function anyDirty() { return order.some(isDirty); }
+  function showDirty() { if (anyDirty()) setState("unsaved changes", "secondary"); renderTabs(); }
+  function renderGutter() {
+    var n = area.value.split("\n").length, nums = [];
+    for (var i = 1; i <= n; i++) nums.push(i);
+    gutter.textContent = nums.join("\n");
+    gutter.scrollTop = area.scrollTop;
+  }
+  function renderTabs() {
+    var bar = $("file-tabs");
+    bar.textContent = "";
+    order.forEach(function (name) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(name === current));
+      b.textContent = name + (isDirty(name) ? " •" : "");
+      b.addEventListener("click", function () { open(name); });
+      bar.append(b);
+    });
+  }
+  function open(name) {
+    if (current) files[current].code = area.value;
+    current = name; area.value = files[name].code; area.scrollTop = 0;
+    renderGutter(); renderTabs();
+  }
+  function load(view) {
+    files = {}; order = Object.keys(view.files); current = null;
+    order.forEach(function (n) { files[n] = {code: view.files[n].code, saved: view.files[n].code, hash: view.files[n].hash}; });
+    open(order.indexOf(view.entry) >= 0 ? view.entry : order[0]);
+    setState("saved", "muted");
+  }
+  function save(name, force) {
+    var f = files[name];
+    return fetch(url(name), {method: "PUT", headers: {"content-type": "application/json"},
+                             body: JSON.stringify({code: f.code, base_hash: force ? null : f.hash})})
+      .then(function (r) { return r.json().then(function (j) { return [r, j]; }); })
+      .then(function (rj) {
+        if (rj[0].status === 409) {
+          if (confirm(name + " changed on disk after this page loaded it (edited in VS Code?).\n\n" +
+                      "OK: overwrite it with the editor's version.\nCancel: keep the disk version (reload the page to see it).")) {
+            return save(name, true);
+          }
+          setState("not saved: the file changed on disk", "error-text");
+          return false;
+        }
+        if (!rj[0].ok) { setState("not saved: " + (rj[1].detail || rj[0].status), "error-text"); return false; }
+        f.saved = f.code; f.hash = rj[1].hash;
+        return true;
+      });
+  }
+  function saveAll() {
+    if (current) files[current].code = area.value;
+    return order.filter(isDirty).reduce(function (p, name) {
+      return p.then(function (ok) { return ok ? save(name, false) : false; });
+    }, Promise.resolve(true)).then(function (ok) {
+      if (ok) setState("saved " + new Date().toLocaleTimeString(), "muted");
+      renderTabs();
+      return ok;
+    });
+  }
+  function insert(text) {   // insertText keeps the browser's undo history
+    if (!document.execCommand || !document.execCommand("insertText", false, text)) {
+      area.setRangeText(text, area.selectionStart, area.selectionEnd, "end");
+      area.dispatchEvent(new Event("input"));
+    }
+  }
+
+  area.addEventListener("input", function () { files[current].code = area.value; renderGutter(); showDirty(); });
+  area.addEventListener("scroll", function () { gutter.scrollTop = area.scrollTop; });
+  area.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveAll(); return; }
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); insert("    "); return; }
+    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {   // keep indentation; indent after ':'
+      var before = area.value.slice(0, area.selectionStart), line = before.slice(before.lastIndexOf("\n") + 1);
+      e.preventDefault();
+      insert("\n" + line.match(/^[ \t]*/)[0] + (/:\s*$/.test(line) ? "    " : ""));
+    }
+  });
+  new ResizeObserver(function () { gutter.style.height = area.offsetHeight + "px"; }).observe(area);
+  $("save").addEventListener("click", saveAll);
+  $("reset").addEventListener("click", function () {
+    if (!confirm("Reset to the starter code? Your edits will be replaced.\n" +
+                 "(Every past run keeps a snapshot of the code it ran, and git has the history.)")) return;
+    fetch("/api/steps/" + encodeURIComponent(STEP) + "/reset", {method: "POST"})
+      .then(function (r) { return r.json(); }).then(load);
+  });
+  window.addEventListener("beforeunload", function (e) { if (anyDirty()) { e.preventDefault(); e.returnValue = ""; } });
+  fetch("/api/steps/" + encodeURIComponent(STEP) + "/files").then(function (r) { return r.json(); }).then(load);
+  window.labEditor = {saveAll: saveAll};
+})();
+</script>
+
+<script>
+(function () {
+  var STEP = {{step_id_json}}, MODEL_NOTES = {{model_notes_json}};
+  var $ = function (id) { return document.getElementById(id); };
+  function showModelNote() { $("model-note").textContent = MODEL_NOTES[$("model").value] || ""; }
+  $("model").addEventListener("change", showModelNote);
+  showModelNote();
+  var es = null, current = null, calls = {}, total = 0, done = false;
+
+  function pill(cls, text) { $("status").className = "pill " + cls; $("status").textContent = text; }
+  function line(text, cls) {
+    var s = document.createElement("span");
+    if (cls) s.className = cls;
+    s.textContent = text + "\n";
+    $("console").appendChild(s);
+  }
+  function pre(value) {
+    var p = document.createElement("pre");
+    p.className = "json-view";
+    p.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return p;
+  }
+  function details(summary, value, open) {
+    var d = document.createElement("details"), s = document.createElement("summary");
+    d.className = "disclosure"; d.open = !!open; s.textContent = summary;
+    d.append(s, pre(value));
+    return d;
+  }
+  function card(n) {
+    if (calls[n]) return calls[n];
+    var c = document.createElement("div"), head = document.createElement("div"), title = document.createElement("b"),
+        meta = document.createElement("span");
+    c.className = "card card-body stack"; head.className = "row"; meta.className = "small muted";
+    title.textContent = "Call " + n;
+    head.append(title, meta); c.append(head); $("calls").append(c);
+    calls[n] = {card: c, head: head, meta: meta};
+    $("calls-count").textContent = Object.keys(calls).length + " call(s)";
+    return calls[n];
+  }
+  function usd(x) { return x == null ? "price unknown" : "$" + x.toFixed(6); }
+  function badge(c, cls, text) { var p = document.createElement("span"); p.className = "pill " + cls; p.textContent = text; c.head.append(p); }
+
+  function onEvent(ev) {
+    var d = ev.data, c;
+    switch (ev.type) {
+      case "run.started":
+        $("console").textContent = "";
+        line("$ python -X utf8 -u " + d.entry + "   (model " + d.model + ", limit " + d.timeout_s + " s)", "meta");
+        break;
+      case "console.out": line(d.text); break;
+      case "console.err": line(d.text, "stderr"); break;
+      case "console.truncated": line("[output cut at " + d.cap_bytes + " bytes]", "meta"); break;
+      case "llm.request":
+        c = card(d.call);
+        c.meta.textContent = d.method + " " + d.path + "  ·  t=" + ev.t_ms + " ms";
+        c.card.append(details("Request body: exactly what your code sent", d.body, true),
+                      details("Request headers (credentials removed)", d.headers, false));
+        break;
+      case "llm.response":
+        c = card(d.call);
+        badge(c, d.status < 400 ? "pill-good" : "pill-critical", String(d.status));
+        var u = d.usage || {}, info = document.createElement("span");
+        info.className = "small secondary num";
+        info.textContent = d.ms + " ms · in " + (u.input_tokens ?? "?") + " · out " + (u.output_tokens ?? "?") +
+          " · cache write " + (u.cache_creation_input_tokens ?? 0) + " · cache read " + (u.cache_read_input_tokens ?? 0) +
+          " · " + usd(d.cost_usd);
+        c.head.append(info);
+        c.card.append(details(d.stream ? "Response stream: every server-sent event" : "Response body: exactly what came back", d.body, true),
+                      details("Response headers (the gateway's included)", d.headers, false));
+        if (d.cost_usd) { total += d.cost_usd; $("cost").textContent = "spent " + usd(total); }
+        break;
+      case "llm.error":
+        c = card(d.call); badge(c, "pill-critical", "no response"); c.card.append(pre(d.error));
+        break;
+      case "run.exit": finish(d); break;
+    }
+  }
+  function finish(d) {
+    done = true;
+    var map = {ok: ["pill-good", "ok"], error: ["pill-critical", "error"], timeout: ["pill-warning", "timeout"],
+               stopped: ["pill-paused", "stopped"]};
+    var m = map[d.outcome] || ["pill-plain", d.outcome];
+    pill(m[0], m[1] + (d.exit_code != null ? " · exit " + d.exit_code : ""));
+    if (d.error) line(d.error, "stderr");
+    $("run").disabled = false; $("stop").disabled = true;
+  }
+  function watch(id, live) {
+    if (es) es.close();
+    current = id; calls = {}; total = 0; done = false;
+    $("calls").textContent = ""; $("calls-count").textContent = ""; $("cost").textContent = "";
+    $("run-id").textContent = "run " + id;
+    if (live) { pill("pill-in_progress", "running"); $("run").disabled = true; $("stop").disabled = false; }
+    es = new EventSource("/api/runs/" + encodeURIComponent(id) + "/events");
+    es.onmessage = function (m) { onEvent(JSON.parse(m.data)); };
+    es.addEventListener("end", function () {
+      es.close();
+      if (!done) { pill("pill-plain", "incomplete"); $("run").disabled = false; $("stop").disabled = true; }
+    });
+  }
+  $("run").addEventListener("click", function () {
+    $("run").disabled = true;
+    window.labEditor.saveAll().then(function (saved) {       // run what you see: save first
+      if (!saved) { $("run").disabled = false; return; }
+      return fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs", {
+        method: "POST", headers: {"content-type": "application/json"},
+        body: JSON.stringify({model: $("model").value})
+      }).then(function (r) { return r.json().then(function (j) { return [r, j]; }); })
+        .then(function (rj) {
+          if (!rj[0].ok) { $("run").disabled = false; line("could not start: " + (rj[1].detail || rj[0].status), "stderr"); return; }
+          watch(rj[1].run_id, true);
+        });
+    });
+  });
+  $("stop").addEventListener("click", function () {
+    if (current) fetch("/api/runs/" + encodeURIComponent(current) + "/stop", {method: "POST"});
+  });
+  // Reopen your latest run of this step (free: it's replayed from the store, not re-run).
+  fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs").then(function (r) { return r.json(); }).then(function (j) {
+    if (j.runs && j.runs.length) { watch(j.runs[0].run_id, false); $("model").value = j.runs[0].model || "claude-opus-5-5"; showModelNote(); }
+  });
+})();
+</script>

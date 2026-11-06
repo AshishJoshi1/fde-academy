@@ -1,0 +1,544 @@
+<!-- /design style guide body. Wrapped by pages.shell(); styled only by /static/academy.css.
+     The React components in Milestone 1 step 5 are ported from the markup here. -->
+<section class="container page-head">
+  <p class="eyebrow">Design system</p>
+  <h1>One stylesheet, every page.</h1>
+  <p class="lede">Warm neutrals, a clay accent, serif display type and quiet data marks. This page is the
+  reference for the server pages and the React workbench. Use the theme button (top right) or
+  <code>?theme=dark</code> to check both modes.</p>
+  <nav class="row" aria-label="On this page" style="margin-top:var(--sp-4)">
+    <a class="btn btn-sm" href="#palette">Palette</a><a class="btn btn-sm" href="#type">Type</a>
+    <a class="btn btn-sm" href="#controls">Controls</a><a class="btn btn-sm" href="#code">Code</a>
+    <a class="btn btn-sm" href="#workbench">Workbench</a><a class="btn btn-sm" href="#trace">Trace</a>
+    <a class="btn btn-sm" href="#messages">Messages</a><a class="btn btn-sm" href="#tokens">Tokens</a>
+    <a class="btn btn-sm" href="#why">Why?</a><a class="btn btn-sm" href="#quiz">Quiz</a>
+  </nav>
+</section>
+
+<!-- ============================================================ palette -->
+<section class="container section" id="palette">
+  <div class="section-head"><h2>Palette</h2>
+    <p>Each token has a light and a dark value. Charts sit on <code>--surface</code> or <code>--bg</code>, never on oat.</p></div>
+
+  <h3>Surfaces and ink</h3>
+  <div class="swatch-grid" style="margin-bottom:var(--sp-5)">
+    <div class="token-chip"><div class="chip" style="--chip:var(--bg)"></div><div class="meta"><b>Ivory · page</b><code>--bg</code><br>#FAF9F5 / #1F1E1D</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--surface)"></div><div class="meta"><b>Surface</b><code>--surface</code><br>#FFFFFF / #262624</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--surface-sunken)"></div><div class="meta"><b>Oat · sunken</b><code>--surface-sunken</code><br>#F0EEE6 / #1A1918</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--hairline)"></div><div class="meta"><b>Hairline</b><code>--hairline</code><br>#E8E6DC / #3A3936</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--text)"></div><div class="meta"><b>Slate · text</b><code>--text</code><br>#141413 / #F0EEE6</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--text-2)"></div><div class="meta"><b>Secondary text</b><code>--text-2</code><br>#5E5D59 / #B8B5A9</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--text-3)"></div><div class="meta"><b>Muted text</b><code>--text-3</code><br>#6F6D66 / #9A978C</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--accent)"></div><div class="meta"><b>Clay · accent</b><code>--accent</code><br>#D97757 (marks, rings)</div></div>
+    <div class="token-chip"><div class="chip" style="--chip:var(--accent-text)"></div><div class="meta"><b>Accent text</b><code>--accent-text</code><br>#A64D28 / #E5916F</div></div>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <h3>Data series</h3>
+      <p class="secondary small">Fixed order, never cycled. Validated all-pairs in both modes with the dataviz
+      validator: colour-blind ΔE 8.8 (target 8), normal-vision ΔE 20.3 (floor 15), at least 3:1 on <code>--surface</code> and <code>--bg</code>.</p>
+      <table class="table">
+        <thead><tr><th>Slot</th><th>Hex</th><th>Trace</th><th>Token meter</th></tr></thead>
+        <tbody>
+          <tr><td><span class="legend-item"><span class="swatch swatch-1"></span>1 · sky</span></td><td><code>#5e95cb</code></td><td>LLM call</td><td>System + tools</td></tr>
+          <tr><td><span class="legend-item"><span class="swatch swatch-2"></span>2 · clay</span></td><td><code>#cd7b60</code></td><td>Tool call</td><td>Retrieved</td></tr>
+          <tr><td><span class="legend-item"><span class="swatch swatch-3"></span>3 · olive</span></td><td><code>#5a7921</code></td><td>Fixture HTTP</td><td>History</td></tr>
+          <tr><td><span class="legend-item"><span class="swatch swatch-track"></span>track</span></td><td><code>#E8E6DC</code></td><td></td><td>Headroom (neutral)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h3>Status (reserved)</h3>
+      <p class="secondary small">Status always comes with an icon and a label, never colour alone. It is never reused as a series colour.</p>
+      <table class="table">
+        <thead><tr><th>Role</th><th>Mark</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill pill-good">good</span></td><td><code>#0ca30c</code></td><td><code>ok</code> results, passed checks, correct answers</td></tr>
+          <tr><td><span class="pill pill-warning">warning</span></td><td><code>#fab219</code></td><td><code>blocked</code> by a gate, budget near the limit</td></tr>
+          <tr><td><span class="pill pill-critical">critical</span></td><td><code>#d03b3b</code></td><td><code>is_error</code>, failed checks, wrong answers</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== type -->
+<section class="container section" id="type">
+  <div class="section-head"><h2>Type</h2>
+    <p>Serif for display headings, the system sans for everything you read and click, and mono for code.
+    No webfonts: Georgia or Palatino on Windows, New York on macOS.</p></div>
+  <div class="card card-pad">
+    <div class="type-row"><span class="spec">h1 · serif 40</span><h1 style="margin:0">Step the agent loop</h1></div>
+    <div class="type-row"><span class="spec">h2 · serif 30</span><h2 style="margin:0">One call: what actually comes back</h2></div>
+    <div class="type-row"><span class="spec">h3 · sans 17/600</span><h3 style="margin:0">The response is not a string</h3></div>
+    <div class="type-row"><span class="spec">lede · 17</span><p class="lede" style="margin:0">An agent loop is this call repeated, with <code>stop_reason</code> deciding what happens next.</p></div>
+    <div class="type-row"><span class="spec">body · 15/1.55</span><p style="margin:0">If you read <code>content[0].text</code>, the first thinking block will break your code. If you ignore
+      <code>max_tokens</code>, half-finished answers get through looking complete.</p></div>
+    <div class="type-row"><span class="spec">small · 13</span><p class="small secondary" style="margin:0">Replay is free. Live runs show a cost estimate before anything is sent.</p></div>
+    <div class="type-row"><span class="spec">eyebrow · 12</span><p class="eyebrow" style="margin:0">Module 02 · Lab 02</p></div>
+    <div class="type-row"><span class="spec">mono · 13</span><code>response.usage.output_tokens</code></div>
+    <div class="type-row"><span class="spec">figures</span><div class="row-lg"><span class="stat-value">$0.0144</span>
+      <span class="small secondary">Big numbers use proportional figures. Columns use <span class="num">tabular-nums</span>: <span class="num">1,432 · 2,048 · 412</span></span></div></div>
+  </div>
+</section>
+
+<!-- =========================================================== controls -->
+<section class="container section" id="controls">
+  <div class="section-head"><h2>Controls</h2>
+    <p>One primary action per toolbar. A live run always shows its estimate in the button itself.</p></div>
+  <div class="stack-lg">
+    <div><p class="demo-label">Buttons</p>
+      <div class="row">
+        <button class="btn btn-primary" type="button">Run</button>
+        <button class="btn" type="button">Step</button>
+        <button class="btn" type="button">Reset</button>
+        <button class="btn btn-ghost" type="button">Solution</button>
+        <button class="btn" type="button">Run live <span class="cost">≈ $0.004</span></button>
+        <button class="btn btn-danger" type="button">Deny</button>
+        <button class="btn" type="button" disabled>Disabled</button>
+        <button class="btn btn-primary btn-sm" type="button">Approve</button>
+        <button class="btn btn-lg btn-primary" type="button">Continue where you left off</button>
+      </div></div>
+
+    <div><p class="demo-label">Pills: outcome status (icon + label)</p>
+      <div class="row">
+        <span class="pill pill-good">ok</span>
+        <span class="pill pill-critical">is_error</span>
+        <span class="pill pill-warning">blocked</span>
+        <span class="pill pill-paused">paused · awaiting approval</span>
+        <span class="pill pill-accent">added this turn</span>
+        <span class="pill pill-plain pill-mono">end_turn</span>
+        <span class="pill pill-plain pill-mono">replay · cassette hit</span>
+      </div></div>
+
+    <div><p class="demo-label">Pills: step status</p>
+      <div class="row">
+        <span class="pill pill-not_started">Not started</span>
+        <span class="pill pill-in_progress">In progress</span>
+        <span class="pill pill-completed">Completed</span>
+      </div></div>
+
+    <div class="grid-2">
+      <div><p class="demo-label">Tabs (underline): outcome panels</p>
+        <div class="tabs" role="tablist" aria-label="Demo tabs">
+          <button class="tab" role="tab" aria-selected="false">Console</button>
+          <button class="tab" role="tab" aria-selected="true">Messages <span class="count">5</span></button>
+          <button class="tab" role="tab" aria-selected="false">Trace <span class="count">6</span></button>
+          <button class="tab" role="tab" aria-selected="false">Tokens</button>
+          <button class="tab" role="tab" aria-selected="false">Why?</button>
+        </div></div>
+      <div><p class="demo-label">Tabs (segmented): step mode</p>
+        <div class="tabs-pill" role="tablist" aria-label="Step mode">
+          <button class="tab" role="tab" aria-selected="false">Off</button>
+          <button class="tab" role="tab" aria-selected="true">Each LLM call</button>
+          <button class="tab" role="tab" aria-selected="false">Every frame</button>
+        </div></div>
+    </div>
+
+    <div class="grid-3">
+      <div class="field"><label for="d-model">Model</label>
+        <select class="select" id="d-model"><option>claude-opus-5-5</option><option>claude-sonnet-5-5</option><option>claude-haiku-5-5</option></select></div>
+      <div class="field"><label for="d-effort">Effort</label>
+        <select class="select" id="d-effort"><option>low</option><option selected>medium</option><option>high</option></select></div>
+      <div class="field"><label for="d-budget">Daily budget (USD)</label>
+        <input class="input num" id="d-budget" value="5.00" inputmode="decimal"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+        <div><p><b>Thinking is always on with Opus 5.5.</b> To spend fewer tokens, lower <code>output_config.effort</code>.
+        There is no switch to turn thinking off.</p></div></div>
+      <div class="callout callout-warning"><span class="icon icon-block" aria-hidden="true"></span>
+        <div><p><b>Over budget.</b> The relay returned 403 before sending: projected $0.52 is over the $0.50 per-run limit.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== code -->
+<section class="container section" id="code">
+  <div class="section-head"><h2>Code</h2>
+    <p>Inline <code>code</code>, keys like <kbd>Ctrl</kbd> <kbd>Enter</kbd>, and blocks on oat. Monaco gets the same token colours in step 5.</p></div>
+  <pre><span class="tok-kw">import</span> os
+
+<span class="tok-kw">import</span> anthropic
+
+client = anthropic.<span class="tok-fn">Anthropic</span>()  <span class="tok-com"># in the lab, the key and URL are injected for you (relay)</span>
+MODEL = os.<span class="tok-fn">getenv</span>(<span class="tok-str">"LAB_MODEL"</span>, <span class="tok-str">"claude-opus-5-5"</span>)
+
+response = client.messages.<span class="tok-fn">create</span>(
+    model=MODEL,
+    max_tokens=<span class="tok-num">1024</span>,
+    output_config={<span class="tok-str">"effort"</span>: <span class="tok-str">"low"</span>},
+    messages=[{<span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>, <span class="tok-str">"content"</span>: <span class="tok-str">"In one sentence: what is an agent loop?"</span>}],
+)</pre>
+</section>
+
+<!-- ========================================================== workbench -->
+<section class="container section" id="workbench">
+  <div class="section-head"><h2>Workbench</h2>
+    <p>Code on the left, outcome on the right. Click a “Why?” step: the editor highlights the line that caused it.
+    This mock is Lab 02, step 4 (gate and block), paused after the run.</p></div>
+
+  <div class="workbench">
+    <!-- left: lesson + editor -->
+    <div class="pane">
+      <div class="pane-head" style="flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding-block:10px">
+        <div class="breadcrumb"><span>Module 02</span><span>Lab 02</span><span>Step 4 of 6</span></div>
+        <div class="row" style="width:100%"><h3 style="margin:0">Gate and block a write</h3><span class="spacer"></span><span class="pill pill-in_progress">In progress</span></div>
+      </div>
+      <div class="pane-body prose" style="flex:0 0 auto">
+        <p>Click <b>Block update_opportunity</b>, run again, and watch the model get an <code>is_error</code> result and adapt.
+        Then check the fixture log: the write never happened.</p>
+      </div>
+      <div class="editor-tabbar"><span class="file" aria-current="true">main.py</span><span class="file">work/policy.json</span></div>
+      <div class="editor" role="region" aria-label="main.py (lines run in turn 2)">
+        <div class="line" data-line="26"><span class="ln">26</span><span class="hits">×1</span><span class="code">    tool_calls = [b <span class="tok-kw">for</span> b <span class="tok-kw">in</span> response.content <span class="tok-kw">if</span> b.type == <span class="tok-str">"tool_use"</span>]</span></div>
+        <div class="line" data-line="27"><span class="ln">27</span><span class="hits">×1</span><span class="code">    results = []</span></div>
+        <div class="line" data-line="28"><span class="ln">28</span><span class="hits">×1</span><span class="code">    <span class="tok-kw">for</span> call <span class="tok-kw">in</span> tool_calls:</span></div>
+        <div class="line" data-line="29"><span class="ln">29</span><span class="hits">×1</span><span class="code">        policy = json.<span class="tok-fn">loads</span>(<span class="tok-fn">Path</span>(<span class="tok-str">"work/policy.json"</span>).<span class="tok-fn">read_text</span>())</span></div>
+        <div class="line" data-line="30"><span class="ln">30</span><span class="hits"></span><span class="code">        <span class="tok-com"># Gate: enforcement lives in code, not in the prompt</span></span></div>
+        <div class="line is-cause" data-line="31"><span class="ln">31</span><span class="hits">×1</span><span class="code">        <span class="tok-kw">if</span> call.name <span class="tok-kw">in</span> policy[<span class="tok-str">"deny"</span>]:<span class="cause-tag">Why? 3</span></span></div>
+        <div class="line" data-line="32"><span class="ln">32</span><span class="hits">×1</span><span class="code">            log.<span class="tok-fn">info</span>(<span class="tok-str">"gate"</span>, extra={<span class="tok-str">"tool_use_id"</span>: call.id, <span class="tok-str">"decision"</span>: <span class="tok-str">"deny"</span>})</span></div>
+        <div class="line" data-line="33"><span class="ln">33</span><span class="hits">×1</span><span class="code">            results.<span class="tok-fn">append</span>({<span class="tok-str">"type"</span>: <span class="tok-str">"tool_result"</span>, <span class="tok-str">"tool_use_id"</span>: call.id,<span class="cause-tag">Why? 4</span></span></div>
+        <div class="line" data-line="34"><span class="ln">34</span><span class="hits"></span><span class="code">                            <span class="tok-str">"is_error"</span>: <span class="tok-kw">True</span>, <span class="tok-str">"content"</span>: <span class="tok-str">"Blocked by policy: writes are not allowed"</span>})</span></div>
+        <div class="line" data-line="35"><span class="ln">35</span><span class="hits">×1</span><span class="code">            <span class="tok-kw">continue</span></span></div>
+        <div class="line not-run" data-line="36"><span class="ln">36</span><span class="hits"></span><span class="code">        output = <span class="tok-fn">execute_tool</span>(call.name, call.input)</span></div>
+        <div class="line not-run" data-line="37"><span class="ln">37</span><span class="hits"></span><span class="code">        results.<span class="tok-fn">append</span>({<span class="tok-str">"type"</span>: <span class="tok-str">"tool_result"</span>, <span class="tok-str">"tool_use_id"</span>: call.id, <span class="tok-str">"content"</span>: output})</span></div>
+        <div class="line" data-line="38"><span class="ln">38</span><span class="hits">×1</span><span class="code">    messages.<span class="tok-fn">append</span>({<span class="tok-str">"role"</span>: <span class="tok-str">"user"</span>, <span class="tok-str">"content"</span>: results})  <span class="tok-com"># ONE user message</span><span class="cause-tag">Why? 5</span></span></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn btn-primary" type="button">Run</button>
+        <button class="btn" type="button">Step</button>
+        <button class="btn" type="button">Reset</button>
+        <button class="btn btn-ghost" type="button">Solution</button>
+        <span class="spacer"></span>
+        <button class="btn" type="button">Run live <span class="cost">≈ $0.041</span></button>
+      </div>
+      <div class="pane-foot"><span class="pill pill-warning">Block update_opportunity: on</span><span>Gutter: lines run in turn 2 · dimmed lines never ran</span></div>
+    </div>
+
+    <!-- right: outcome tabs -->
+    <div class="pane">
+      <div class="pane-head" style="padding-left:var(--sp-2)">
+        <div class="tabs" role="tablist" aria-label="Outcome">
+          <button class="tab" role="tab" id="wb-t-console" aria-controls="wb-console" aria-selected="false" tabindex="-1">Console</button>
+          <button class="tab" role="tab" id="wb-t-messages" aria-controls="wb-messages" aria-selected="false" tabindex="-1">Messages <span class="count">5</span></button>
+          <button class="tab" role="tab" id="wb-t-trace" aria-controls="wb-trace" aria-selected="false" tabindex="-1">Trace <span class="count">6</span></button>
+          <button class="tab" role="tab" id="wb-t-tokens" aria-controls="wb-tokens" aria-selected="false" tabindex="-1">Tokens</button>
+          <button class="tab" role="tab" id="wb-t-why" aria-controls="wb-why" aria-selected="true">Why?</button>
+        </div>
+      </div>
+      <div class="pane-body">
+        <div role="tabpanel" id="wb-console" aria-labelledby="wb-t-console" hidden>
+<div class="console"><span class="meta">$ python -X utf8 -u -m labkit.run main.py   (replay · cassette happy/blocked-update)</span>
+→ get_opportunity(opportunity_id="OPP-003")
+→ update_opportunity(opportunity_id="OPP-003", stage="won")
+  <span class="prompt">gate: deny update_opportunity (rule: policy.deny)</span>
+answer: I couldn't mark OPP-003 as won: writes are blocked by policy. It's currently in
+"negotiation" for Łódź Logistics (owner: Priya Raman).
+usage: 3 calls · input=9,418 output=642 cache_read=4,096
+<span class="meta">run finished in 4.0 s · exit 0</span></div>
+        </div>
+        <div role="tabpanel" id="wb-messages" aria-labelledby="wb-t-messages" hidden data-clone="#demo-messages"></div>
+        <div role="tabpanel" id="wb-trace" aria-labelledby="wb-t-trace" hidden data-clone="#demo-trace"></div>
+        <div role="tabpanel" id="wb-tokens" aria-labelledby="wb-t-tokens" hidden data-clone="#demo-tokens"></div>
+        <div role="tabpanel" id="wb-why" aria-labelledby="wb-t-why" data-clone="#demo-why"></div>
+      </div>
+      <div class="pane-foot">
+        <span class="pill pill-plain pill-mono">replay · cassette hit</span>
+        <span class="num">3 LLM calls</span><span class="num">4.0 s</span><span class="spacer"></span>
+        <span class="num">$0.0000 spent (≈ $0.041 live)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== trace -->
+<section class="container section" id="trace">
+  <div class="section-head"><h2>Trace timeline</h2>
+    <p>One row per event. The bar colour says what kind of event it is, and the pill gives the outcome with an icon.
+    Hovering a bar shows the tooltip below (React adds the positioning).</p></div>
+  <div class="grid-2" style="align-items:start">
+    <div class="card card-body" id="demo-trace">
+      <div class="row" style="margin-bottom:var(--sp-3)">
+        <div class="legend" aria-label="Legend">
+          <span class="legend-item"><span class="swatch swatch-1"></span>LLM call</span>
+          <span class="legend-item"><span class="swatch swatch-2"></span>Tool call</span>
+          <span class="legend-item"><span class="swatch swatch-3"></span>Fixture HTTP</span>
+        </div>
+      </div>
+      <div class="trace" role="table" aria-label="Trace: 6 events over 4.0 seconds">
+        <div class="trace-axis" role="row"><div role="columnheader" class="small muted" style="align-self:end;padding-bottom:4px">Event</div><div role="columnheader" class="trace-dur" style="align-items:end;padding-bottom:4px">Time</div>
+          <div class="ticks" role="columnheader"><span style="left:0">0 s</span><span style="left:25%">1 s</span><span style="left:50%">2 s</span><span style="left:75%">3 s</span><span style="left:100%">4 s</span></div></div>
+
+        <div class="trace-row" role="row">
+          <div class="trace-label" role="cell"><span class="seq">1</span><span class="name">LLM call</span><span class="pill pill-plain pill-mono">tool_use</span></div>
+          <div class="trace-dur" role="cell">1.20 s</div>
+          <div class="trace-track" role="cell" title="LLM call #1: 1.20 s, stop_reason tool_use"><span class="trace-bar llm" style="--start:0%;--len:30%"></span></div>
+        </div>
+        <div class="trace-row" role="row">
+          <div class="trace-label child" role="cell"><span class="name"><code>get_opportunity</code></span><span class="pill pill-good">ok</span></div>
+          <div class="trace-dur" role="cell">0.12 s</div>
+          <div class="trace-track" role="cell" title="Tool get_opportunity: ok"><span class="trace-bar tool" style="--start:30.5%;--len:3%"></span></div>
+        </div>
+        <div class="trace-row" role="row">
+          <div class="trace-label child" role="cell" style="padding-left:34px"><span class="name"><code>GET /opportunities/OPP-003</code></span><span class="pill pill-plain pill-mono">200</span></div>
+          <div class="trace-dur" role="cell"></div>
+          <div class="trace-track" role="cell" title="Fixture GET /opportunities/OPP-003: 200"><span class="trace-bar http" style="--start:31%;--len:2%"></span></div>
+        </div>
+        <div class="trace-row is-active" role="row">
+          <div class="trace-label" role="cell"><span class="seq">2</span><span class="name">LLM call</span><span class="pill pill-plain pill-mono">tool_use</span></div>
+          <div class="trace-dur" role="cell">1.24 s</div>
+          <div class="trace-track" role="cell" title="LLM call #2: 1.24 s, stop_reason tool_use"><span class="trace-bar llm" style="--start:34%;--len:31%"></span></div>
+        </div>
+        <div class="trace-row" role="row">
+          <div class="trace-label child" role="cell"><span class="name"><code>update_opportunity</code></span><span class="pill pill-warning">blocked</span></div>
+          <div class="trace-dur" role="cell">0.00 s</div>
+          <div class="trace-track" role="cell" title="Tool update_opportunity: blocked by the gate, is_error: true, no HTTP call"><span class="trace-bar tool" style="--start:65.5%;--len:0.5%"></span></div>
+        </div>
+        <div class="trace-row" role="row">
+          <div class="trace-label" role="cell"><span class="seq">3</span><span class="name">LLM call</span><span class="pill pill-plain pill-mono">end_turn</span></div>
+          <div class="trace-dur" role="cell">1.36 s</div>
+          <div class="trace-track" role="cell" title="LLM call #3: 1.36 s, stop_reason end_turn"><span class="trace-bar llm" style="--start:66%;--len:34%"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <p class="demo-label">Tooltip (hover or keyboard focus on a bar)</p>
+      <div class="viz-tooltip" role="tooltip">
+        <div class="tt-title"><span class="swatch swatch-1"></span>LLM call #2</div>
+        <dl>
+          <dt>Duration</dt><dd>1.24 s</dd>
+          <dt>stop_reason</dt><dd><code>tool_use</code></dd>
+          <dt>input_tokens</dt><dd>3,212</dd>
+          <dt>output_tokens</dt><dd>118</dd>
+          <dt>Cost (replay, ≈ live)</dt><dd>$0.0152</dd>
+          <dt>Call site</dt><dd><code>main.py:21</code></dd>
+        </dl>
+      </div>
+      <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+        <p class="small">Tool spans need no instrumentation: the relay sees <code>tool_use</code> in response k and the matching
+        <code>tool_result</code> in request k+1.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== messages -->
+<section class="container section" id="messages">
+  <div class="section-head"><h2>Messages diff</h2>
+    <p>The real <code>messages</code> array sent with request #3. The entries added since request #2 get an accent bar and a label.
+    History only grows: nothing above them changed.</p></div>
+  <div class="grid-2" style="align-items:start">
+    <div class="messages" id="demo-messages">
+      <div class="msg">
+        <div class="msg-head"><span class="idx">[0]</span><span class="role">user</span></div>
+        <div class="msg-body"><div class="block"><span class="block-type">text</span><span class="block-content">Mark opportunity OPP-003 as won and tell me the new stage.</span></div></div>
+      </div>
+      <div class="msg">
+        <div class="msg-head"><span class="idx">[1]</span><span class="role">assistant</span></div>
+        <div class="msg-body">
+          <div class="block is-empty"><span class="block-type">thinking</span><span class="block-content">(display omitted, billed as output)</span></div>
+          <div class="block"><span class="block-type">tool_use</span><span class="block-content"><code>get_opportunity</code> <span class="json">{"opportunity_id": "OPP-003"}</span></span></div>
+        </div>
+      </div>
+      <div class="msg">
+        <div class="msg-head"><span class="idx">[2]</span><span class="role">user</span><span class="spacer"></span><span class="pill pill-good">ok</span></div>
+        <div class="msg-body"><div class="block"><span class="block-type">tool_result</span><span class="block-content"><span class="json">{"id": "OPP-003", "account": "Łódź Logistics", "stage": "negotiation", "owner": "Priya Raman"}</span></span></div></div>
+      </div>
+      <div class="msg is-added">
+        <div class="msg-head"><span class="idx">[3]</span><span class="role">assistant</span><span class="spacer"></span><span class="pill pill-accent">added in turn 2</span></div>
+        <div class="msg-body">
+          <div class="block is-empty"><span class="block-type">thinking</span><span class="block-content">(display omitted, billed as output)</span></div>
+          <div class="block"><span class="block-type">tool_use</span><span class="block-content"><code>update_opportunity</code> <span class="json">{"opportunity_id": "OPP-003", "stage": "won"}</span></span></div>
+        </div>
+      </div>
+      <div class="msg is-added">
+        <div class="msg-head"><span class="idx">[4]</span><span class="role">user</span><span class="spacer"></span><span class="pill pill-critical">is_error</span><span class="pill pill-accent">added in turn 2</span></div>
+        <div class="msg-body"><div class="block is-error"><span class="block-type">tool_result</span><span class="block-content">Blocked by policy: writes are not allowed</span></div></div>
+      </div>
+    </div>
+    <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+      <div><p class="small"><b>Rules the diff makes visible:</b></p>
+      <ul class="small" style="margin:0">
+        <li>Append the whole <code>response.content</code>, thinking blocks included ([1], [3]).</li>
+        <li>Every tool result for a turn goes in one user message ([4]).</li>
+        <li>A blocked call still gets a result, with <code>is_error: true</code>. It is never dropped.</li>
+      </ul></div></div>
+  </div>
+</section>
+
+<!-- ============================================================= tokens -->
+<section class="container section" id="tokens">
+  <div class="section-head"><h2>Token and cost meter</h2>
+    <p>One whole (the context budget) split into its parts. The share is printed inside a block when it fits.
+    The legend follows block order, and the table view gives every number.</p></div>
+  <div class="grid-2" style="align-items:start">
+    <div class="card card-body meter" id="demo-tokens">
+      <div class="meter-head"><span class="meter-total">3,480 tokens</span><span class="meter-of">in request #3, of an 8,000-token lesson budget</span></div>
+      <div class="segbar" role="img" aria-label="Context: system and tools 2,048 (26%), retrieved 640 (8%), history 792 (10%), headroom 4,520 (57%)">
+        <div class="seg seg-1" style="--w:25.6">26%</div>
+        <div class="seg seg-2" style="--w:8">8%</div>
+        <div class="seg seg-3" style="--w:9.9">10%</div>
+        <div class="seg seg-track" style="--w:56.5">57% headroom</div>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch swatch-1"></span>System + tools</span>
+        <span class="legend-item"><span class="swatch swatch-2"></span>Retrieved</span>
+        <span class="legend-item"><span class="swatch swatch-3"></span>History</span>
+        <span class="legend-item"><span class="swatch swatch-track"></span>Headroom</span>
+      </div>
+      <div class="grid-tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="stat"><div class="stat-label">input_tokens</div><div class="stat-value">1,432</div><div class="stat-sub">uncached</div></div>
+        <div class="stat"><div class="stat-label">cache_read</div><div class="stat-value">2,048</div><div class="stat-sub">system + tools</div></div>
+        <div class="stat"><div class="stat-label">cache_creation</div><div class="stat-value">0</div><div class="stat-sub">nothing new</div></div>
+        <div class="stat"><div class="stat-label">output_tokens</div><div class="stat-value">412</div><div class="stat-sub">thinking included</div></div>
+        <div class="stat"><div class="stat-label">Cost</div><div class="stat-value">$0.0144</div><div class="stat-sub">example, from pricing.yaml</div></div>
+      </div>
+      <details class="disclosure">
+        <summary>Table view</summary>
+        <table class="table">
+          <thead><tr><th>Part</th><th class="num">Tokens</th><th class="num">Share</th></tr></thead>
+          <tbody>
+            <tr><td>System + tools</td><td class="num">2,048</td><td class="num">25.6%</td></tr>
+            <tr><td>Retrieved</td><td class="num">640</td><td class="num">8.0%</td></tr>
+            <tr><td>History</td><td class="num">792</td><td class="num">9.9%</td></tr>
+            <tr><td>Headroom</td><td class="num">4,520</td><td class="num">56.5%</td></tr>
+          </tbody>
+        </table>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="demo-label">Thin variant (8px) for a pane header or a list row</p>
+      <div class="segbar segbar-thin" role="img" aria-label="Context: 43% used">
+        <div class="seg seg-1" style="--w:25.6"></div><div class="seg seg-2" style="--w:8"></div>
+        <div class="seg seg-3" style="--w:9.9"></div><div class="seg seg-track" style="--w:56.5"></div>
+      </div>
+      <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+        <p class="small">Prices come from <code>pricing.yaml</code> and cassettes store usage only, so changing a price re-prices every replay.
+        This example: 1,432 × $4 + 2,048 × $0.20 + 412 × $20, per million tokens.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== why -->
+<section class="container section" id="why">
+  <div class="section-head"><h2>“Why?” chain</h2>
+    <p>Built deterministically from event links: <code>tool_use_id</code>, the gate log, request k → k+1 and the policy file diff.
+    Each step opens the code line, value or event behind it.</p></div>
+  <div class="grid-2" style="align-items:start">
+    <ol class="why-chain" id="demo-why">
+      <li class="why-step"><button class="why-card" type="button" data-line="">
+        <div class="why-title"><span class="why-kind">Your toggle</span></div>
+        <div class="why-detail">You set “Block update_opportunity”, so <code>policy.json</code> now has <code>"deny": ["update_opportunity"]</code>.</div>
+        <span class="why-src">work/policy.json · diff</span></button></li>
+      <li class="why-step"><button class="why-card" type="button" data-line="">
+        <div class="why-title"><span class="why-kind">The model's request</span></div>
+        <div class="why-detail">Response #2 asks for <code>update_opportunity(opportunity_id="OPP-003", stage="won")</code>.</div>
+        <span class="why-src">messages[3] · tool_use</span></button></li>
+      <li class="why-step is-active"><button class="why-card" type="button" data-line="31">
+        <div class="why-title"><span class="why-kind">Your gate</span></div>
+        <div class="why-detail"><code>if call.name in policy["deny"]:</code> was True, with <code>call.name = "update_opportunity"</code>.</div>
+        <span class="why-src">main.py:31</span></button></li>
+      <li class="why-step"><button class="why-card" type="button" data-line="33">
+        <div class="why-title"><span class="why-kind">The error result</span> <span class="pill pill-critical">is_error</span></div>
+        <div class="why-detail">Line 33 built the <code>tool_result</code> with <code>is_error: true</code>. <code>execute_tool(...)</code> on line 36 never ran.</div>
+        <span class="why-src">main.py:33 · main.py:36 (not run)</span></button></li>
+      <li class="why-step"><button class="why-card" type="button" data-line="38">
+        <div class="why-title"><span class="why-kind">One message back</span></div>
+        <div class="why-detail">Request #3 sends every <code>tool_result</code> in one user message.</div>
+        <span class="why-src">main.py:38 · messages[4]</span></button></li>
+      <li class="why-step"><button class="why-card" type="button" data-line="">
+        <div class="why-title"><span class="why-kind">The API log</span> <span class="pill pill-good">0 writes</span></div>
+        <div class="why-detail">The fixture saw <code>GET /opportunities/OPP-003</code> only. No PATCH was ever sent.</div>
+        <span class="why-src">fixture log · 1 request</span></button></li>
+      <li class="why-step is-outcome"><button class="why-card" type="button" data-line="">
+        <div class="why-title"><span class="why-kind">The outcome</span></div>
+        <div class="why-detail">The final answer says the update wasn't made and reports what it could find.</div>
+        <span class="why-src">response #3 · end_turn</span></button></li>
+    </ol>
+    <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+      <p class="small">The tutor's “Explain” narrates this chain and cites only these steps. It never invents a cause.</p></div>
+  </div>
+</section>
+
+<!-- =============================================================== quiz -->
+<section class="container section" id="quiz">
+  <div class="section-head"><h2>Quiz card</h2>
+    <p>An answered question shows the right answer and yours, each with an icon and a label, then the explanation.</p></div>
+  <div class="grid-2" style="align-items:start">
+    <form class="card card-pad quiz-card" onsubmit="return false">
+      <div class="quiz-meta"><span>Question 1 of 3</span><span>·</span><span>content-blocks, adaptive-thinking</span></div>
+      <p class="quiz-q">Why does the code keep only blocks whose type is <code>text</code>, instead of reading <code>response.content[0].text</code>?</p>
+      <fieldset class="quiz-options">
+        <legend class="sr-only">Options</legend>
+        <label class="quiz-option is-wrong"><input type="radio" name="q1" checked disabled><span>Because the SDK returns blocks in random order</span>
+          <span class="verdict pill pill-critical">Your answer</span></label>
+        <label class="quiz-option is-correct"><input type="radio" name="q1" disabled><span>Because on claude-opus-5-5 thinking is always on, so content can start with a thinking block that has no <code>.text</code></span>
+          <span class="verdict pill pill-good">Correct</span></label>
+        <label class="quiz-option"><input type="radio" name="q1" disabled><span>Because text blocks are always last</span><span class="verdict"></span></label>
+        <label class="quiz-option"><input type="radio" name="q1" disabled><span>Because <code>response.content</code> is a string, not a list</span><span class="verdict"></span></label>
+      </fieldset>
+      <div class="quiz-feedback is-wrong">
+        <div class="fb-title"><span class="icon icon-cross" style="color:var(--critical-ink)" aria-hidden="true"></span>Not quite. Saved to “What I got wrong”.</div>
+        Opus 5.5 can't disable thinking. With the default display (“omitted”) you get thinking blocks with an empty thinking field,
+        usually before the text, so <code>content[0]</code> may not be text.
+      </div>
+    </form>
+
+    <form class="card card-pad quiz-card" onsubmit="return false">
+      <div class="quiz-meta"><span>Question 2 of 3</span><span>·</span><span>cost-estimation</span></div>
+      <p class="quiz-q">A call used 30 input and 120 output tokens, with no caching. What did it cost? ($4 / $20 per million)</p>
+      <div class="field" style="margin-bottom:var(--sp-4)"><label for="q2">Your answer</label>
+        <span class="input-affix"><span class="secondary">$</span><input class="input num" id="q2" placeholder="0.00000" inputmode="decimal" style="width:12ch"><span class="secondary small">USD</span></span></div>
+      <div class="row"><button class="btn btn-primary" type="button">Check</button><button class="btn btn-ghost" type="button">Hint</button></div>
+    </form>
+  </div>
+</section>
+
+<script>
+(function () {
+  // Panels that reuse a section's markup (no duplication in this file).
+  document.querySelectorAll('[data-clone]').forEach(function (el) {
+    var src = document.querySelector(el.getAttribute('data-clone'));
+    if (!src) return;
+    var copy = src.cloneNode(true);
+    copy.removeAttribute('id');
+    copy.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+    if (copy.classList.contains('card')) { copy.classList.remove('card'); copy.classList.remove('card-body'); }
+    el.replaceChildren(copy);
+  });
+  // Tabs: click or arrow keys.
+  document.querySelectorAll('[role="tablist"]').forEach(function (list) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    function select(t) {
+      tabs.forEach(function (x) {
+        var on = x === t;
+        x.setAttribute('aria-selected', String(on));
+        x.tabIndex = on ? 0 : -1;
+        var p = x.getAttribute('aria-controls') && document.getElementById(x.getAttribute('aria-controls'));
+        if (p) p.hidden = !on;
+      });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { select(t); });
+      t.addEventListener('keydown', function (e) {
+        var n = e.key === 'ArrowRight' ? tabs[(i + 1) % tabs.length] : e.key === 'ArrowLeft' ? tabs[(i - 1 + tabs.length) % tabs.length] : null;
+        if (n) { e.preventDefault(); n.focus(); select(n); }
+      });
+    });
+  });
+  // "Why?" step -> highlight the code line that caused it.
+  document.addEventListener('click', function (e) {
+    var card = e.target.closest('.why-card');
+    if (!card) return;
+    var chain = card.closest('.why-chain');
+    chain.querySelectorAll('.why-step').forEach(function (s) { s.classList.toggle('is-active', s.contains(card)); });
+    var line = card.getAttribute('data-line');
+    document.querySelectorAll('.editor .line').forEach(function (l) {
+      l.classList.toggle('is-cause', !!line && l.getAttribute('data-line') === line);
+    });
+  });
+})();
+</script>

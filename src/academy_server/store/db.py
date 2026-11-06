@@ -21,11 +21,11 @@ from .migrations import MIGRATIONS
 EXPORT_FORMAT = "fde-academy-progress"
 # Insert order respects foreign keys (runs before check_results); delete in reverse.
 EXPORT_TABLES = [
-    "step_progress", "code_snapshots", "runs", "check_results",
+    "step_progress", "code_snapshots", "runs", "run_events", "check_results",
     "quiz_attempts", "spend", "tutor_turns", "position",
 ]
 _ORDER_BY = {
-    "step_progress": "step_id", "code_snapshots": "id", "runs": "started_at, run_id",
+    "step_progress": "step_id", "code_snapshots": "id", "runs": "started_at, run_id", "run_events": "run_id, seq",
     "check_results": "run_id, check_id", "quiz_attempts": "id", "spend": "id",
     "tutor_turns": "id", "position": "id",
 }
@@ -200,6 +200,24 @@ class Store:
             c.execute("UPDATE runs SET outcome = ?, cost_usd = ?, ended_at = ?, checks_passed = ?, checks_total = ? "
                       "WHERE run_id = ?",
                       (outcome, cost_usd, utcnow(), sum(1 for ch in checks if ch["passed"]), len(checks), run_id))
+
+    def save_run_events(self, run_id: str, events: Iterable[dict[str, Any]]) -> None:
+        with self.tx() as c:
+            c.executemany("INSERT OR REPLACE INTO run_events (run_id, seq, t_ms, type, data_json) VALUES (?, ?, ?, ?, ?)",
+                          [(run_id, e["seq"], e["t_ms"], e["type"], json.dumps(e["data"], ensure_ascii=False))
+                           for e in events])
+
+    def run_events(self, run_id: str) -> list[dict[str, Any]]:
+        rows = self._query("SELECT seq, t_ms, type, data_json FROM run_events WHERE run_id = ? ORDER BY seq", (run_id,))
+        return [{"seq": r["seq"], "t_ms": r["t_ms"], "type": r["type"], "data": json.loads(r["data_json"])} for r in rows]
+
+    def run_record(self, run_id: str) -> dict[str, Any] | None:
+        rows = self._query("SELECT * FROM runs WHERE run_id = ?", (run_id,))
+        return rows[0] if rows else None
+
+    def runs_for_step(self, step_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        return self._query("SELECT run_id, model, outcome, cost_usd, started_at, ended_at FROM runs "
+                           "WHERE step_id = ? ORDER BY started_at DESC, run_id DESC LIMIT ?", (step_id, limit))
 
     # ----------------------------------------------------------------- spend
     def record_spend(self, source: str, cost_usd: float, *, run_id: str | None = None,

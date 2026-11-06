@@ -24,7 +24,7 @@ web/dist/
 *.db
 *.db-wal
 *.db-shm
-runs/
+/runs/
 api_requests.jsonl
 
 # Claude Code personal overrides

@@ -33,9 +33,10 @@ def make_client(home):
 
     clients = []
 
-    def _make(content_dir: Path = REPO / "content", web_dist: Path | None = None, authed: bool = True):
+    def _make(content_dir: Path = REPO / "content", web_dist: Path | None = None, authed: bool = True, **extra):
+        extra.setdefault("playground_root", home / "playground")   # never the repo's playground/
         settings = AppSettings(token=TOKEN, port=PORT, content_dir=content_dir, db_path=home / "academy.db",
-                               web_dist=web_dist or (home / "no-web"), extra_hosts=["testserver"])
+                               web_dist=web_dist or (home / "no-web"), extra_hosts=["testserver"], **extra)
         client = TestClient(create_app(settings), base_url="http://testserver")
         if authed:
             client.headers["x-academy-token"] = TOKEN

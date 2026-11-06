@@ -1,0 +1,248 @@
+"""Server-rendered HTML pages, all styled by /static/academy.css.
+
+The home placeholder, the styled 401 page (served before any session exists) and
+the /design style guide, and the lab page where a step is run.
+
+Standard library only. Every dynamic value goes through html.escape.
+"""
+from __future__ import annotations
+
+import html
+import json
+from pathlib import Path
+from typing import Any
+
+from .. import __version__, paths
+
+HERE = Path(__file__).resolve().parent
+THEMES = ("light", "dark")
+
+# Runs in <head> before first paint: a stored choice wins over the OS setting,
+# but never over a server-stamped data-theme (e.g. ?theme=dark for screenshots).
+_THEME_BOOT = ("(function(){try{var d=document.documentElement,t=localStorage.getItem('academy-theme');"
+               "if((t==='light'||t==='dark')&&!d.hasAttribute('data-theme'))d.setAttribute('data-theme',t)}"
+               "catch(e){}})();")
+# Cycles system -> light -> dark and remembers the choice.
+_THEME_TOGGLE = """(function(){
+  var d=document.documentElement,b=document.getElementById('theme-toggle'),k='academy-theme';
+  if(!b)return;
+  function show(){var t=d.getAttribute('data-theme')||'system';b.textContent='Theme: '+t;}
+  show();
+  b.addEventListener('click',function(){
+    var o=['system','light','dark'],t=d.getAttribute('data-theme')||'system',n=o[(o.indexOf(t)+1)%3];
+    try{if(n==='system'){d.removeAttribute('data-theme');localStorage.removeItem(k);}
+        else{d.setAttribute('data-theme',n);localStorage.setItem(k,n);}}catch(e){d.setAttribute('data-theme',n);}
+    show();
+  });
+})();"""
+
+_STATUS_LABEL = {"not_started": "Not started", "in_progress": "In progress", "completed": "Completed"}
+
+# The lab's model picker: what the gateway key offers, and what each model accepts.
+LAB_MODELS = {
+    "claude-opus-5-5": "Opus 5.5: thinking is always on; output_config.effort takes low to max (default medium).",
+    "claude-sonnet-5-5": "Sonnet 5.5: thinking is on by default; output_config.effort takes low to max (default high). Half the price of Opus 5.5.",
+    "claude-haiku-4-5": "Haiku 4.5 is the previous generation. It rejects output_config.effort with a 400, and it thinks only with thinking={\"type\": \"enabled\", \"budget_tokens\": N}. Code written for Opus 5.5 needs changes to run on it.",
+}
+
+
+def esc(value: Any) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def theme_or_none(value: str | None) -> str | None:
+    return value if value in THEMES else None
+
+
+def status_pill(status: str) -> str:
+    key = status if status in _STATUS_LABEL else "not_started"
+    return f'<span class="pill pill-{key}">{_STATUS_LABEL[key]}</span>'
+
+
+def shell(title: str, body: str, *, theme: str | None = None, active: str | None = None,
+          nav: bool = True) -> str:
+    theme_attr = f' data-theme="{theme}"' if theme in THEMES else ""
+    links = ""
+    if nav:
+        items = [("home", "/", "Home"), ("design", "/design", "Design system")]
+        current = ' aria-current="page"'
+        links = '<nav class="nav" aria-label="Main">' + "".join(
+            f'<a href="{href}"{current if key == active else ""}>{label}</a>'
+            for key, href, label in items) + "</nav>"
+    return f"""<!doctype html>
+<html lang="en"{theme_attr}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{esc(title)}</title>
+<link rel="stylesheet" href="/static/academy.css">
+<script>{_THEME_BOOT}</script>
+</head>
+<body>
+<header class="topbar"><div class="container topbar-inner">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">F</span>FDE Academy</a>
+  {links}
+  <span class="spacer"></span>
+  <button class="btn btn-ghost btn-sm" id="theme-toggle" type="button" aria-label="Change color theme">Theme: system</button>
+</div></header>
+<main>
+{body}
+</main>
+<footer class="footer"><div class="container row">
+  <span>FDE Academy v{esc(__version__)}</span><span class="spacer"></span>
+  <span>Runs locally on 127.0.0.1.</span>
+</div></footer>
+<script>{_THEME_TOGGLE}</script>
+</body>
+</html>"""
+
+
+# --------------------------------------------------------------------- home
+def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
+    """Placeholder home: what the server, store and lesson loader know."""
+    step_status = store.step_status()
+    st = store.status()
+    pos = st["position"]
+    ordered = tree.ordered_step_ids()
+    resume_id = pos["step_id"] if pos and pos["step_id"] in tree.steps else (ordered[0] if ordered else None)
+    opened = sum(sum(c.values()) for c in st["modules"].values())
+
+    if resume_id:
+        step = tree.steps[resume_id]
+        continue_card = f"""
+      <div class="card card-pad stack">
+        <p class="eyebrow">{"Continue where you left off" if pos else "Start here"}</p>
+        <h2 style="margin:0">{esc(step.spec.title)}</h2>
+        <div class="row"><code>{esc(resume_id)}</code>{status_pill(step_status.get(resume_id, "not_started"))}</div>
+        <div class="row" style="margin-top:var(--sp-2)">
+          <a class="btn btn-primary" href="/lab/{esc(resume_id)}">Open the lab</a>
+          <a class="btn" href="/design">See the design system</a>
+        </div>
+        <p class="small muted" style="margin:0">The lab runs your code from the browser and shows the console and
+        every model call. Experiment cards, the quiz and the tutor come next.</p>
+      </div>"""
+    else:
+        continue_card = """
+      <div class="card card-pad"><p class="eyebrow">No lessons yet</p>
+      <p>No lesson steps were found under <code>content/</code>.</p></div>"""
+
+    tiles = "".join(f"""
+        <div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{value}</div>
+        <div class="stat-sub">{sub}</div></div>""" for label, value, sub in [
+        ("Steps opened", f"{opened:,}", f"of {len(tree.steps):,} written"),
+        ("Quiz attempts", f"{st['quiz']['attempts']:,}", f"{st['quiz']['correct']:,} correct"),
+        ("Still wrong", f"{st['quiz']['still_wrong']:,}", f"{st['quiz']['fixed_after_retry']:,} fixed after retry"),
+        ("Spend today", f"${st['spend']['today_usd']:.4f}", f"${st['spend']['total_usd']:.4f} total"),
+    ])
+
+    modules = []
+    for m in tree.outline(step_status):
+        chapters = []
+        for c in m["chapters"]:
+            rows = "".join(f"""
+              <tr><td><a href="/lab/{esc(s['id'])}">{esc(s['title'])}</a></td>
+                  <td><code>{esc(s['id'])}</code></td><td>{status_pill(s['status'])}</td></tr>"""
+                           for s in c["steps"])
+            chapters.append(f"""
+            <h3 style="margin-top:var(--sp-4)">{esc(c['title'])}</h3>
+            <table class="table"><thead><tr><th>Step</th><th>Id</th><th>Status</th></tr></thead>
+            <tbody>{rows}</tbody></table>""")
+        elective = ' <span class="pill pill-plain">Elective</span>' if m.get("elective") else ""
+        modules.append(f"""
+        <article class="card">
+          <div class="card-head"><span class="pill pill-plain pill-mono">{esc(m['id'])}</span>
+            <h3 class="card-title">{esc(m['title'])}</h3>{elective}</div>
+          <div class="card-body"><p class="secondary">{esc(m.get('summary') or '')}</p>{''.join(chapters)}</div>
+        </article>""")
+
+    if tree.errors:
+        items = "".join(f"<li><code>{esc(e)}</code></li>" for e in tree.errors)
+        errors = f"""<div class="callout callout-critical" style="margin-top:var(--sp-5)">
+          <span class="icon icon-alert" aria-hidden="true"></span>
+          <div><p><b>{len(tree.errors)} content error(s)</b>: these lessons didn't load.</p><ul>{items}</ul></div></div>"""
+    else:
+        errors = (f'<p class="small muted" style="margin-top:var(--sp-4)">Content: {len(tree.steps):,} step(s) in '
+                  f'{len(tree.modules):,} module(s), no load errors.</p>')
+
+    body = f"""
+<section class="container page-head">
+  <p class="eyebrow">Interactive course · GenAI and agent engineering</p>
+  <h1>Learn agent engineering by watching it run.</h1>
+  <p class="lede">Lesson code on the left, the live outcome on the right: the trace, the actual
+  <code>messages</code> array, tokens and cost, and a “Why?” chain from every result back to the line that caused it.</p>
+</section>
+<section class="container stack-lg" style="padding-bottom:var(--sp-7)">
+  <div class="grid-2">{continue_card}
+    <div class="grid-tiles" style="align-content:start">{tiles}</div>
+  </div>
+  <div>
+    <h2>Course</h2>
+    <div class="stack-lg">{''.join(modules) or '<p class="muted">No modules yet.</p>'}</div>
+    {errors}
+  </div>
+</section>"""
+    return shell("FDE Academy", body, theme=theme, active="home")
+
+
+# ------------------------------------------------------------- unauthorized
+def unauthorized_page(port: int, *, reason: str = "no_session") -> str:
+    """Shown to a browser tab without this launch's session cookie (or with a stale launch link).
+
+    Never includes the token. Uses only the open stylesheet, so it renders before sign-in.
+    """
+    if reason == "bad_token":
+        title = "That launch link is from an earlier start"
+        lead = ("Every start of the server makes a new private link. The one you opened belongs to a "
+                "previous launch, so it no longer works.")
+    else:
+        title = "Open FDE Academy from its launch link"
+        lead = ("This tab doesn't have this launch's session yet. FDE Academy only answers to the private "
+                "link printed when the server starts, so no other website can drive it.")
+    body = f"""
+<section class="container-narrow page-head">
+  <p class="eyebrow"><span class="pill pill-warning">Not signed in</span></p>
+  <h1>{esc(title)}</h1>
+  <p class="lede">{esc(lead)}</p>
+</section>
+<section class="container-narrow" style="padding-bottom:var(--sp-8)">
+  <div class="card card-pad stack">
+    <h3>Get back in</h3>
+    <ol>
+      <li>Find the terminal where you ran <code>python run.py</code>. It printed a line like
+        <code>http://127.0.0.1:{int(port)}/auth?t=…</code>. Open that link.</li>
+      <li>Or reopen it from any terminal in the repo:
+        <pre style="margin-top:var(--sp-2)">.venv/Scripts/python -X utf8 tools/labctl.py open</pre></li>
+      <li>Server not running? Start it with <code>python run.py</code>. Your progress is saved on disk,
+        so nothing was lost.</li>
+    </ol>
+    <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
+      <p class="small">Why the extra step: the server runs lesson code on your machine. The per-launch link,
+      the Host check and the Origin check stop other web pages from reaching it.</p></div>
+  </div>
+</section>"""
+    return shell("Sign in · FDE Academy", body, nav=False)
+
+
+# ------------------------------------------------------------------- design
+def lab_page(step: Any, code_path: Path, *, gateway: bool, theme: str | None = None) -> str:
+    """Stage 1 lab: Run, the live console and every model call (exact request and response)."""
+    note = "" if gateway else (
+        '<div class="callout callout-warning" style="margin-top:var(--sp-3)"><span class="icon icon-alert" aria-hidden="true">'
+        '</span><p class="small">No gateway credentials were found when the server started, so model calls will fail '
+        'with 503. Add <code>ANTHROPIC_BASE_URL</code> and <code>ANTHROPIC_API_KEY</code> to '
+        f'<code>{esc(paths.credentials_path())}</code> and restart <code>python run.py</code>.</p></div>')
+    body = (HERE / "lab.html").read_text(encoding="utf-8")
+    for key, value in {"{{step_id_json}}": json.dumps(step.full_id), "{{step_id}}": esc(step.full_id),
+                       "{{title}}": esc(step.spec.title), "{{code_path}}": esc(code_path),
+                       "{{gateway_note}}": note,
+                       "{{model_options}}": "".join(f"<option>{esc(m)}</option>" for m in LAB_MODELS),
+                       "{{model_notes_json}}": json.dumps(LAB_MODELS)}.items():
+        body = body.replace(key, value)
+    return shell(f"{step.spec.title} · FDE Academy", body, theme=theme)
+
+
+def design_page(*, theme: str | None = None) -> str:
+    """The style guide. Read on each request so edits show up on reload."""
+    body = (HERE / "design.html").read_text(encoding="utf-8")
+    return shell("Design system · FDE Academy", body, theme=theme, active="design")

@@ -109,4 +109,15 @@ MIGRATIONS: list[str] = [
         updated_at  TEXT
     );
     """,
+    # 2: run events (the ordered record of a run: console lines, model calls, exit)
+    """
+    CREATE TABLE run_events (
+        run_id    TEXT NOT NULL REFERENCES runs (run_id) ON DELETE CASCADE,
+        seq       INTEGER NOT NULL,
+        t_ms      INTEGER NOT NULL,                 -- milliseconds since the run started
+        type      TEXT NOT NULL,                    -- run.started | console.out | llm.request | ...
+        data_json TEXT NOT NULL,
+        PRIMARY KEY (run_id, seq)
+    );
+    """,
 ]

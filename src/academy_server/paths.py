@@ -48,3 +48,22 @@ def content_dir() -> Path:
 
 def default_export_path() -> Path:
     return repo_root() / "progress" / "learner-progress.json"
+
+
+def stylesheet_path() -> Path:
+    """The one design-system stylesheet, shared by the server pages and the React app."""
+    return repo_root() / "web" / "src" / "styles" / "academy.css"
+
+
+def credentials_path() -> Path:
+    """Gateway URL and key (ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY). Never inside the repo."""
+    return data_dir() / "anthropic.env"
+
+
+def playground_root() -> Path:
+    """Ashish's code, one folder per step: playground/<step-id>/ (tracked in git)."""
+    return repo_root() / "playground"
+
+
+def pricing_path() -> Path:
+    return repo_root() / "pricing.yaml"

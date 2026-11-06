@@ -11,6 +11,9 @@ remote code execution. Three gates, all required:
      trades it once at /auth for an HttpOnly, SameSite=Strict cookie. Scripts may send it
      as the X-Academy-Token header.
 
+Without a session, a browser page navigation gets a styled HTML 401 (how to get back in);
+everything else, including all of /api/, keeps the JSON 401.
+
 Pure ASGI (not BaseHTTPMiddleware) so streaming responses (SSE) pass through untouched.
 """
 from __future__ import annotations
@@ -21,13 +24,34 @@ import secrets
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs
 
+from .pages import unauthorized_page
+
 COOKIE = "academy_session"
 HEADER = b"x-academy-token"
-OPEN_PATHS = frozenset({"/healthz", "/auth"})
+STYLESHEET_PATH = "/static/academy.css"
+OPEN_PATHS = frozenset({"/healthz", "/auth", STYLESHEET_PATH})   # CSS isn't sensitive; the 401 page needs it
+SECURITY_HEADERS = ((b"x-content-type-options", b"nosniff"),
+                    (b"referrer-policy", b"no-referrer"),
+                    (b"x-frame-options", b"DENY"))
 
 
 def new_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def safe_next(raw: str | None) -> str:
+    """Where /auth may redirect: a same-origin path only, else "/".
+
+    Rejects anything a browser could turn into another origin: "//host", "/<BACKSLASH>host"
+    (browsers read a backslash as a slash), "https:...", "javascript:...", and tab/newline/space or
+    other control characters (browsers strip some of them, so "/<TAB>/host" becomes "//host").
+    Only printable ASCII, so the Location header is always plain bytes.
+    """
+    if not raw or len(raw) > 2048 or raw[0] != "/" or raw[1:2] == "/":
+        return "/"
+    if "\\" in raw or any(not 0x21 <= ord(ch) <= 0x7E for ch in raw):
+        return "/"
+    return raw
 
 
 @dataclass
@@ -72,6 +96,35 @@ async def _send_json(send, status: int, body: dict, extra_headers: list[tuple[by
     await send({"type": "http.response.body", "body": data})
 
 
+async def _send_html(send, status: int, page: str) -> None:
+    data = page.encode("utf-8")
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"text/html; charset=utf-8"),
+                            (b"content-length", str(len(data)).encode()), (b"cache-control", b"no-store")]})
+    await send({"type": "http.response.body", "body": data})
+
+
+def _is_page_navigation(scope, headers: dict[bytes, bytes]) -> bool:
+    """A browser loading a page (not fetch/XHR, not the API): gets the HTML 401 instead of JSON."""
+    if scope.get("method") != "GET" or scope.get("path", "").startswith(("/api/", "/relay/")):
+        return False
+    mode = headers.get(b"sec-fetch-mode")
+    if mode is not None:
+        return mode == b"navigate"
+    return b"text/html" in headers.get(b"accept", b"")
+
+
+def _with_security_headers(send):
+    """Add the hardening headers to every HTTP response (open paths and errors included)."""
+    async def wrapped(message):
+        if message["type"] == "http.response.start":
+            present = {k.lower() for k, _ in message.get("headers", [])}
+            message["headers"] = [*message.get("headers", []),
+                                  *((k, v) for k, v in SECURITY_HEADERS if k not in present)]
+        await send(message)
+    return wrapped
+
+
 class LocalOnlyMiddleware:
     def __init__(self, app, config: SecurityConfig):
         self.app = app
@@ -80,6 +133,8 @@ class LocalOnlyMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):
             return await self.app(scope, receive, send)
+        if scope["type"] == "http":
+            send = _with_security_headers(send)
         headers = _headers(scope)
         host = headers.get(b"host", b"").decode("latin-1")
         if host not in self.cfg.allowed_hosts:
@@ -94,7 +149,7 @@ class LocalOnlyMiddleware:
 
         path = scope.get("path", "")
         if path == "/auth" and scope["type"] == "http":
-            return await self._auth(scope, send)
+            return await self._auth(scope, headers, send)
         if path in OPEN_PATHS or path.startswith(self.cfg.open_prefixes):  # () matches nothing
             return await self.app(scope, receive, send)
 
@@ -102,30 +157,26 @@ class LocalOnlyMiddleware:
         if not self.cfg.token_ok(supplied):
             if scope["type"] == "websocket":
                 return await send({"type": "websocket.close", "code": 1008})
+            if _is_page_navigation(scope, headers):
+                return await _send_html(send, 401, unauthorized_page(self.cfg.port))
             return await _send_json(send, 401, {
                 "error": "unauthorized",
                 "detail": "open the launch URL printed by `python run.py` (or run `labctl open`)"})
 
-        async def send_with_headers(message):
-            if message["type"] == "http.response.start":
-                message.setdefault("headers", [])
-                message["headers"] = [*message["headers"],
-                                      (b"x-content-type-options", b"nosniff"),
-                                      (b"referrer-policy", b"no-referrer"),
-                                      (b"x-frame-options", b"DENY")]
-            await send(message)
+        return await self.app(scope, receive, send)
 
-        return await self.app(scope, receive, send_with_headers)
-
-    async def _auth(self, scope, send) -> None:
-        """GET /auth?t=<token>: set the session cookie, then redirect to / (drops the token from the URL bar)."""
-        qs = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+    async def _auth(self, scope, headers, send) -> None:
+        """GET /auth?t=<token>[&next=/path]: set the session cookie, then redirect to `next`
+        (default /). The redirect also drops the token from the URL bar."""
+        qs = parse_qs(scope.get("query_string", b"").decode("utf-8", "replace"))
         token = (qs.get("t") or [None])[0]
         if not self.cfg.token_ok(token):
+            if _is_page_navigation(scope, headers):
+                return await _send_html(send, 401, unauthorized_page(self.cfg.port, reason="bad_token"))
             return await _send_json(send, 401, {"error": "bad_token"})
+        target = safe_next((qs.get("next") or [None])[0])
         cookie = f"{COOKIE}={self.cfg.token}; Path=/; HttpOnly; SameSite=Strict"
         await send({"type": "http.response.start", "status": 303,
-                    "headers": [(b"location", b"/"), (b"set-cookie", cookie.encode()),
-                                (b"cache-control", b"no-store"), (b"referrer-policy", b"no-referrer"),
-                                (b"content-length", b"0")]})
+                    "headers": [(b"location", target.encode("ascii")), (b"set-cookie", cookie.encode()),
+                                (b"cache-control", b"no-store"), (b"content-length", b"0")]})
         await send({"type": "http.response.body", "body": b""})

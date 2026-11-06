@@ -1,7 +1,6 @@
-"""labkit runs *inside* each lesson subprocess (Milestone 1 steps 2 and 6b).
+"""labkit runs *inside* a lesson process. Empty until a lesson needs in-process hooks.
 
-It will provide: the IPC client back to the server, log/print/input() capture,
-call-site and locals snapshots via sys._current_frames(), the sys.monitoring
-line gutter, and optional checkpoint()/show(). Standard library only.
+The first planned use is s05: turning input() approvals into an Approve/Deny prompt
+in the UI. Standard library only.
 """
 __version__ = "0.1.0"

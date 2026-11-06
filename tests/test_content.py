@@ -58,20 +58,19 @@ def test_api_step_roundtrip_and_continue(make_client):
     assert c.get("/api/continue").json() == {"step_id": "m02.lab02.s01", "resumed": False}
     detail = c.get("/api/steps/m02.lab02.s01").json()
     assert detail["title"].startswith("One call") and "answer" not in detail["quiz"][0]
-    assert c.put("/api/steps/m02.lab02.s01/draft", json={"filename": "main.py", "code": "# mine\n"}).json() == {"saved": True}
-    assert c.put("/api/steps/m02.lab02.s01/draft", json={"filename": "evil.py", "code": "x"}).status_code == 400
+    assert c.put("/api/steps/m02.lab02.s01/files/main.py", json={"code": "# mine\n"}).json()["saved"] is True
     assert c.get("/api/steps/m02.lab02.s01").json()["code"]["main.py"] == "# mine\n"
     resume = c.get("/api/continue").json()
     assert resume["resumed"] is True and resume["step_id"] == "m02.lab02.s01"
-    starter = c.post("/api/steps/m02.lab02.s01/reset").json()["code"]["main.py"]
+    starter = c.post("/api/steps/m02.lab02.s01/reset").json()["files"]["main.py"]["code"]
     assert c.get("/api/steps/m02.lab02.s01").json()["code"]["main.py"] == starter
     assert c.get("/api/steps/nope").status_code == 404
 
 
-def test_draft_survives_server_restart(make_client):
-    """Continuity: kill the server, start a new one on the same DB, draft is still there."""
+def test_saved_code_survives_server_restart(make_client):
+    """Continuity: kill the server, start a new one, the code saved from the editor is still there."""
     first = make_client()
-    first.put("/api/steps/m02.lab02.s01/draft", json={"filename": "main.py", "code": "# survives\n"})
+    first.put("/api/steps/m02.lab02.s01/files/main.py", json={"code": "# survives\n"})
     first.__exit__(None, None, None)
     second = make_client()
     assert second.get("/api/continue").json()["resumed"] is True

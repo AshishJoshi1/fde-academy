@@ -1,4 +1,4 @@
-# USD per million tokens. The single source of prices: cassettes store usage, never dollars.
+# USD per million tokens. The single source of prices: runs store usage, never dollars.
 # Source: Claude API skill model table (cached 2026-10-06) + prompt-caching economics.
 # Cache writes: 1.25x input (5-minute TTL), 2x input (1-hour TTL).
 # Re-check https://platform.claude.com/docs/en/about-claude/pricing when updating.
@@ -22,6 +22,15 @@ models:
     context_window: 1000000
     max_output: 128000
     min_cacheable_tokens: 512
+  claude-haiku-4-5:           # previous generation: no effort parameter; thinking only via budget_tokens
+    input: 1.00
+    output: 5.00
+    cache_read: 0.10          # 0.1x input
+    cache_write_5m: 1.25
+    cache_write_1h: 2.00
+    context_window: 200000
+    max_output: 64000
+    min_cacheable_tokens: 4096
   claude-haiku-5-5:
     input: 0.10               # prompts up to 100K tokens
     output: 0.50
