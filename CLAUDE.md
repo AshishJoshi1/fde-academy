@@ -28,6 +28,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - `src/academy_server` is the FastAPI server: content loader, store, security and server-rendered pages, plus:
     - `runs/`: `proctree.py` (Job Object process tree) and `manager.py` (the run lifecycle and its ordered events);
     - `relay.py` (the thin relay to the gateway);
+    - `tutor.py` (the tutor's request layers; its default rules are `tutor_rules.md`, and Ashish's copy is `playground/tutor/rules.md`);
     - `pricing.py`, `credentials.py` and `playground.py`.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
   - `src/labkit` (empty) is for in-process hooks, added when a lesson needs them (s05 approvals).

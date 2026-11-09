@@ -685,6 +685,15 @@ details.disclosure[open] > summary { margin-bottom: var(--sp-3); }
 .guide-prose > :last-child, .guide-do > :last-child { margin-bottom: 0; }
 .guide-do p { margin: 4px 0 0; }
 .guide-foot { border-top: 1px solid var(--hairline); padding-top: var(--sp-4); margin-top: var(--sp-2); }
+/* The tutor: one thread per guide step, under the step. */
+.tutor { border-top: 1px solid var(--hairline); padding-top: var(--sp-3); }
+.tutor .exp-phase { margin: 0; }
+.tutor-turn { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); }
+.tutor-q { background: var(--surface-sunken); white-space: pre-wrap; align-self: flex-end; max-width: 85%; }
+.tutor-a { border: 1px solid var(--hairline); }
+.tutor-a .prose > :first-child { margin-top: 0; }
+.tutor-meta { margin-top: var(--sp-2); }
+.tutor-request summary { cursor: pointer; color: var(--text-3); }
 .facts-table td { vertical-align: middle; }
 .facts-table td.num { text-align: right; font-weight: 600; white-space: nowrap; }
 .editor-code { position: relative; min-width: 0; }

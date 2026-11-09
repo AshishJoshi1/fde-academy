@@ -6,57 +6,49 @@ This file is the single source of truth for where the build and the teaching sta
 - **How we work:** the learning lab is built lesson by lesson (`docs/PLAN.md`):
   - **outline first:** guide-step titles approved by Ashish before any build;
   - **one lesson (or build stage) per session;**
-  - `tools/browser_check.py <step-id>` passes before a lesson is handed over.
-- **Teaching:** Module 02, Lab 02, `m02.lab02.s01` "One call", as a guided lesson:
-  - **Steps:** 9 guided steps g1–g9. Steps 1–4 teach; steps 5–8 each teach, then hold experiments E2–E5; step 9 is the quiz.
-  - **Ashish has started step 1** with one live run (ok, $0.0017).
-    - Check g1.c1 (`max_tokens` is the cap) was right.
-    - Check g1.c2 was **wrong**: he picked "only the model's last answer", but every call must carry the whole conversation, because the API is stateless. It's recorded and comes back in review.
-  - The 3 quiz answers clicked through the first version were deleted at his request. No experiments have been attempted yet.
-- **Building:**
-  - **s01 stage 1 is done:** runner, thin relay, lab page.
-  - **s01 stage 2 is done:**
-    - **content and grading:** the `guide:` and `experiments:` schema, facts measured from run events (`schema.FACTS`), and grading;
-    - **store:** migration 3 (experiment attempts, predictions, a run id on each code snapshot);
-    - **lab page:** the guide on the left with code-line highlights, your run's values and checks; Run, editor, console and model calls on the right; run history and the diff since the previous run; the count-tokens tool; the quiz;
-    - **home page:** spaced review and running scores.
-  - **Checks:** 117 tests pass. `tools/browser_check.py m02.lab02.s01` passes on all 9 steps.
-- **Next first action:** s01 stage 3, the tutor ("Ask the tutor" on every guide step).
-  1. Ask Ashish how step 1 felt, and have him go on to step 2 (`python run.py`, then `/lab/m02.lab02.s01`). Fix the content first if anything misled.
-  2. Propose the tutor's outline (what it sees, how it answers, the hands-on part for Ashish, since the tutor is itself an LLM app) and get his OK.
-  3. Then build it:
-     - `POST /api/steps/{id}/tutor` calls `claude-sonnet-5-5` through the gateway;
-     - its context is the step's teaching, Ashish's code and the trimmed latest run, with the lesson part as a cached stable prefix;
-     - it answers with questions and hints, not answers;
-     - turns go in the `tutor_turns` table, and spend is recorded with source `tutor`.
-  - **Done when:** Ashish can ask on any step and get an answer grounded in his run; pytest covers the endpoint with a fake gateway; the browser check passes.
-- **Then:** Ashish completes s01, then lesson 1 of the Module 02 outline (s02 The manual loop), outline first.
+  - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
+  - every `/wrap` logs the session's `/cost` figure in the "Cost log" below.
+- **Teaching:** Module 02, Lab 02, `m02.lab02.s01` "One call", a guided lesson of 9 steps (g1–g9) with experiments E2–E5 and the quiz in g9.
+  - **Step 1 done** with one live run. Check g1.c1 right; **g1.c2 still wrong** after a spaced-review retry (he picked "only the new user message"; the API is stateless, so call 2 resends the whole conversation). It comes back in review.
+  - g1 now shows call 2's `messages` list as code, because the concept was missed twice with two different answers.
+  - He has asked the tutor once, on g6 (E3's hidden tokens). It withheld E3's prediction p3, since his predictions aren't committed, and gave hint 1 grounded in his run (`output=79`).
+  - Steps 2–9, the experiments and the quiz are not done yet. The tutor hands-on H1–H3 is not done yet.
+- **Building:** s01 is complete: runner and relay, guided steps, experiments, quiz, run history, spaced review, and the tutor.
+  - **Tutor:** `src/academy_server/tutor.py`, `POST /api/steps/{id}/tutor/{guide_id}`, the default rules in `tutor_rules.md`, Ashish's copy in `playground/tutor/rules.md`, and migration 4 (tutor threads). The design and measured costs are in `docs/PLAN.md`, "Tutor".
+  - **Checks:** 127 tests pass (10 new in `tests/test_tutor.py`). `tools/browser_check.py m02.lab02.s01` passes on all 9 steps, including the tutor on each.
+- **Next first action:** Ashish completes s01 in the UI. This is a teaching session; no new features.
+  1. Run `python run.py` and open `/lab/m02.lab02.s01`. Do steps 2–9: each step's checks, experiments E2–E5 through to their explanations, then the quiz.
+  2. Do the tutor hands-on (`docs/PLAN.md`, build stage 3):
+     - **H1:** predict the request layers and where the cache breakpoints sit, then check with "Show request".
+     - **H2:** predict the cache write and read for turns 1 and 2, then edit `rules.md` and explain the re-write.
+     - **H3:** try to get an open check's answer out of it, and tighten `rules.md` if it gives one.
+  3. Fix any content that misled him.
+  - **Done when:** all 9 steps show done in the guide nav, H1–H3 are discussed, and the 1-hour cache TTL is confirmed (`ephemeral_1h_input_tokens` > 0 in "Show request" on a first question after the cache has expired).
+- **Then:** the s02 "The manual loop" outline (guide-step titles for Ashish's OK), in a fresh session.
 
 ## Last session
-- **Date:** 2026-11-09
+- **Date:** 2026-11-09 (second session)
 - **Done:**
-  - **s01 stage 2, built twice.** The first version (prediction cards and a quiz first, the lesson text collapsed, Run locked behind predictions) taught nothing. It was rebuilt as guided steps that teach before they ask.
-  - **s01 content** was written from 9 live measurement calls (about $0.02):
-    - at effort `low` there is no thinking block, and `output_tokens` is the text's tokens plus about 2;
-    - effort `high` adds an empty thinking block of about 13 tokens;
-    - `max_tokens=20` cuts the answer mid-word (at `high`, the thinking takes most of the cap);
-    - `import anthropic` takes 2.3 s;
-    - Haiku 4.5 counts the prompt as 17 input tokens, Opus 5.5 as 22;
-    - the gateway's cost header equals `pricing.yaml`;
-    - the old "13-token puzzle" was a characters-divided-by-4 estimate.
-  - **New:** `src/academy_server/experiments.py`, `tools/browser_check.py`, `tests/test_experiments.py`, and `markdown-it-py` for lesson text.
-  - **Docs:**
-    - `docs/PLAN.md`: the guide format, module projects, the proposed 17-lesson Module 02 outline, and the s01 table;
-    - the README intro;
-    - `CLAUDE.md`: the outline-first and one-lesson-per-session rules, and the browser check.
-  - **Cost estimate for Module 02:** about $140–275 in all.
-    - Building: about 7–15 times this session's $16.
-    - API calls: $20–55.
-    - The outline-first, one-lesson-per-session and browser-check changes aim at the low end.
+  - **Spaced review:** g1.c2 was asked again and was wrong again (recorded with `labctl`). s01 g1 now shows call 2's `messages` as code.
+  - **Tutor (s01 build stage 3), built as the approved outline:**
+    - `claude-sonnet-5-5` at effort `low`, called by the server with the Anthropic SDK through the gateway.
+    - **Request layers:** the rules (`system[0]`), then the authored lesson (`system[1]`, 1-hour cache), then one thread per guide step. Each question carries a `<lab_context>` block (open checks, current code, trimmed latest run), sent only when it changed, with a 5-minute breakpoint on the newest question.
+    - The UI shows the cost, time and cache tokens per answer, plus "Show request" with the exact body.
+    - The browser check fakes the tutor with an `httpx2` transport, because SDK 2.6.0 runs on `httpx2`.
+  - **Measured live** (throwaway home, $0.033):
+    - the lesson prefix is 10.4K tokens;
+    - question 1 cost $0.028 with a 5-minute cache write and took 4.2 s;
+    - question 2 cost $0.005 (10.4K cache read) and took 2.6 s;
+    - effort `low` returned no thinking blocks;
+    - it refused to reveal open check answers.
+  - **Ashish's first question** (on g6): $0.0084, 5.1 s. It read 9.8K tokens from the cache and wrote 1.5K.
+  - **Cost tooling:** `/wrap` now asks for `/cost` and logs it. Module 02 estimate given: about $200–370 for Claude Code plus $30–100 for the gateway, projects included.
+  - **Docs:** `docs/PLAN.md` (tutor design, costs, H1–H3); `CLAUDE.md` layout (`tutor.py`); the home page no longer says "the tutor comes next".
 - **Open questions:**
-  - Ashish's verdict on the guided s01, before the tutor is built.
-  - The Module 02 outline in `docs/PLAN.md` is proposed. Each lesson's steps get approved when that lesson starts.
-  - The programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk.
+  - **1-hour TTL:** does the gateway pass `ttl: "1h"` through? Ashish's first question read the prefix from the measurement's 5-minute cache, so it is still unverified.
+  - **Module 02 projects:** set aside. The choice between the Claude Agent SDK and LangGraph for them is undecided and gets discussed after the 17 lessons.
+  - **Module 02 outline:** still proposed in `docs/PLAN.md`. Each lesson's steps get approved when that lesson starts.
+  - **B1–B5:** the programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk.
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
@@ -66,7 +58,7 @@ This file is the single source of truth for where the build and the teaching sta
 - s01 One call
   - [x] 1. Runner and thin relay, plus the lab page
   - [x] 2. Guided steps, experiments, quiz, run history, spaced review, browser check
-  - [ ] 3. Tutor
+  - [x] 3. Tutor (Sonnet 5.5, one thread per guide step, cached lesson prefix, "Show request")
   - [x] s01 content: guided steps g1–g9 with experiments E2–E5 and quiz q1–q3
   - [ ] Ashish completes s01 in the UI
 - [ ] Lessons 1–17 of the Module 02 outline (`docs/PLAN.md`, proposed). Lab 02 first:
@@ -81,11 +73,25 @@ This file is the single source of truth for where the build and the teaching sta
 ## Curriculum progress
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided; tutor pending) | s01 step 1 of 9 | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor) | s01 step 1 of 9; tutor tried once | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
 | 05 Reference build | – | – | – | 04 proposal builder, deploy |
+
+## Cost log
+Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl status` (learner spend), plus any measurement calls made outside the learner's data.
+
+| Date | Work | Claude Code | Gateway |
+|---|---|---|---|
+| 2026-11-09 (1st) | s01 stage 2, built twice; s01 content from measured runs | $16 | about $0.02 (measurements) |
+| 2026-11-09 (2nd) | `/today` review, s01 g1 content fix, tutor (stage 3) built and measured | $4.87 | $0.010 learner + $0.033 tutor measurement |
+
+- **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87. Re-estimate Module 02 after s02 and s03.
+- **Where the 2nd session's cost went:**
+  - loading the `/claude-api` skill was about 32% of usage;
+  - one cache miss after an idle of over an hour re-cached 26.9K tokens;
+  - 97% of input came from the cache.
 
 ## Decisions log
 - 2026-11-06:
@@ -118,3 +124,10 @@ This file is the single source of truth for where the build and the teaching sta
   - **How we work:** outline first (step titles approved before any build), one lesson per session, and `tools/browser_check.py` (fake gateway, throwaway data) passing before a lesson is handed over.
   - **Module 02 scope:** 17 lessons after s01, proposed in `docs/PLAN.md`. Each module ends with guided projects in the same format, with code that builds up across steps in the project's own repo.
     - The Module 02 projects, including Project 02's SDK, are discussed only after all 17 lessons.
+- 2026-11-09 (later):
+  - **Tutor:** `claude-sonnet-5-5` at effort `low`, with the Anthropic SDK (not raw HTTP) through the gateway.
+    - One thread per guide step, with the lesson as a cached prefix (1-hour TTL) and the lab context resent only on change.
+    - The rules are a file Ashish owns (`playground/tutor/rules.md`).
+    - No server-side refusal fallback: calls go through LiteLLM, and a refusal returns a message and stores nothing.
+  - **Projects:** the Module 02 projects are set aside. The choice between the Claude Agent SDK and LangGraph for them is made later.
+  - **Cost:** every `/wrap` logs `/cost` in the Cost log. Module 02 is re-estimated from those numbers after s02 and s03.

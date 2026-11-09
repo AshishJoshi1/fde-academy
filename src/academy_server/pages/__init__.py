@@ -127,7 +127,7 @@ def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
           <a class="btn" href="/design">See the design system</a>
         </div>
         <p class="small muted" style="margin:0">The lab runs your code from the browser, shows the console and
-        every model call, and grades your predictions against the run. The tutor comes next.</p>
+        every model call, grades your predictions against the run, and has a tutor on every step.</p>
       </div>"""
     else:
         continue_card = """

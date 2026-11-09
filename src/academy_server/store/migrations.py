@@ -157,4 +157,15 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (attempt_id, item_id)
     );
     """,
+    # 4: tutor threads, one per guide step. A thread is replayed to the model on every turn, so
+    # each turn keeps exactly what was sent (user) or returned (assistant), not just its text.
+    """
+    ALTER TABLE tutor_turns ADD COLUMN guide_id TEXT;       -- e.g. g2; with step_id, names the thread
+    ALTER TABLE tutor_turns ADD COLUMN sent_json TEXT;      -- user: content sent; assistant: content blocks returned
+    ALTER TABLE tutor_turns ADD COLUMN request_json TEXT;   -- assistant: the exact request body of its call
+    ALTER TABLE tutor_turns ADD COLUMN usage_json TEXT;     -- assistant: the call's usage
+    ALTER TABLE tutor_turns ADD COLUMN model TEXT;
+    ALTER TABLE tutor_turns ADD COLUMN ms INTEGER;          -- assistant: wall time of the call
+    CREATE INDEX tutor_by_thread ON tutor_turns (step_id, guide_id, id);
+    """,
 ]

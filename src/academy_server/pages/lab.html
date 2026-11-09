@@ -546,6 +546,7 @@
     if (g.check.length) box.append(checks(g));
     if (g.experiment && cardOf(g.experiment)) box.append(renderCard(cardOf(g.experiment)));
     if (g.quiz) box.append(quizBlock());
+    box.append(tutorBlock(g));
     var foot = el("div", "row guide-foot");
     if (at > 0) {
       var back = el("button", "btn", "Back");
@@ -559,6 +560,86 @@
       foot.append(next);
     }
     box.append(foot);
+  }
+  // ----------------------------------------------------------- the tutor
+  // One thread per guide step. Threads, drafts and in-flight questions live here, so a re-render
+  // (after a run or a check) doesn't lose them.
+  var tutor = {}, tutorDraft = {}, tutorBusy = {}, tutorInfo = null;
+  function tutorBlock(g) {
+    var sec = el("section", "tutor stack"), head = el("div", "row"), meta = el("span", "small muted");
+    head.append(el("p", "exp-phase", "Ask the tutor"), el("span", "spacer"), meta);
+    var list = el("div", "stack tutor-thread"), form = el("form", "stack"), ta = el("textarea", "textarea");
+    ta.rows = 2; ta.maxLength = 4000; ta.setAttribute("aria-label", "Your question for the tutor");
+    ta.placeholder = "Ask why, or ask for a hint. It answers with questions and hints, from your code and your latest run.";
+    ta.value = tutorDraft[g.id] || "";
+    ta.addEventListener("input", function () { tutorDraft[g.id] = ta.value; });
+    ta.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(); }
+    });
+    var row = el("div", "row"), btn = el("button", "btn btn-primary btn-sm", "Ask"), msg = el("span", "small muted");
+    btn.type = "submit";
+    row.append(btn, msg);
+    form.append(ta, row);
+    form.addEventListener("submit", function (e) { e.preventDefault(); ask(); });
+    sec.append(head, list, form);
+
+    function busy(on) {
+      btn.disabled = on || (tutorInfo && !tutorInfo.gateway);
+      msg.textContent = on ? "The tutor is answering…" : "";
+    }
+    function draw() {
+      list.textContent = "";
+      (tutor[g.id] || []).forEach(function (t) { list.append(tutorTurn(t)); });
+      if (tutorBusy[g.id]) list.append(el("div", "tutor-turn tutor-q", tutorBusy[g.id]));
+      busy(!!tutorBusy[g.id]);
+      if (tutorInfo) {
+        meta.textContent = tutorInfo.model + " · effort " + tutorInfo.effort;
+        meta.title = "Its rules: " + tutorInfo.rules;
+        if (!tutorInfo.gateway) msg.textContent = "No gateway credentials, so the tutor can't answer.";
+      }
+    }
+    function ask() {
+      var text = ta.value.trim();
+      if (!text || btn.disabled) return;
+      tutorBusy[g.id] = text;
+      draw();
+      api(base + "/tutor/" + g.id, {text: text}).then(function (j) {
+        tutor[g.id] = (tutor[g.id] || []).concat([{role: "user", text: text}, j.turn]);
+        tutorDraft[g.id] = "";
+        delete tutorBusy[g.id];
+        if (sec.isConnected) { ta.value = ""; draw(); ta.focus(); } else if (guide[at].id === g.id) render(true);
+      }).catch(function (e) {
+        delete tutorBusy[g.id];
+        draw();
+        msg.textContent = e.message;
+      });
+    }
+    if (tutor[g.id]) draw();
+    else api(base + "/tutor/" + g.id).then(function (j) { tutorInfo = j; tutor[g.id] = j.turns; draw(); })
+      .catch(function (e) { msg.textContent = "Could not load the tutor: " + e.message; });
+    return sec;
+  }
+  function tutorTurn(t) {
+    if (t.role === "user") return el("div", "tutor-turn tutor-q", t.text);
+    var d = el("div", "tutor-turn tutor-a"), u = t.usage || {};
+    d.append(html("prose guide-prose", t.html));
+    d.append(el("div", "small muted tutor-meta",
+      "$" + (t.cost_usd || 0).toFixed(4) + " · " + ((t.ms || 0) / 1000).toFixed(1) + " s · input " + (u.input_tokens || 0) +
+      " · cache write " + (u.cache_creation_input_tokens || 0) + " · cache read " + (u.cache_read_input_tokens || 0) +
+      " · output " + (u.output_tokens || 0)));
+    var det = el("details", "tutor-request");
+    det.append(el("summary", "small", "Show request"));
+    det.addEventListener("toggle", function () {
+      if (!det.open || det.dataset.loaded) return;
+      det.dataset.loaded = "1";
+      api("/api/tutor/turns/" + t.id).then(function (j) {
+        det.append(el("p", "small secondary", "The exact request body this answer came from:"),
+                   el("pre", "json-view", JSON.stringify(j.request, null, 2)),
+                   el("p", "small secondary", "Its usage:"), el("pre", "json-view", JSON.stringify(j.usage, null, 2)));
+      }).catch(function (e) { det.append(el("p", "small", e.message)); });
+    });
+    d.append(det);
+    return d;
   }
   function span(lines) {   // [5,6,7,9] -> "5–7, 9"
     var out = [], start = lines[0], prev = lines[0];

@@ -6,11 +6,13 @@ import hashlib
 import json
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import anthropic
 import httpx
 from anthropic._constants import ANTHROPIC_API_VERSION   # the version the lesson SDK sends
 from fastapi import FastAPI, HTTPException, Request
@@ -18,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, pages, paths, playground
+from . import __version__, pages, paths, playground, tutor
 from .content.loader import ContentTree, LoadedStep, load_content
 from .content.schema import FACTS, Experiment
 from .experiments import answer_text, check_answer, code_diff, error_message, grade, grade_quiz, run_facts
@@ -45,6 +47,7 @@ class AppSettings:
     stylesheet: Path = field(default_factory=paths.stylesheet_path)
     upstream: Upstream | None = None        # the gateway; None means lesson calls get a 503 from the relay
     upstream_transport: Any = None          # tests: an httpx.MockTransport standing in for the gateway
+    tutor_transport: Any = None             # tests: the same for the tutor, an httpx2.MockTransport (the SDK runs on httpx2)
     playground_root: Path = field(default_factory=paths.playground_root)
     pricing_path: Path = field(default_factory=paths.pricing_path)
 
@@ -64,6 +67,10 @@ class ExplainIn(BaseModel):
 
 class QuizIn(BaseModel):
     answer: Any
+
+
+class TutorIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class CountIn(BaseModel):
@@ -103,12 +110,25 @@ def create_app(settings: AppSettings) -> FastAPI:
                                                    timeout=httpx.Timeout(600.0, connect=10.0))
         return clients["gateway"]
 
+    sdk: dict[str, anthropic.AsyncAnthropic] = {}
+
+    def tutor_client() -> anthropic.AsyncAnthropic:
+        """The tutor's SDK client: the real key, straight to the gateway (not through the relay)."""
+        if "tutor" not in sdk:
+            assert settings.upstream is not None
+            http = anthropic.DefaultAsyncHttpxClient(transport=settings.tutor_transport) if settings.tutor_transport else None
+            sdk["tutor"] = anthropic.AsyncAnthropic(api_key=settings.upstream.api_key, base_url=settings.upstream.base_url,
+                                                    http_client=http, timeout=120.0, max_retries=2)
+        return sdk["tutor"]
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         yield
         manager.shutdown()
         if "gateway" in clients:
             await clients["gateway"].aclose()
+        if "tutor" in sdk:
+            await sdk["tutor"].close()
         store.close()
 
     app = FastAPI(title="FDE Academy", version=__version__, docs_url=None, redoc_url=None,
@@ -119,8 +139,9 @@ def create_app(settings: AppSettings) -> FastAPI:
         open_prefixes=("/relay/",)))   # the relay checks its own per-run token
     app.state.store = store
     app.state.manager = manager
+    pricing = Pricing.load(settings.pricing_path)
     app.include_router(build_router(
-        manager, settings.upstream, upstream_client, Pricing.load(settings.pricing_path), store,
+        manager, settings.upstream, upstream_client, pricing, store,
         credentials_hint=f"put ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY in {paths.credentials_path()} "
                          "and restart the server"))
     app.state.content = load_content(settings.content_dir)
@@ -541,6 +562,89 @@ def create_app(settings: AppSettings) -> FastAPI:
                                   answer=body.answer, correct=correct, step_id=step.full_id, concepts=q.concepts,
                                   question=q.prompt, correct_answer=right, graded_by="auto", source="app")
         return {"correct": correct, "correct_answer": right, "explanation": q.explanation}
+
+    # ----------------------------------------------------------------- tutor
+    def guide_of(step: LoadedStep, guide_id: str) -> Any:
+        g = step.spec.guide_step(guide_id)
+        if g is None:
+            raise HTTPException(404, f"step {step.full_id} has no guide step {guide_id!r}")
+        return g
+
+    def tutor_view(t: dict[str, Any]) -> dict[str, Any]:
+        out = {"id": t["id"], "role": t["role"], "text": t["content"], "at": t["created_at"]}
+        if t["role"] == "assistant":
+            u = t.get("usage") or {}
+            out.update(html=pages.markdown(t["content"]), cost_usd=t["cost_usd"], ms=t["ms"], model=t["model"],
+                       usage={k: u.get(k) for k in ("input_tokens", "output_tokens",
+                                                    "cache_creation_input_tokens", "cache_read_input_tokens")})
+        return out
+
+    @app.get("/api/steps/{step_id}/tutor/{guide_id}")
+    def tutor_thread(step_id: str, guide_id: str) -> dict[str, Any]:
+        step = get_step(step_id)
+        guide_of(step, guide_id)
+        return {"turns": [tutor_view(t) for t in store.tutor_thread(step.full_id, guide_id)],
+                "model": tutor.MODEL, "effort": tutor.EFFORT, "gateway": settings.upstream is not None,
+                "rules": str(tutor.rules_path(settings.playground_root))}
+
+    @app.post("/api/steps/{step_id}/tutor/{guide_id}")
+    async def ask_tutor(step_id: str, guide_id: str, body: TutorIn) -> dict[str, Any]:
+        """One question to the tutor: a Sonnet 5.5 call grounded in this step, your code and your
+        latest run. The question and answer are stored together; a failed call stores neither."""
+        step = get_step(step_id)
+        g = guide_of(step, guide_id)
+        if settings.upstream is None:
+            raise HTTPException(503, f"no gateway credentials: put them in {paths.credentials_path()} and restart")
+        question = body.text.strip()
+        if not question:
+            raise HTTPException(400, "ask a question first")
+        thread = store.tutor_thread(step.full_id, g.id)
+        _dest, files = step_files(step)
+        run_id, events = latest_finished_run(step)
+        rec = store.run_record(run_id) if run_id else None
+        changed = (store.run_code(run_id) != files) if run_id else None
+        attempts = store.attempts(step.full_id, g.experiment) if g.experiment else None
+        context = tutor.context_text(
+            step, g, files, changed, tutor.run_text(run_id, events, rec.get("cost_usd") if rec else None),
+            tutor.open_items(g, step.full_id, store.quiz_latest(step.full_id), [q.id for q in step.spec.quiz], attempts))
+        sent = tutor.user_content(None if context == tutor.last_context(thread) else context, question)
+        request = tutor.build_request(tutor.load_rules(settings.playground_root), tutor.lesson_text(step), thread, sent)
+
+        started = time.monotonic()
+        try:
+            raw = await tutor_client().messages.with_raw_response.create(**request)
+            msg = await raw.parse()
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(502, f"the tutor's call failed with {exc.status_code}: {error_message(exc.body)}")
+        except anthropic.APIConnectionError as exc:
+            raise HTTPException(502, f"the tutor couldn't reach the gateway: {exc}")
+        ms = int((time.monotonic() - started) * 1000)
+        usage = msg.usage.to_dict() if msg.usage else None
+        cost = pricing.cost_usd(tutor.MODEL, usage) or 0.0
+        if cost:
+            store.record_spend("tutor", cost, model=tutor.MODEL, usage=usage)
+        # Replayed exactly on later turns; drop nulls the API filled in, which aren't request fields.
+        blocks = [{k: v for k, v in b.to_dict().items() if v is not None} for b in msg.content]
+        text = tutor.answer_of(blocks)
+        if msg.stop_reason == "refusal":
+            raise HTTPException(422, "The tutor declined to answer that (stop_reason: refusal). Try rephrasing.")
+        if not text:
+            raise HTTPException(502, f"the tutor returned no text (stop_reason: {msg.stop_reason})")
+        if msg.stop_reason == "max_tokens":
+            text += "\n\n*(Cut off: the answer reached max_tokens.)*"
+        turn_id = store.add_tutor_exchange(step.full_id, g.id, question=question, sent=sent, answer=text,
+                                           blocks=blocks, request=request, usage=usage, model=tutor.MODEL,
+                                           ms=ms, cost_usd=cost)
+        return {"turn": tutor_view(store.tutor_turn(turn_id)), "call_id": raw.headers.get("x-litellm-call-id")}
+
+    @app.get("/api/tutor/turns/{turn_id}")
+    def tutor_request(turn_id: int) -> dict[str, Any]:
+        """The exact request body behind one tutor answer, and its usage."""
+        t = store.tutor_turn(turn_id)
+        if t is None or t["role"] != "assistant":
+            raise HTTPException(404, f"no tutor answer {turn_id}")
+        return {"request": t["request"], "usage": t["usage"], "ms": t["ms"], "model": t["model"],
+                "cost_usd": t["cost_usd"]}
 
     @app.post("/api/tools/count_tokens")
     async def tool_count_tokens(body: CountIn) -> dict[str, Any]:

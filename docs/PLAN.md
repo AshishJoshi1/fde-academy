@@ -77,11 +77,15 @@ After a module's lessons, its project is built as one more guided lesson, in the
   - Records each call (request body, response body or stream, status, headers, timing, usage) as a run event, in order.
   - No cassettes. No budgets, because the gateway enforces them.
 - **Store:** existing tables, plus run events, predictions and experiment progress (new migrations). Cost comes from usage × `pricing.yaml`.
-- **Tutor:**
-  - Sonnet 5.5 through the gateway, called by the server.
-  - Context: the step content, tutor notes, your code, your predictions and the trimmed run.
-  - The lesson part of the context is a stable prefix, so prompt caching can reuse it.
-  - Cost: about $0.01 per turn.
+- **Tutor** (`src/academy_server/tutor.py`, `POST /api/steps/{id}/tutor/{guide_id}`):
+  - `claude-sonnet-5-5` at effort `low`, called by the server through the gateway with the SDK. Lesson code never sees the key.
+  - **Request layers, most stable first:**
+    - `system[0]`: the rules, from `playground/tutor/rules.md` (Ashish's to edit; the default is `src/academy_server/tutor_rules.md`);
+    - `system[1]`: the lesson as authored (`step.md`, `step.yaml` with answers, the numbered starter code), cached for 1 hour;
+    - `messages`: one thread per guide step. Each question carries a `<lab_context>` block (open checks, current code, latest run, trimmed), sent only when it changed. A 5-minute cache breakpoint sits on the newest question.
+  - It answers with a question first, then hints in three levels, and never reveals an open check or quiz answer.
+  - History is replayed exactly as sent and returned. A failed or refused call stores nothing. Spend is recorded with source `tutor`.
+  - **Measured on s01** (live, 2026-11-09): the lesson prefix is about 10.4K tokens. The first question costs about $0.028 with a 5-minute cache (about $0.042 with the 1-hour cache) and takes 4 s; a follow-up from the cache costs about $0.005 and takes 2.6 s.
 - **UI:** server-rendered pages with small vanilla JavaScript, styled by `web/src/styles/academy.css` (the `/design` page is its reference). A React and Monaco workbench may replace them later. Views:
   - lesson text and the code diff
   - guided lesson steps, experiments and quiz
@@ -177,6 +181,7 @@ experiments:
 1. **Runner and thin relay:** run s01 from the browser and see the console and the raw request and response.
 2. **Guided steps, experiments, quiz, run history and spaced review** on the lab page: s01 is fully playable and repeatable.
 3. **Tutor:** "Ask the tutor" on every step, answering with questions and hints based on your actual run.
+   - **Hands-on, since the tutor is an LLM app:** H1 read its request (what's in `system` and what's in `messages`, where the cache breakpoints sit); H2 predict, then check, its cache writes and reads on turn 1 and turn 2; H3 try to get a check answer out of it, and tighten `playground/tutor/rules.md` if it gives one.
 
 **Later, only if needed:** the React and Monaco workbench (editing in the page with richer code tools).
 

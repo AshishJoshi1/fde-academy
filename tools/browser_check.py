@@ -68,6 +68,7 @@ def gateway(request):
 def start_lab(home: Path) -> tuple[str, str]:
     """The lab on a free port with the fake gateway. Returns (base URL, session token)."""
     import httpx
+    import httpx2
     import uvicorn
     from academy_server import paths
     from academy_server.app import AppSettings, create_app
@@ -79,7 +80,8 @@ def start_lab(home: Path) -> tuple[str, str]:
     token = secrets.token_urlsafe(16)
     settings = AppSettings(token=token, port=port, content_dir=paths.content_dir(), db_path=home / "academy.db",
                            web_dist=home / "no-web", upstream=Upstream("https://fake.gateway", "sk-fake"),
-                           upstream_transport=httpx.MockTransport(gateway), playground_root=home / "playground")
+                           upstream_transport=httpx.MockTransport(gateway),
+                           tutor_transport=httpx2.MockTransport(tutor_gateway), playground_root=home / "playground")
     server = uvicorn.Server(uvicorn.Config(create_app(settings), host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
     deadline = time.time() + 20
@@ -227,6 +229,19 @@ FILL_FORM = """(function (form) {
 })({form})"""
 
 
+def tutor_gateway(request):
+    """The tutor's fake gateway (the SDK runs on httpx2): a question back, as the tutor would."""
+    import httpx2
+    body = json.loads(request.content or b"{}")
+    n = len(body["messages"])
+    return httpx2.Response(200, json={
+        "id": f"msg_tutor_{n}", "type": "message", "role": "assistant", "model": body.get("model"),
+        "content": [{"type": "text", "text": "What does the `blocks:` line of your run print?"}],
+        "stop_reason": "end_turn", "stop_sequence": None,
+        "usage": {"input_tokens": 120, "output_tokens": 15, "cache_creation_input_tokens": 6000 if n == 1 else 150,
+                  "cache_read_input_tokens": 0 if n == 1 else 6000}})
+
+
 def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str]:
     fails: list[str] = []
 
@@ -281,6 +296,14 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
                 b.js(FILL_FORM.replace("{form}", form) + f";{form}.querySelector('button[type=submit]').click()")
                 b.wait(f"!!{form}.querySelector('.quiz-feedback')", f"quiz question {k + 1}")
             check(f"{n} quiz question(s) answered", n > 0)
+        tutor = "document.querySelector('#guide-step .tutor')"
+        b.wait(f"!!{tutor} && !{tutor}.querySelector('button[type=submit]').disabled", "the tutor")
+        b.js(f"{tutor}.querySelector('textarea').value = 'Why?';{tutor}.querySelector('button[type=submit]').click()")
+        b.wait(f"{tutor}.querySelectorAll('.tutor-a').length > 0", "the tutor's answer")
+        b.js(f"{tutor}.querySelector('.tutor-a details').open = true")
+        b.wait(f"!!{tutor}.querySelector('.tutor-a details pre')", "the tutor's request")
+        check("tutor answered, with its exact request", b.js(
+            f"{tutor}.querySelector('.tutor-a details pre').textContent.includes('claude-sonnet-5-5')"))
         b.js("window.scrollTo(0, 0)")
         shot = b.call("Page.captureScreenshot", format="png")["data"]
         (out / f"{step_id}-{i + 1:02d}-{g['id']}.png").write_bytes(base64.b64decode(shot))

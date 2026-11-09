@@ -245,6 +245,39 @@ class Store:
                 (utcnow(), source, run_id, model, u.get("input_tokens", 0), u.get("output_tokens", 0),
                  u.get("cache_creation_input_tokens", 0), u.get("cache_read_input_tokens", 0), cost_usd))
 
+    # ----------------------------------------------------------------- tutor
+    def tutor_thread(self, step_id: str, guide_id: str) -> list[dict[str, Any]]:
+        """One guide step's tutor turns, oldest first, with their JSON columns parsed."""
+        rows = self._query("SELECT * FROM tutor_turns WHERE step_id = ? AND guide_id = ? ORDER BY id",
+                           (step_id, guide_id))
+        for r in rows:
+            for col in ("sent_json", "request_json", "usage_json"):
+                raw = r.pop(col)
+                r[col[:-5]] = json.loads(raw) if raw else None
+        return rows
+
+    def tutor_turn(self, turn_id: int) -> dict[str, Any] | None:
+        rows = self._query("SELECT step_id, guide_id FROM tutor_turns WHERE id = ?", (turn_id,))
+        if not rows:
+            return None
+        return next((t for t in self.tutor_thread(rows[0]["step_id"], rows[0]["guide_id"]) if t["id"] == turn_id), None)
+
+    def add_tutor_exchange(self, step_id: str, guide_id: str, *, question: str, sent: Any, answer: str,
+                           blocks: list[Any], request: dict[str, Any], usage: dict[str, Any] | None,
+                           model: str, ms: int, cost_usd: float) -> int:
+        """Store a question and the tutor's answer together, so a thread always alternates
+        user, assistant (a failed call stores neither). Returns the answer's turn id."""
+        now = utcnow()
+        with self.tx() as c:
+            c.execute("INSERT INTO tutor_turns (step_id, guide_id, role, content, sent_json, created_at) "
+                      "VALUES (?, ?, 'user', ?, ?, ?)", (step_id, guide_id, question, json.dumps(sent), now))
+            cur = c.execute(
+                "INSERT INTO tutor_turns (step_id, guide_id, role, content, sent_json, request_json, usage_json, "
+                "model, ms, cost_usd, created_at) VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (step_id, guide_id, answer, json.dumps(blocks), json.dumps(request),
+                 json.dumps(usage) if usage is not None else None, model, ms, cost_usd, now))
+            return int(cur.lastrowid)
+
     def spend_summary(self) -> dict[str, Any]:
         rows = self._query(
             """SELECT source,

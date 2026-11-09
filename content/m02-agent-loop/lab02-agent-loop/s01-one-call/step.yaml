@@ -36,8 +36,21 @@ guide:
       | `output_config.effort` | How much the model may spend on thinking and answering: `low`, `medium` (the default on Opus 5.5), `high`, `xhigh`, `max`. |
       | `messages` | The conversation so far. Here, one user message. |
 
-      The API is **stateless**: it remembers nothing between calls. Every call sends the whole
-      conversation again. An agent's "memory" is just the `messages` list your code keeps growing.
+      The API is **stateless**: it remembers nothing between calls. After you run, look at the
+      request body: there is no conversation id, no session, nothing that names "this chat". The
+      model sees only what is in that body. So to continue the conversation, call 2 sends
+      **everything** again:
+
+      ```python
+      messages = [
+          {"role": "user", "content": "In one sentence: what is an agent loop?"},
+          {"role": "assistant", "content": response.content},   # call 1's answer, as it came back
+          {"role": "user", "content": "Now give an example."},  # the new message
+      ]
+      ```
+
+      If call 2 sent only the last message, the model would have no idea what "an example" refers
+      to. An agent's "memory" is just this list: your code keeps it and appends to it.
     do: "Press **Run** (above your code). Then, under **Model calls**, open **Call 1** and read the **Request body**."
     show: [request.model, request.max_tokens, request.effort, request.retry_count, run.first_call_ms]
     notice: |
