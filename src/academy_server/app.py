@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from anthropic._constants import ANTHROPIC_API_VERSION   # the version the lesson SDK sends
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +20,8 @@ from pydantic import BaseModel, Field
 
 from . import __version__, pages, paths, playground
 from .content.loader import ContentTree, LoadedStep, load_content
+from .content.schema import FACTS, Experiment
+from .experiments import answer_text, check_answer, code_diff, error_message, grade, grade_quiz, run_facts
 from .pricing import Pricing
 from .relay import Upstream, build_router
 from .runs import RunBusy, RunManager
@@ -48,6 +51,28 @@ class AppSettings:
 
 class RunIn(BaseModel):
     model: str | None = None
+    experiment: str | None = None   # grade this experiment's committed predictions against the run
+
+
+class PredictionsIn(BaseModel):
+    answers: dict[str, Any]
+
+
+class ExplainIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class QuizIn(BaseModel):
+    answer: Any
+
+
+class CountIn(BaseModel):
+    text: str = Field(min_length=1, max_length=MAX_FILE_CHARS)
+    model: str = DEFAULT_MODEL
+
+
+# Facts that need the gateway's count_tokens to measure.
+TOKEN_FACTS = {"response.text_tokens", "response.hidden_output_tokens"}
 
 
 def _sse(event: dict[str, Any]) -> str:
@@ -115,6 +140,12 @@ def create_app(settings: AppSettings) -> FastAPI:
         dest = settings.playground_root / step.full_id
         playground.prepare(step.starter_files(), dest, reset=reset)
         return dest, playground.read_files(dest, step.spec.files)
+
+    def get_experiment(step: LoadedStep, experiment_id: str) -> Experiment:
+        exp = step.spec.experiment(experiment_id)
+        if exp is None:
+            raise HTTPException(404, f"step {step.full_id} has no experiment {experiment_id!r}")
+        return exp
 
     def files_view(step: LoadedStep, dest: Path, files: dict[str, str]) -> dict[str, Any]:
         return {"dir": str(dest), "entry": step.spec.entry,
@@ -188,18 +219,28 @@ def create_app(settings: AppSettings) -> FastAPI:
     # ------------------------------------------------------------------ runs
     @app.post("/api/steps/{step_id}/runs", status_code=201)
     def start_run(step_id: str, body: RunIn | None = None) -> dict[str, Any]:
-        """Run the learner's playground copy of the step, live."""
+        """Run the learner's playground copy of the step, live. With an experiment, the run is
+        the one its committed predictions get graded against."""
         step = get_step(step_id)
         model = (body.model if body and body.model else None) or os.environ.get("LAB_MODEL") or DEFAULT_MODEL
         if not MODEL_ID.match(model):
             raise HTTPException(400, f"not a model id: {model!r}")
+        attempt = None
+        if body and body.experiment:
+            exp = get_experiment(step, body.experiment)
+            attempts = store.attempts(step.full_id, exp.id)
+            attempt = attempts[-1] if attempts else None
+            if attempt is None or attempt["run_id"] or attempt["graded_at"]:
+                raise HTTPException(409, f"commit your predictions for {exp.id} first: Run stays locked until then")
         dest, files = step_files(step)
         try:
             run = manager.start(step_id=step.full_id, module_id=step.module_id, entry=step.spec.entry,
                                 playground=dest, files=files, model=model, timeout_s=step.spec.run.timeout_s)
         except RunBusy as busy:
             raise HTTPException(409, f"run {busy} is still running; stop it first")
-        return {"run_id": run.id, "events": f"/api/runs/{run.id}/events",
+        if attempt is not None:
+            store.attach_run(attempt["id"], run.id)
+        return {"run_id": run.id, "events": f"/api/runs/{run.id}/events", "experiment": body.experiment if body else None,
                 "code": str(dest / step.spec.entry), "gateway": settings.upstream is not None}
 
     def run_view(run_id: str) -> dict[str, Any]:
@@ -217,6 +258,26 @@ def create_app(settings: AppSettings) -> FastAPI:
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:
         return run_view(run_id)
+
+    @app.get("/api/runs/{run_id}/diff")
+    def run_diff(run_id: str) -> dict[str, Any]:
+        """What changed since the previous run of the same step: the code, and the model."""
+        rec = store.run_record(run_id)
+        if rec is None:
+            raise HTTPException(404, f"unknown run {run_id!r}")
+        prev = store.previous_run(run_id)
+        view: dict[str, Any] = {"run_id": run_id, "prev_run_id": prev["run_id"] if prev else None,
+                                "model": {"prev": prev["model"] if prev else None, "now": rec["model"]},
+                                "code": store.run_code(run_id), "diff": "", "note": ""}
+        if prev is None:
+            view["note"] = "This is your first run of this step, so there is nothing to compare with."
+            return view
+        before = store.run_code(prev["run_id"])
+        if not before:
+            view["note"] = "The previous run's code wasn't saved, so it can't be compared."
+            return view
+        view["diff"] = code_diff(before, view["code"])
+        return view
 
     @app.get("/api/steps/{step_id}/runs")
     def step_runs(step_id: str) -> dict[str, Any]:
@@ -256,6 +317,237 @@ def create_app(settings: AppSettings) -> FastAPI:
                     await asyncio.sleep(0.1)
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"cache-control": "no-store", "x-accel-buffering": "no"})
+
+    # ----------------------------------------------------------- experiments
+    def run_events_for(run_id: str) -> tuple[str, list[dict[str, Any]]]:
+        """(running | finished | lost, events). Lost: the server stopped before the run ended."""
+        run = manager.get(run_id)
+        if run is not None:
+            events = run.events_after(0)   # run.exit is always the last event a run emits
+            return ("finished" if events and events[-1]["type"] == "run.exit" else run.status), events
+        rec = store.run_record(run_id)
+        if rec is None or not rec["ended_at"]:
+            return "lost", []
+        return "finished", store.run_events(run_id)
+
+    async def count_tokens(model: str, text: str) -> int:
+        """input_tokens of one user message holding text. Free: count_tokens isn't billed."""
+        if settings.upstream is None:
+            raise HTTPException(503, f"no gateway credentials: put them in {paths.credentials_path()} and restart")
+        r = await upstream_client().post(
+            f"{settings.upstream.base_url.rstrip('/')}/v1/messages/count_tokens",
+            json={"model": model, "messages": [{"role": "user", "content": text}]},
+            headers={"authorization": f"Bearer {settings.upstream.api_key}",
+                     "anthropic-version": ANTHROPIC_API_VERSION})
+        if r.status_code >= 400:
+            try:
+                detail = error_message(r.json())
+            except ValueError:
+                detail = r.text[:300]
+            raise HTTPException(502, f"count_tokens failed with {r.status_code}: {detail}")
+        return int(r.json()["input_tokens"])
+
+    wrappers: dict[str, int] = {}
+
+    async def measure_text(model: str, text: str) -> dict[str, int]:
+        """A message wraps its text in a few tokens of its own. Measure that wrapper once per model
+        (one-character text, "a", is one token) and subtract it, leaving the text's own tokens."""
+        if model not in wrappers:
+            wrappers[model] = await count_tokens(model, "a") - 1
+        total = await count_tokens(model, text)
+        return {"input_tokens": total, "wrapper_tokens": wrappers[model], "text_tokens": total - wrappers[model]}
+
+    async def grade_attempt(exp: Experiment, attempt: dict[str, Any]) -> dict[str, Any]:
+        """Grade an attempt against its run, once the run has finished."""
+        status, events = run_events_for(attempt["run_id"])
+        if status == "running":
+            return attempt
+        prev = store.previous_run(attempt["run_id"])
+        prev_events = run_events_for(prev["run_id"])[1] if prev else None
+        tokens = None
+        wanted = {getattr(p, "answer_from", None) or getattr(p, "show_from", None) for p in exp.predict}
+        text = answer_text(events)
+        if wanted & TOKEN_FACTS and text:
+            model = run_facts(events)["request.model"] or DEFAULT_MODEL
+            try:
+                tokens = (await measure_text(model, text))["text_tokens"]
+            except HTTPException:
+                tokens = None            # graded as "not measured"
+        facts = run_facts(events, prev_events, tokens)
+        answers = {p["item_id"]: p["answer"] for p in attempt["predictions"]}
+        store.save_grades(attempt["id"], {p.id: grade(p, answers[p.id], facts)
+                                          for p in exp.predict if p.id in answers})
+        return store.attempt(attempt["id"])
+
+    async def card_state(step: LoadedStep, exp: Experiment) -> dict[str, Any]:
+        attempts = store.attempts(step.full_id, exp.id)
+        latest = attempts[-1] if attempts else None
+        if latest and latest["run_id"] and not latest["graded_at"]:
+            latest = attempts[-1] = await grade_attempt(exp, latest)
+        status = ("predict" if latest is None else "committed" if not latest["run_id"]
+                  else "running" if not latest["graded_at"] else "graded" if not latest["explained_at"]
+                  else "explained")
+        return {"card": exp.public(), "status": status, "attempt": latest, "earlier": attempts[:-1],
+                "explain": exp.explain if status == "explained" else None}
+
+    @app.get("/api/steps/{step_id}/experiments")
+    async def experiments(step_id: str) -> dict[str, Any]:
+        step = get_step(step_id)
+        return {"experiments": [await card_state(step, e) for e in step.spec.experiments]}
+
+    @app.post("/api/steps/{step_id}/experiments/{experiment_id}/predictions")
+    async def commit_predictions(step_id: str, experiment_id: str, body: PredictionsIn) -> dict[str, Any]:
+        """Lock in your predictions. Run unlocks for this card after this."""
+        step = get_step(step_id)
+        exp = get_experiment(step, experiment_id)
+        items = []
+        for p in exp.predict:
+            if p.id not in body.answers:
+                raise HTTPException(400, f"answer every prediction first: {p.id} is missing")
+            try:
+                answer = check_answer(p, body.answers[p.id])
+            except ValueError as exc:
+                raise HTTPException(400, str(exc))
+            items.append({"item_id": p.id, "type": p.type, "prompt": p.prompt, "answer": answer})
+        try:
+            store.commit_predictions(step.full_id, step.module_id, exp.id, items)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc))
+        return await card_state(step, exp)
+
+    @app.post("/api/steps/{step_id}/experiments/{experiment_id}/grade")
+    async def grade_experiment(step_id: str, experiment_id: str) -> dict[str, Any]:
+        """Compare: grade the predictions against the run they're attached to (idempotent)."""
+        step = get_step(step_id)
+        exp = get_experiment(step, experiment_id)
+        attempts = store.attempts(step.full_id, exp.id)
+        if not attempts or not attempts[-1]["run_id"]:
+            raise HTTPException(409, f"nothing to grade yet: commit predictions for {exp.id}, then run")
+        return await card_state(step, exp)
+
+    @app.post("/api/steps/{step_id}/experiments/{experiment_id}/explain")
+    async def explain(step_id: str, experiment_id: str, body: ExplainIn) -> dict[str, Any]:
+        """Your own why first; the card's explanation comes back with it."""
+        step = get_step(step_id)
+        exp = get_experiment(step, experiment_id)
+        attempts = store.attempts(step.full_id, exp.id)
+        if not attempts or not store.save_explanation(attempts[-1]["id"], body.text.strip()):
+            raise HTTPException(409, f"run {exp.id} and compare first, then explain")
+        return await card_state(step, exp)
+
+    # ----------------------------------------------------------------- guide
+    def latest_finished_run(step: LoadedStep) -> tuple[str | None, list[dict[str, Any]]]:
+        for r in store.runs_for_step(step.full_id, limit=5):
+            status, events = run_events_for(r["run_id"])
+            if status == "finished":
+                return r["run_id"], events
+        return None, []
+
+    async def facts_of(run_id: str, events: list[dict[str, Any]], with_tokens: bool) -> dict[str, Any]:
+        prev = store.previous_run(run_id)
+        tokens = None
+        text = answer_text(events)
+        if with_tokens and text:
+            try:
+                tokens = (await measure_text(run_facts(events)["request.model"] or DEFAULT_MODEL, text))["text_tokens"]
+            except HTTPException:
+                tokens = None
+        return run_facts(events, run_events_for(prev["run_id"])[1] if prev else None, tokens)
+
+    def guide_item_id(step: LoadedStep, guide_id: str, check_id: str) -> str:
+        return f"{step.full_id}:{guide_id}:{check_id}"
+
+    @app.get("/api/steps/{step_id}/guide")
+    async def guide(step_id: str) -> dict[str, Any]:
+        """The lesson, step by step: teaching, code lines, what to do, your latest run's values,
+        and your answers to each step's checks so far."""
+        step = get_step(step_id)
+        run_id, events = latest_finished_run(step)
+        wanted = {k for g in step.spec.guide for k in g.show}
+        facts = await facts_of(run_id, events, bool(wanted & TOKEN_FACTS)) if run_id else {}
+        latest = store.quiz_latest(step.full_id)
+        out = []
+        for g in step.spec.guide:
+            answers = {}
+            for c in g.check:
+                last = latest.get(guide_item_id(step, g.id, c.id))
+                if last:
+                    answers[c.id] = {**last, "explanation": c.explanation}
+            out.append({"id": g.id, "title": g.title, "teach_html": pages.markdown(g.teach),
+                        "do_html": pages.markdown(g.do) if g.do else "", "lines": g.lines(),
+                        "notice_html": pages.markdown(g.notice) if g.notice else "",
+                        "show": [{"key": k, "label": FACTS[k], "value": facts.get(k)} for k in g.show],
+                        "check": [c.public() for c in g.check], "answers": answers,
+                        "experiment": g.experiment, "quiz": g.quiz})
+        return {"steps": out, "run_id": run_id}
+
+    @app.post("/api/steps/{step_id}/guide/{guide_id}/check")
+    async def guide_check(step_id: str, guide_id: str, body: PredictionsIn) -> dict[str, Any]:
+        """Grade answers to a step's checks, against fixed answers or your latest run. Recorded like
+        quiz answers, so a miss comes back in spaced review."""
+        step = get_step(step_id)
+        g = step.spec.guide_step(guide_id)
+        if g is None:
+            raise HTTPException(404, f"step {step.full_id} has no guide step {guide_id!r}")
+        items = [c for c in g.check if c.id in body.answers]
+        if not items:
+            raise HTTPException(400, "no answers for this step's checks")
+        run_id, events = latest_finished_run(step)
+        about_run = [c for c in items if getattr(c, "answer_from", None)]
+        if about_run and run_id is None:
+            raise HTTPException(409, "This question is about your run: press Run first.")
+        wanted = {getattr(c, "answer_from", None) for c in items}
+        facts = await facts_of(run_id, events, bool(wanted & TOKEN_FACTS)) if run_id else {}
+        results = {}
+        for c in items:
+            try:
+                answer = check_answer(c, body.answers[c.id])
+            except ValueError as exc:
+                raise HTTPException(400, str(exc))
+            result = grade(c, answer, facts)
+            if result["correct"] is not None:
+                store.record_quiz_attempt(item_id=guide_item_id(step, g.id, c.id), module_id=step.module_id,
+                                          type=c.type, answer=answer, correct=result["correct"], step_id=step.full_id,
+                                          question=c.prompt, correct_answer=result["actual_display"],
+                                          feedback=result["note"] or None, graded_by="auto", source="app")
+            results[c.id] = {**result, "answer": answer, "explanation": c.explanation}
+        return {"results": results, "run_id": run_id}
+
+    def quiz_item_id(step: LoadedStep, item_id: str) -> str:
+        return f"{step.full_id}:{item_id}"   # quiz ids are per step; the store's ids are global
+
+    @app.get("/api/steps/{step_id}/quiz")
+    def quiz(step_id: str) -> dict[str, Any]:
+        step = get_step(step_id)
+        latest = store.quiz_latest(step.full_id)
+        items = []
+        for q in step.spec.quiz:
+            last = latest.get(quiz_item_id(step, q.id))
+            items.append({**q.public(), "last": {**last, "explanation": q.explanation} if last else None})
+        return {"items": items}
+
+    @app.post("/api/steps/{step_id}/quiz/{item_id}")
+    def answer_quiz(step_id: str, item_id: str, body: QuizIn) -> dict[str, Any]:
+        """Grade one answer and record it, the same as `labctl quiz record`."""
+        step = get_step(step_id)
+        q = step.spec.quiz_item(item_id)
+        if q is None:
+            raise HTTPException(404, f"step {step.full_id} has no quiz item {item_id!r}")
+        try:
+            correct, right = grade_quiz(q, body.answer)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        store.record_quiz_attempt(item_id=quiz_item_id(step, q.id), module_id=step.module_id, type=q.type,
+                                  answer=body.answer, correct=correct, step_id=step.full_id, concepts=q.concepts,
+                                  question=q.prompt, correct_answer=right, graded_by="auto", source="app")
+        return {"correct": correct, "correct_answer": right, "explanation": q.explanation}
+
+    @app.post("/api/tools/count_tokens")
+    async def tool_count_tokens(body: CountIn) -> dict[str, Any]:
+        """The lab's free token counter: the text's own tokens, and the message wrapper around them."""
+        if not MODEL_ID.match(body.model):
+            raise HTTPException(400, f"not a model id: {body.model!r}")
+        return {"model": body.model, **(await measure_text(body.model, body.text))}
 
     @app.get("/lab/{step_id}", include_in_schema=False, response_class=HTMLResponse)
     def lab(step_id: str, theme: str | None = None) -> str:

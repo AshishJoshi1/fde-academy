@@ -22,15 +22,14 @@ EXPORT_FORMAT = "fde-academy-progress"
 # Insert order respects foreign keys (runs before check_results); delete in reverse.
 EXPORT_TABLES = [
     "step_progress", "code_snapshots", "runs", "run_events", "check_results",
-    "quiz_attempts", "spend", "tutor_turns", "position",
+    "experiment_attempts", "predictions", "quiz_attempts", "spend", "tutor_turns", "position",
 ]
 _ORDER_BY = {
     "step_progress": "step_id", "code_snapshots": "id", "runs": "started_at, run_id", "run_events": "run_id, seq",
-    "check_results": "run_id, check_id", "quiz_attempts": "id", "spend": "id",
-    "tutor_turns": "id", "position": "id",
+    "check_results": "run_id, check_id", "experiment_attempts": "id", "predictions": "attempt_id, item_id",
+    "quiz_attempts": "id", "spend": "id", "tutor_turns": "id", "position": "id",
 }
-DRAFTS_KEPT = 20          # per (step, file)
-RUN_SNAPSHOTS_KEPT = 10   # per (step, file)
+DRAFTS_KEPT = 20          # per (step, file). Run snapshots are all kept: any run can be reopened.
 
 
 def utcnow() -> str:
@@ -181,9 +180,9 @@ class Store:
             c.execute("INSERT INTO runs (run_id, step_id, module_id, mode, model, started_at) "
                       "VALUES (?, ?, ?, ?, ?, ?)", (run_id, step_id, module_id, mode, model, utcnow()))
             for name, code in files.items():
-                c.execute("INSERT INTO code_snapshots (step_id, kind, filename, code, created_at) "
-                          "VALUES (?, 'run', ?, ?, ?)", (step_id, name, code.replace("\r\n", "\n"), utcnow()))
-                self._prune(c, step_id, name, "run", RUN_SNAPSHOTS_KEPT)
+                c.execute("INSERT INTO code_snapshots (step_id, kind, filename, code, created_at, run_id) "
+                          "VALUES (?, 'run', ?, ?, ?, ?)",
+                          (step_id, name, code.replace("\r\n", "\n"), utcnow(), run_id))
             self._touch_step(c, step_id, module_id)
             c.execute("UPDATE step_progress SET attempts = attempts + 1 WHERE step_id = ?", (step_id,))
             self._set_position(c, step_id=step_id, last_run_id=run_id)
@@ -216,8 +215,24 @@ class Store:
         return rows[0] if rows else None
 
     def runs_for_step(self, step_id: str, limit: int = 20) -> list[dict[str, Any]]:
-        return self._query("SELECT run_id, model, outcome, cost_usd, started_at, ended_at FROM runs "
-                           "WHERE step_id = ? ORDER BY started_at DESC, run_id DESC LIMIT ?", (step_id, limit))
+        return self._query(
+            """SELECT r.run_id, r.model, r.outcome, r.cost_usd, r.started_at, r.ended_at,
+                      a.experiment_id, a.attempt
+               FROM runs r LEFT JOIN experiment_attempts a ON a.run_id = r.run_id
+               WHERE r.step_id = ? ORDER BY r.started_at DESC, r.run_id DESC LIMIT ?""", (step_id, limit))
+
+    def run_code(self, run_id: str) -> dict[str, str]:
+        """The files exactly as that run ran them."""
+        rows = self._query("SELECT filename, code FROM code_snapshots WHERE run_id = ? ORDER BY id", (run_id,))
+        return {r["filename"]: r["code"] for r in rows}
+
+    def previous_run(self, run_id: str) -> dict[str, Any] | None:
+        """The run of the same step that started just before this one."""
+        rows = self._query(
+            """SELECT p.* FROM runs r JOIN runs p ON p.step_id = r.step_id
+                 AND (p.started_at < r.started_at OR (p.started_at = r.started_at AND p.run_id < r.run_id))
+               WHERE r.run_id = ? ORDER BY p.started_at DESC, p.run_id DESC LIMIT 1""", (run_id,))
+        return rows[0] if rows else None
 
     # ----------------------------------------------------------------- spend
     def record_spend(self, source: str, cost_usd: float, *, run_id: str | None = None,
@@ -241,6 +256,106 @@ class Store:
             "total_usd": round(sum(r["total"] or 0 for r in rows), 6),
             "by_source": {r["source"]: round(r["total"] or 0, 6) for r in rows},
         }
+
+    # ----------------------------------------------------------- experiments
+    def _attempt_rows(self, where: str, params: Iterable[Any]) -> list[dict[str, Any]]:
+        attempts = self._query(f"SELECT * FROM experiment_attempts WHERE {where} ORDER BY attempt", params)
+        for a in attempts:
+            preds = self._query("SELECT * FROM predictions WHERE attempt_id = ? ORDER BY rowid", (a["id"],))
+            for p in preds:
+                p["answer"] = json.loads(p.pop("answer_json"))
+                raw = p.pop("actual_json")
+                p["actual"] = json.loads(raw) if raw is not None else None
+                p["correct"] = None if p["correct"] is None else bool(p["correct"])
+            a["predictions"] = preds
+        return attempts
+
+    def attempts(self, step_id: str, experiment_id: str) -> list[dict[str, Any]]:
+        """Every attempt at one experiment, oldest first, each with its predictions."""
+        return self._attempt_rows("step_id = ? AND experiment_id = ?", (step_id, experiment_id))
+
+    def attempt(self, attempt_id: int) -> dict[str, Any] | None:
+        rows = self._attempt_rows("id = ?", (attempt_id,))
+        return rows[0] if rows else None
+
+    def commit_predictions(self, step_id: str, module_id: str, experiment_id: str,
+                           items: list[dict[str, Any]]) -> dict[str, Any]:
+        """Lock in a new attempt's predictions. Refused while the latest attempt is still ungraded."""
+        with self.tx() as c:
+            last = c.execute("SELECT attempt, graded_at FROM experiment_attempts WHERE step_id = ? AND "
+                             "experiment_id = ? ORDER BY attempt DESC LIMIT 1", (step_id, experiment_id)).fetchone()
+            if last is not None and last["graded_at"] is None:
+                raise ValueError("predictions for this experiment are already committed; run it first")
+            cur = c.execute("INSERT INTO experiment_attempts (step_id, module_id, experiment_id, attempt, committed_at) "
+                            "VALUES (?, ?, ?, ?, ?)",
+                            (step_id, module_id, experiment_id, (last["attempt"] if last else 0) + 1, utcnow()))
+            attempt_id = int(cur.lastrowid)
+            c.executemany("INSERT INTO predictions (attempt_id, item_id, type, prompt, answer_json) VALUES (?, ?, ?, ?, ?)",
+                          [(attempt_id, i["item_id"], i["type"], i.get("prompt"), json.dumps(i["answer"]))
+                           for i in items])
+            self._touch_step(c, step_id, module_id)
+        return self.attempt(attempt_id)
+
+    def attach_run(self, attempt_id: int, run_id: str) -> bool:
+        """The run these predictions will be graded against. Only one, and only before grading."""
+        with self.tx() as c:
+            cur = c.execute("UPDATE experiment_attempts SET run_id = ? WHERE id = ? AND run_id IS NULL "
+                            "AND graded_at IS NULL", (run_id, attempt_id))
+            return cur.rowcount == 1
+
+    def save_grades(self, attempt_id: int, grades: dict[str, dict[str, Any]]) -> None:
+        with self.tx() as c:
+            for item_id, g in grades.items():
+                c.execute("UPDATE predictions SET actual_json = ?, actual_display = ?, correct = ?, note = ? "
+                          "WHERE attempt_id = ? AND item_id = ?",
+                          (json.dumps(g.get("actual")), g.get("actual_display"),
+                           None if g.get("correct") is None else int(bool(g["correct"])), g.get("note"),
+                           attempt_id, item_id))
+            c.execute("UPDATE experiment_attempts SET graded_at = ? WHERE id = ?", (utcnow(), attempt_id))
+
+    def save_explanation(self, attempt_id: int, text: str) -> bool:
+        with self.tx() as c:
+            cur = c.execute("UPDATE experiment_attempts SET explanation = ?, explained_at = ? WHERE id = ? "
+                            "AND graded_at IS NOT NULL", (text, utcnow(), attempt_id))
+            return cur.rowcount == 1
+
+    def prediction_stats(self) -> dict[str, Any]:
+        """Running scores: accuracy of graded predictions, and how many surprises were explained."""
+        row = self._query(
+            """SELECT COUNT(p.correct) AS graded, COALESCE(SUM(p.correct), 0) AS right,
+                      COALESCE(SUM(CASE WHEN p.correct = 0 THEN 1 ELSE 0 END), 0) AS surprises,
+                      COALESCE(SUM(CASE WHEN p.correct = 0 AND a.explained_at IS NOT NULL THEN 1 ELSE 0 END), 0)
+                        AS explained
+               FROM predictions p JOIN experiment_attempts a ON a.id = p.attempt_id""")[0]
+        cards = self._query("SELECT COUNT(DISTINCT step_id || ':' || experiment_id) AS n FROM experiment_attempts "
+                            "WHERE explained_at IS NOT NULL")[0]["n"]
+        return {**row, "cards_done": cards}
+
+    def surprises(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Wrong predictions in the latest attempt of each experiment: what to look at again."""
+        rows = self._query(
+            """WITH latest AS (
+                 SELECT *, ROW_NUMBER() OVER (PARTITION BY step_id, experiment_id ORDER BY attempt DESC) AS rn
+                 FROM experiment_attempts WHERE graded_at IS NOT NULL)
+               SELECT l.step_id, l.experiment_id, l.attempt, l.run_id, l.graded_at, l.explained_at,
+                      p.item_id, p.prompt, p.answer_json, p.actual_display
+               FROM latest l JOIN predictions p ON p.attempt_id = l.id
+               WHERE l.rn = 1 AND p.correct = 0 ORDER BY l.graded_at LIMIT ?""", (limit,))
+        for r in rows:
+            r["answer"] = json.loads(r.pop("answer_json"))
+        return rows
+
+    def quiz_latest(self, step_id: str) -> dict[str, dict[str, Any]]:
+        """The latest attempt at each quiz item of a step, by item id, with how many tries."""
+        rows = self._query(
+            """SELECT item_id, answer_json, correct_json, correct, created_at, tries FROM (
+                 SELECT *, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY id DESC) AS rn,
+                        COUNT(*) OVER (PARTITION BY item_id) AS tries
+                 FROM quiz_attempts WHERE step_id = ?) WHERE rn = 1""", (step_id,))
+        return {r["item_id"]: {"answer": json.loads(r["answer_json"]),
+                               "correct_answer": json.loads(r["correct_json"]) if r["correct_json"] else None,
+                               "correct": bool(r["correct"]), "tries": r["tries"], "at": r["created_at"]}
+                for r in rows}
 
     # ------------------------------------------------------------------ quiz
     def record_quiz_attempt(self, *, item_id: str, module_id: str, type: str, answer: Any,
@@ -307,6 +422,7 @@ class Store:
             "quiz": {"attempts": quiz["attempts"], "correct": quiz["correct"],
                      "still_wrong": len(m["still_wrong"]), "fixed_after_retry": len(m["fixed_after_retry"])},
             "failing_checks": len(m["failing_checks"]),
+            "predictions": self.prediction_stats(),
             "spend": self.spend_summary(),
             "db": str(self.path),
         }

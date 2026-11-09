@@ -664,6 +664,57 @@ details.disclosure[open] > summary { margin-bottom: var(--sp-3); }
 .quiz-feedback.is-correct { --fb: var(--good); }
 .quiz-feedback .fb-title { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 
+/* ===================================================================== LAB
+   Left: the guided lesson. Right (sticky): Run, the code, the console and the model calls. */
+.lab-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--sp-5); align-items: start; }
+.lab-side {
+  position: sticky; top: 64px; max-height: calc(100vh - 76px); overflow: auto;
+  display: flex; flex-direction: column; gap: var(--sp-3); padding: 2px 2px var(--sp-3);
+}
+@media (max-width: 1100px) {
+  .lab-grid { grid-template-columns: minmax(0, 1fr); }
+  .lab-side { position: static; max-height: none; }
+}
+.lab-side > * { flex-shrink: 0; }   /* the column scrolls; its panes never squash */
+.lab-side .editor-input { height: 340px; }
+.lab-side .console { max-height: 260px; overflow: auto; }
+.guide-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3); }
+.guide-nav .btn[aria-current="step"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.guide-step h2 { font-size: var(--fs-2xl); }
+.guide-prose { max-width: none; }
+.guide-prose > :last-child, .guide-do > :last-child { margin-bottom: 0; }
+.guide-do p { margin: 4px 0 0; }
+.guide-foot { border-top: 1px solid var(--hairline); padding-top: var(--sp-4); margin-top: var(--sp-2); }
+.facts-table td { vertical-align: middle; }
+.facts-table td.num { text-align: right; font-weight: 600; white-space: nowrap; }
+.editor-code { position: relative; min-width: 0; }
+.editor-marks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.editor-marks .mark { position: absolute; left: 0; right: 0; background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--accent); }
+.editor-code .editor-input { position: relative; z-index: 1; }
+.editor-gutter span { display: block; }
+.editor-gutter span.hl { color: var(--accent-text); font-weight: 600; }
+
+/* ============================================================ EXPERIMENTS
+   Lab cards: predict, change one thing, run, compare, explain. */
+.exp-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: var(--sp-3) 0 var(--sp-4); }
+.exp-steps .btn[aria-current="step"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.exp-card { max-width: 900px; }
+.exp-card h3 { margin: 0; }
+.exp-card .lede { margin: 0; }
+.exp-phase {
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-3); margin: var(--sp-3) 0 0;
+}
+.predict-item { padding-top: var(--sp-3); border-top: 1px solid var(--hairline); }
+.predict-item:first-child { border-top: 0; padding-top: 0; }
+.predict-item .quiz-q { font-size: var(--fs-lg); margin: 0; }
+.predict-item .quiz-options { margin: 0; }
+pre.diff-view { white-space: pre; font-size: 12.5px; max-height: 420px; padding: var(--sp-2) 0; }
+.diff-view span { display: block; padding: 0 var(--sp-3); }
+.diff-view .diff-add { background: var(--good-wash); color: var(--good-ink); }
+.diff-view .diff-del { background: var(--critical-wash); color: var(--critical-ink); }
+.diff-view .diff-hunk, .diff-view .diff-file { color: var(--text-3); }
+
 /* ===================================================== style-guide only bits */
 .swatch-grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 .token-chip { border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--surface); }

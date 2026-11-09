@@ -78,6 +78,18 @@ print("left behind", child.pid)
 }
 
 
+EXPERIMENT = """experiments:
+  - id: e1
+    title: "Count the calls"
+    question: "How many calls?"
+    change: "Nothing."
+    explain: "One call."
+    predict:
+      - {id: p1, type: numeric, prompt: "Calls?", answer_from: run.calls}
+      - {id: p2, type: mcq, prompt: "stop_reason?", options: [end_turn, max_tokens], answer_from: response.stop_reason}
+"""
+
+
 def write_content(root: Path) -> None:
     chapter = root / "mt-mod" / "lt-ch"
     chapter.mkdir(parents=True)
@@ -87,7 +99,8 @@ def write_content(root: Path) -> None:
     for name, (code, limit) in STEPS.items():
         (chapter / name / "starter").mkdir(parents=True)
         (chapter / name / "step.yaml").write_text(
-            f'id: {name}\ntitle: "{name}"\nfiles:\n  main.py: starter/main.py\nrun:\n  timeout_s: {limit}\n', encoding="utf-8")
+            f'id: {name}\ntitle: "{name}"\nfiles:\n  main.py: starter/main.py\nrun:\n  timeout_s: {limit}\n'
+            + (EXPERIMENT if name == "call" else ""), encoding="utf-8")
         (chapter / name / "step.md").write_text(f"# {name}\n", encoding="utf-8")
         (chapter / name / "starter" / "main.py").write_text(code.lstrip(), encoding="utf-8")
 
@@ -271,3 +284,18 @@ def test_finished_runs_reopen_from_the_store(server, make_client):
     reopened = fresh.get(f"/api/runs/{view['run']['run_id']}").json()
     assert reopened["run"]["status"] == "finished" and reopened["run"]["outcome"] == "ok"
     assert reopened["events"] == view["events"]
+
+
+def test_a_run_started_for_an_experiment_grades_its_predictions(server):
+    url = "/api/steps/mt.lt.call/experiments/e1"
+    assert server.client.post("/api/steps/mt.lt.call/runs", json={"experiment": "e1"}).status_code == 409
+    assert server.client.post(f"{url}/predictions", json={"answers": {"p1": 1, "p2": 1}}).status_code == 200
+    started = server.client.post("/api/steps/mt.lt.call/runs", json={"experiment": "e1"})
+    assert started.status_code == 201 and started.json()["experiment"] == "e1"
+    wait_finished(server, started.json()["run_id"])
+    state = server.client.post(f"{url}/grade").json()
+    assert state["status"] == "graded" and state["attempt"]["run_id"] == started.json()["run_id"]
+    assert {p["item_id"]: p["correct"] for p in state["attempt"]["predictions"]} == {"p1": True, "p2": False}
+    assert server.client.post("/api/steps/mt.lt.call/runs", json={"experiment": "e1"}).status_code == 409
+    [run] = server.client.get("/api/steps/mt.lt.call/runs").json()["runs"]
+    assert run["experiment_id"] == "e1" and run["attempt"] == 1

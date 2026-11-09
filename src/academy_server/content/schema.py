@@ -4,7 +4,7 @@ file should fail loudly with its path, not silently drop a check or a toggle.
 Layout:
   content/<module-dir>/module.yaml          Module
   content/<module-dir>/<chapter-dir>/chapter.yaml   Chapter
-  content/<module-dir>/<chapter-dir>/<step-dir>/step.yaml + step.md + starter/ solution/ cassettes/ quiz/
+  content/<module-dir>/<chapter-dir>/<step-dir>/step.yaml + step.md + starter/ solution/
 Full step id = "<module.id>.<chapter.id>.<step.id>", e.g. m02.lab02.s01.
 """
 from __future__ import annotations
@@ -41,9 +41,6 @@ class Chapter(Strict):
 
 
 class RunSpec(Strict):
-    mode: Literal["replay", "live", "python"] = "replay"
-    step: Literal["off", "llm", "all"] = "off"
-    cassettes: list[str] = Field(default_factory=list)
     fixture: Literal["meridian"] | None = None
     timeout_s: int = Field(default=120, ge=5, le=600)
 
@@ -83,7 +80,7 @@ class QuizBase(Strict):
     explanation: str = ""
 
     # Fields never sent to the browser before the learner answers.
-    HIDDEN: ClassVar[frozenset[str]] = frozenset({"answer", "answer_expr", "explanation", "model_answer", "rubric"})
+    HIDDEN: ClassVar[frozenset[str]] = frozenset({"answer", "explanation", "model_answer", "rubric"})
 
     def public(self) -> dict[str, Any]:
         return self.model_dump(exclude=set(self.HIDDEN))
@@ -105,22 +102,9 @@ class MCQ(QuizBase):
 
 class Numeric(QuizBase):
     type: Literal["numeric"]
-    answer: float | None = None
-    answer_expr: str | None = None   # evaluated against a recorded trace, e.g. cost(trace.llm[1])
+    answer: float
     tol: float = Field(default=0.0, ge=0)
     unit: str = ""
-
-    @model_validator(mode="after")
-    def _one_answer(self) -> "Numeric":
-        if (self.answer is None) == (self.answer_expr is None):
-            raise ValueError("numeric item needs exactly one of 'answer' or 'answer_expr'")
-        return self
-
-
-class TraceReading(QuizBase):
-    type: Literal["trace_reading"]
-    trace: str = Field(description="cassette variant whose recorded trace is shown")
-    answer: dict[str, Any] = Field(description="event selector, e.g. {type: llm.response, index: 2}")
 
 
 class CodeFix(QuizBase):
@@ -135,7 +119,194 @@ class ShortAnswer(QuizBase):
     model_answer: str
 
 
-QuizItem = Annotated[Union[MCQ, Numeric, TraceReading, CodeFix, ShortAnswer], Field(discriminator="type")]
+QuizItem = Annotated[Union[MCQ, Numeric, CodeFix, ShortAnswer], Field(discriminator="type")]
+
+# ------------------------------------------------------------- experiments
+# What a prediction can be graded against: one value measured from a run
+# (academy_server.experiments.run_facts builds exactly these keys).
+FACTS: dict[str, str] = {
+    "run.outcome": "ok | error | timeout | stopped",
+    "run.calls": "model calls the relay saw",
+    "run.first_call_ms": "ms from process start to the first model call reaching the relay",
+    "run.model": "the model picked for the run (LAB_MODEL)",
+    "request.model": "model in the last request body",
+    "request.max_tokens": "max_tokens in the last request body",
+    "request.effort": "output_config.effort in the last request body, or 'not set'",
+    "request.retry_count": "the SDK's x-stainless-retry-count header on the last request",
+    "response.status": "HTTP status of the last call",
+    "response.error_message": "the error message of a failed call (the gateway's wrapper unwrapped)",
+    "response.stop_reason": "stop_reason of the last response",
+    "response.blocks": "content block types in order, e.g. 'thinking, text'",
+    "response.has_thinking": "whether a thinking block came back",
+    "response.thinking_text": "'none' (no thinking block), 'empty' or 'readable'",
+    "response.has_text": "whether any text block has text in it",
+    "response.text_chars": "characters in the text blocks",
+    "response.text_tokens": "tokens in the text blocks, measured with count_tokens",
+    "response.hidden_output_tokens": "usage.output_tokens minus response.text_tokens",
+    "response.usage.input_tokens": "usage.input_tokens",
+    "response.usage.output_tokens": "usage.output_tokens",
+    "response.usage.cache_creation_input_tokens": "usage.cache_creation_input_tokens",
+    "response.usage.cache_read_input_tokens": "usage.cache_read_input_tokens",
+    "response.cost_usd": "the relay's cost: usage x pricing.yaml",
+    "response.gateway_cost_usd": "the gateway's x-litellm-response-cost-original header",
+    "response.cost_matches_gateway": "whether those two costs agree (to 0.1%)",
+    "response.ms": "how long the call took, in ms",
+    "prev.response.usage.output_tokens": "usage.output_tokens of your previous run of this step",
+    "ratio.output_tokens": "this run's output_tokens divided by the previous run's",
+}
+FactPath = Annotated[str, Field(description="a key of FACTS, e.g. response.usage.output_tokens")]
+
+
+def _known_fact(path: str | None) -> None:
+    if path is not None and path not in FACTS:
+        raise ValueError(f"unknown fact {path!r}; known facts: {', '.join(FACTS)}")
+
+
+class Option(Strict):
+    """An answer choice whose label differs from the measured value it stands for."""
+    label: str
+    value: str | int | float | bool
+
+
+class PredictBase(Strict):
+    id: ID
+    prompt: str
+    hint: str = ""
+    explanation: str = Field(default="", description="the why, shown once answered (guide checks)")
+
+    HIDDEN: ClassVar[frozenset[str]] = frozenset({"answer", "explanation"})
+
+    def public(self) -> dict[str, Any]:
+        return self.model_dump(exclude=set(self.HIDDEN))
+
+
+class PredictMCQ(PredictBase):
+    """Graded against a fixed option (answer) or a measured value (answer_from).
+
+    With answer_from the value picks the option whose value (or label) equals it; booleans
+    match "yes"/"no". With bins, a number picks an option by range: option i covers
+    bins[i-1] <= value < bins[i].
+    """
+    type: Literal["mcq"]
+    options: list[str | Option] = Field(min_length=2)
+    answer: int | None = None
+    answer_from: FactPath | None = None
+    bins: list[float] | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "PredictMCQ":
+        if (self.answer is None) == (self.answer_from is None):
+            raise ValueError("an mcq prediction needs exactly one of 'answer' or 'answer_from'")
+        _known_fact(self.answer_from)
+        if self.answer is not None and not 0 <= self.answer < len(self.options):
+            raise ValueError(f"answer index {self.answer} out of range for {len(self.options)} options")
+        if self.bins is not None:
+            if self.answer_from is None:
+                raise ValueError("'bins' only works with 'answer_from'")
+            if len(self.bins) != len(self.options) - 1 or self.bins != sorted(self.bins):
+                raise ValueError("'bins' must be ascending, with one fewer entry than 'options'")
+        return self
+
+
+class PredictNumeric(PredictBase):
+    """Right when within the tolerance: tol (absolute), tol_pct (percent of the actual
+    value) or tol_factor (within a factor of the actual value, for orders of magnitude)."""
+    type: Literal["numeric"]
+    answer: float | None = None
+    answer_from: FactPath | None = None
+    tol: float | None = Field(default=None, ge=0)
+    tol_pct: float | None = Field(default=None, gt=0)
+    tol_factor: float | None = Field(default=None, gt=1)
+    unit: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> "PredictNumeric":
+        if (self.answer is None) == (self.answer_from is None):
+            raise ValueError("a numeric prediction needs exactly one of 'answer' or 'answer_from'")
+        _known_fact(self.answer_from)
+        if sum(t is not None for t in (self.tol, self.tol_pct, self.tol_factor)) > 1:
+            raise ValueError("use at most one of 'tol', 'tol_pct' and 'tol_factor'")
+        return self
+
+
+class PredictText(PredictBase):
+    """Your own words. Not auto-graded; show_from puts the measured value beside them."""
+    type: Literal["text"]
+    show_from: FactPath | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "PredictText":
+        _known_fact(self.show_from)
+        return self
+
+
+Prediction = Annotated[Union[PredictMCQ, PredictNumeric, PredictText], Field(discriminator="type")]
+ToolName = Literal["count_tokens"]
+
+
+class Experiment(Strict):
+    """One card: predict, change one thing, run, compare, explain."""
+    id: ID
+    title: str
+    question: str = Field(description="what the card investigates")
+    predict: list[Prediction] = Field(min_length=1)
+    change: str = Field(description="exactly what to edit before the run")
+    observe: list[str] = Field(default_factory=list, description="where to look after the run")
+    tools: list[ToolName] = Field(default_factory=list)
+    explain: str = Field(description="the authored explanation, shown after the learner's own")
+
+    HIDDEN: ClassVar[frozenset[str]] = frozenset({"explain"})
+
+    def public(self) -> dict[str, Any]:
+        out = self.model_dump(exclude=set(self.HIDDEN) | {"predict"})
+        out["predict"] = [p.public() for p in self.predict]
+        return out
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "Experiment":
+        ids = [p.id for p in self.predict]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"duplicate prediction ids in {ids}")
+        return self
+
+
+_LINES = re.compile(r"^(\d+)(?:-(\d+))?$")
+
+
+class GuideStep(Strict):
+    """One step of a lesson walkthrough, taught the way a tutor would: explain one idea and
+    point at the code, have the learner do something in the lab, show what their own run
+    measured and what to notice in it, then check understanding (or run an experiment)."""
+    id: ID
+    title: str
+    teach: str = Field(description="markdown: the idea, taught before anything is asked")
+    code: list[int | str] = Field(default_factory=list, description="entry-file lines to highlight: 8 or '8-13'")
+    do: str = Field(default="", description="what to do in the lab, e.g. 'Press Run.'")
+    show: list[FactPath] = Field(default_factory=list, description="values from your latest run, shown after it")
+    notice: str = Field(default="", description="markdown: what to notice in your run")
+    check: list[Prediction] = Field(default_factory=list, description="questions about what you just saw")
+    experiment: ID | None = Field(default=None, description="an experiments: card, done inside this step")
+    quiz: bool = Field(default=False, description="this step holds the step's quiz")
+
+    @model_validator(mode="after")
+    def _check(self) -> "GuideStep":
+        for fact in self.show:
+            _known_fact(fact)
+        self.lines()
+        ids = [c.id for c in self.check]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"duplicate check ids in {ids}")
+        return self
+
+    def lines(self) -> list[int]:
+        out: list[int] = []
+        for spec in self.code:
+            m = _LINES.match(str(spec))
+            if not m or (m.group(2) and int(m.group(2)) < int(m.group(1))):
+                raise ValueError(f"bad code line {spec!r}; use a number like 8 or a range like '8-13'")
+            out += range(int(m.group(1)), int(m.group(2) or m.group(1)) + 1)
+        return out
+
 
 _FAULT = re.compile(r"^(relay|fixture)\.[a-z0-9_]+(:\S+)?$")
 
@@ -152,6 +323,8 @@ class Step(Strict):
     faults: list[str] = Field(default_factory=list)
     checks: list[Check] = Field(default_factory=list)
     hints: list[str] = Field(default_factory=list)
+    guide: list[GuideStep] = Field(default_factory=list, description="the lesson, step by step")
+    experiments: list[Experiment] = Field(default_factory=list)
     quiz: list[QuizItem] = Field(default_factory=list)
     story: list[str] = Field(default_factory=list, description="optional prose for the Why? chain")
     tutor_notes: str = ""
@@ -168,7 +341,21 @@ class Step(Strict):
     def _entry_is_a_file(self) -> "Step":
         if self.entry not in self.files:
             raise ValueError(f"entry {self.entry!r} is not one of files {sorted(self.files)}")
-        ids = [q.id for q in self.quiz]
-        if len(ids) != len(set(ids)):
-            raise ValueError(f"duplicate quiz ids in {ids}")
+        for kind, ids in (("quiz", [q.id for q in self.quiz]), ("experiment", [e.id for e in self.experiments]),
+                          ("guide step", [g.id for g in self.guide])):
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"duplicate {kind} ids in {ids}")
+        known = {e.id for e in self.experiments}
+        missing = [g.experiment for g in self.guide if g.experiment and g.experiment not in known]
+        if missing:
+            raise ValueError(f"guide steps name unknown experiments {missing}")
         return self
+
+    def guide_step(self, step_id: str) -> GuideStep | None:
+        return next((g for g in self.guide if g.id == step_id), None)
+
+    def experiment(self, experiment_id: str) -> Experiment | None:
+        return next((e for e in self.experiments if e.id == experiment_id), None)
+
+    def quiz_item(self, item_id: str) -> Any:
+        return next((q for q in self.quiz if q.id == item_id), None)

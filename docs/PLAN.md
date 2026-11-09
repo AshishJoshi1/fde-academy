@@ -1,20 +1,25 @@
 # Plan: FDE Academy, a learning lab built lesson by lesson
 
 ## Goal
-A local lab app for one learner (Ashish) to learn GenAI and agent engineering in depth: Python, the Anthropic SDK and LangGraph. Every lesson is a set of **experiments**. For each one you:
-1. predict,
-2. change one thing,
-3. run it live,
-4. compare the result with your prediction,
-5. explain the gap.
+A local lab app for one learner (Ashish) to learn GenAI and agent engineering in depth: Python, the Anthropic SDK and LangGraph. The browser teaches the way a tutor would in a chat: hands-on, one idea at a time, on the learner's own code and live runs.
 
-Each lesson ends with a quiz. A Claude tutor guides you with questions and step-by-step hints instead of handing out answers. The app grows one lesson at a time and has no feature a lesson doesn't need.
+- **Every lesson is a guided walkthrough.** Each step:
+  1. teaches one idea, and highlights the code lines it is about;
+  2. says exactly what to do in the lab (run, or change one line);
+  3. shows what the learner's own run measured, and what to notice in it;
+  4. checks understanding with a question, then gives the why.
+- **Experiments come after the teaching.** Once an idea is taught, a step can test it: predict, change one thing, run live, compare, explain the gap.
+- **Each lesson ends with a quiz.**
+- **Each module ends with a guided project** that connects the dots: a full app built step by step in the same format (see "Module projects").
+- **A Claude tutor on every step** answers "why?" with questions and hints, using the learner's code and run.
+- The app grows one lesson at a time and has no feature a lesson doesn't need.
 
 ## Principles
 - **Depth over polish.** A feature is built only when a lesson needs it.
 - **Simple features first.** Plain server-rendered pages with a little vanilla JavaScript, and a simple code editor on the lab page (or VS Code). A React and Monaco workbench comes later, and only if a lesson needs in-editor line highlighting.
 - **Live calls only.** No cassettes, replay or recording. A run costs cents, and the gateway enforces the key's $50 budget (CLAUDE.md, "Gateway").
-- **Predict before you run.** An experiment's Run stays locked until its predictions are committed.
+- **Teach before you ask.** No question comes before the idea it tests. Lesson text is never hidden, and Run is never locked.
+- **Predict before you compare.** An experiment's run is graded against predictions committed before it ran.
 - **Change one thing.** Each run shows the diff from your previous run of that step.
 - **Everything is saved and repeatable.** Runs, predictions and quiz answers are kept. You can reopen any run for free, redo any lesson, and missed items come back in spaced review.
 - **Learn while building.** Building a feature is part of the lesson that needs it. Where a feature is course material itself (the relay is a small LLM gateway, the tutor is an LLM app), Ashish does a hands-on part.
@@ -22,30 +27,43 @@ Each lesson ends with a quiz. A Claude tutor guides you with questions and step-
 
 ## How a lesson is made
 For each lesson:
-1. **Content:** `step.md`, starter, solution, `experiments:`, quiz and tutor notes, in `content/`.
+0. **Outline, approved first:** the guide-step titles (one line each, plus any experiment), agreed with Ashish before any content or feature work.
+1. **Content** in `content/`: `step.md` (a short intro), starter, solution, the `guide:` steps, any `experiments:`, the quiz and tutor notes. Teaching text is written from measured runs, never from memory.
 2. **App features** the lesson needs that don't exist yet, with tests.
-3. **Ashish does the lesson in the UI.** Misses are recorded. A card that misled gets fixed in the content.
+3. **Ashish does the lesson in the UI.** Misses are recorded. A step that misled gets fixed in the content.
 
-**Done when** the content validates, the tests pass and Ashish has completed the lesson in the UI.
+**Done when** the content validates, the tests pass, `tools/browser_check.py <step-id>` passes, and Ashish has completed the lesson in the UI.
+
+**One lesson per session:** a session builds one lesson (or one build stage) and ends with `/wrap`; the next starts fresh.
 
 ## The experience
-- **Top of the page:** the lesson text, then the simple editor on your `playground/<step-id>/` files (line numbers, Ctrl+S, Reset). VS Code works on the same files. Each run shows the diff from your previous run.
-- **Below it:** the experiment cards, one at a time:
-  1. **Predict:** answer the card's prediction questions (multiple choice, number or short text).
-  2. **Change:** the card says exactly what to edit. After the run you see the diff from your previous run.
-  3. **Run:** a live run. The console streams in, and every model call shows its exact request JSON, response blocks, `stop_reason`, usage, cost, latency and gateway headers.
-  4. **Compare:** your predictions next to the actual values. Each mismatch is flagged as a surprise.
-  5. **Explain:** the tutor asks you *why* first, then hints in three levels (a nudge, then where to look, then the answer). Then the card's authored explanation appears.
+- **The lab page** (`/lab/<step-id>`):
+  - **Left: the lesson,** one guided step at a time, with a bar of all steps (ticked when done) and Back and Next. The page remembers the step you're on, and `#<step id>` links to a step.
+  - **Right, always in view:** the model menu and Run, the simple editor on your `playground/<step-id>/` files, the console, and every model call (exact request and response, usage, cost, gateway headers). VS Code works on the same files. A run shows what changed since your previous run.
+- **A guided step:**
+  1. **Teach:** the idea, with its code lines highlighted in the editor.
+  2. **Do this:** exactly what to run or change.
+  3. **Your latest run:** the measured values the step is about (for example `response.blocks`), and **what to notice** in them.
+  4. **Check:** one or two questions, graded at once against a fixed answer or against your run, with the why. Misses come back in review.
+- **An experiment inside a step:** predict, change one thing, run it from the card (graded against your predictions), compare, then explain in your own words before the authored explanation appears. The tutor (stage 3) asks *why* first, then hints in three levels.
 - **In-lab tools**, for example a free "count tokens" button.
-- **End of step:** the quiz. Answers go through the same store as `labctl quiz record`.
+- **Last step:** the quiz. Answers go through the same store as `labctl quiz record`.
 - **Home page:**
   - Continue where you left off.
-  - Spaced review of missed quiz items and wrong predictions.
+  - Spaced review: missed checks and quiz items, and wrong predictions, each linked back to its step.
   - Running scores: prediction accuracy, surprises explained, mistakes cleared.
 - **Repeat:**
-  - **Reopen** any past run for free: the code snapshot, every call, the console, your predictions.
+  - **Reopen** any past run for free: the code snapshot, every call, the console.
   - **Redo** an experiment: earlier predictions stay hidden until you commit new ones, then show beside them.
   - **Reset** to the starter whenever you want.
+
+## Module projects: connect the dots
+After a module's lessons, its project is built as one more guided lesson, in the same format:
+- **Each step adds one piece of the real app** and names the lesson step that taught the idea behind it (for example "s01 step 3: `stop_reason`, now deciding the next action"). It teaches, highlights the code, has you write it, run it live, look at the run and check.
+- **The code accumulates.** Unlike a lesson, a project step doesn't start from a fresh starter: it continues from your code after the previous step. The project lives in its own repo (`C:\Users\AshishKumarJoshi\FDE\Projects\<nn>-<name>`), listed under "Tracked repos" in PROGRESS.md. Each step also has a reference solution to compare with or catch up from.
+- **It finishes with the spec's acceptance checks:** the eval run and its report, then `/quiz <module>`.
+- The project specs mandate the Claude Agent SDK. A project step that introduces it shows which hand-written part from the lessons it replaces (for example, the agent loop from s02).
+- **Module 02:** Project 01, ticket triage, and Project 02, vendor screening, both after all 17 lessons. Their design, including Project 02's SDK, is discussed with Ashish when the lessons are done, not before.
 
 ## Architecture
 - **Server** (exists): FastAPI on 127.0.0.1 with three security gates (Host allowlist, Origin check, per-launch token cookie), the SQLite store, the content loader and the server-rendered pages.
@@ -66,7 +84,7 @@ For each lesson:
   - Cost: about $0.01 per turn.
 - **UI:** server-rendered pages with small vanilla JavaScript, styled by `web/src/styles/academy.css` (the `/design` page is its reference). A React and Monaco workbench may replace them later. Views:
   - lesson text and the code diff
-  - experiment cards and quiz
+  - guided lesson steps, experiments and quiz
   - console, call inspector, usage and cost
   - run history
   - tutor
@@ -83,31 +101,69 @@ For each lesson:
 | `%LOCALAPPDATA%\fde-academy\academy.db` | Runs, run events, code snapshots, predictions, quiz attempts, spend | No. Exported to `progress/learner-progress.json` at `/wrap` |
 | `%LOCALAPPDATA%\fde-academy\anthropic.env` | Gateway credentials | Never |
 
-## Experiment format (a sketch, finalized while building s01)
+## Guide format
+Schema: `GuideStep` in `src/academy_server/content/schema.py`. Example (s01's step 2):
+```yaml
+guide:
+  - id: g2
+    title: "Content blocks"
+    code: [16, 19]                      # entry-file lines to highlight: 8 or "8-13"
+    teach: |                            # markdown
+      The response is not a string: its content is a list of typed blocks...
+    do: "Read the `blocks:` line in the Console, then open Response body in Call 1."
+    show: [response.blocks, response.has_thinking]   # facts from your latest run
+    notice: |
+      At effort low the model usually decides not to think...
+    check:                              # same item types as predictions, plus an explanation
+      - {id: c1, type: mcq, prompt: "Which blocks did your latest run return?",
+         options: [{label: "Only a text block", value: "text"}, {label: "Thinking, then text", value: "thinking, text"}],
+         answer_from: response.blocks, explanation: "..."}
+    experiment: e2                      # optional: an experiments: card done inside this step
+    quiz: false                         # true on the step that holds the quiz
+```
+A check graded against the run needs a finished run of the step; the API answers 409 until there is one. Check answers are recorded as quiz attempts (`<step>:<guide step>:<check>`), so misses come back in review.
+
+## Experiment format
+Schema: `Experiment` in `src/academy_server/content/schema.py`. Example (s01's E2):
 ```yaml
 experiments:
   - id: e2
     title: "Turn up effort"
-    question: "What does effort control on Opus 5.5?"
-    predict:                      # same item types as quiz
-      - {id: p1, type: mcq, prompt: "Will a thinking block appear?", options: ["yes", "no"], answer: 0}
-      - {id: p2, type: numeric, prompt: "output_tokens?", answer_from: run.usage.output_tokens, tol_pct: 50}
-    change: 'Set output_config.effort to "high". Change nothing else.'
-    observe: [content block types, usage.output_tokens, stop_reason]
-    tools: [count_tokens]
-    explain: >
-      Authored explanation, shown after Compare.
+    question: "What does output_config.effort change on Opus 5.5?"
+    predict:
+      - {id: p1, type: mcq, prompt: "Will a thinking block come back?", options: ["yes", "no"],
+         answer_from: response.has_thinking}
+      - id: p3
+        type: mcq
+        prompt: "Output tokens compared with your previous run?"
+        options: ["About the same (under 1.5x)", "About double (1.5x to 4x)", "Four times or more"]
+        bins: [1.5, 4]
+        answer_from: ratio.output_tokens
+    change: 'Change output_config={"effort": "low"} to {"effort": "high"}. Change nothing else.'
+    observe: ["Response body: the content block types"]
+    tools: [count_tokens]        # optional in-lab tools
+    explain: |
+      Authored explanation, shown after the learner writes their own.
 ```
-A prediction is graded either against a fixed answer or against the value the run actually produced (`answer_from`).
+- **Prediction types:**
+  - `mcq`: options are strings, or `{label, value}` when the label differs from the measured value. A boolean matches `yes` or `no`. With `bins`, a number picks an option by range.
+  - `numeric`: with `tol` (absolute), `tol_pct` or `tol_factor` (within a factor, for orders of magnitude); exact if none is given.
+  - `text`: your own words, not auto-graded. `show_from` puts the measured value beside them.
+- **Grading:** each prediction has either a fixed `answer` or an `answer_from` fact. A fact is one value measured from the run's events (`FACTS` in `schema.py`, for example `response.usage.output_tokens`, `request.retry_count`, `run.first_call_ms`), or from the previous run of the step (`ratio.output_tokens`). A fact path that isn't in `FACTS` fails content validation. `response.text_tokens` is measured with the gateway's `count_tokens`. A value the run didn't produce (no response came back, say) is "not graded", never a miss.
+- **Store:** each commit is an attempt (`experiment_attempts`, `predictions`). An attempt is graded against the one run started for it. A redo is a new attempt, and the earlier ones are shown beside it after the new commit.
 
 ## s01 "One call": the end result
-| Card | Predict | Change | See |
+| Step | Teaches | Your run shows | Then |
 |---|---|---|---|
-| E1 What comes back | Block types, `stop_reason`, size of `output_tokens` | Nothing | Exact request JSON, full response, usage, cost, gateway headers |
-| E2 Turn up effort | Thinking block or not? Tokens ×1, ×2 or ×10? | `effort` from `low` to `high` | Predicted vs actual; the diff shows one change |
-| E3 The missing tokens | Token count of the answer text | Use the count-tokens tool | Where the unexplained output tokens went |
-| E4 Hit the cap | What `max_tokens=20` does | One number | `stop_reason: max_tokens` and a cut-off answer |
-| Quiz | q1–q3 in `step.yaml` | | Answers saved, misses come back in review |
+| 1 The request | The client, the relay, the four request fields, a stateless API | model, max_tokens, effort, retry count, time to first call | Checks |
+| 2 Content blocks | Typed blocks; why filter by `block.type` | block types, thinking or not | Checks |
+| 3 stop_reason | What each value means, and the agent loop | stop_reason | Check |
+| 4 Usage and cost | Tokens and prices | input and output tokens, the lab's and the gateway's cost | Work out the cost |
+| 5 Effort and thinking | Effort as the dial; omitted thinking is still billed | | Experiment E2 |
+| 6 Hidden tokens | Tokens are not characters; `count_tokens` | | Experiment E3 |
+| 7 Hit the cap | `max_tokens` cuts thinking and text | | Experiment E4 |
+| 8 Models aren't interchangeable | Haiku 4.5's request shape; which errors are retried | | Experiment E5 |
+| 9 Quiz | | | q1 to q3 |
 
 **Done when:**
 - Tests prove all of the following:
@@ -119,23 +175,53 @@ A prediction is graded either against a fixed answer or against the value the ru
 
 **Build stages**, each one usable at the end:
 1. **Runner and thin relay:** run s01 from the browser and see the console and the raw request and response.
-2. **Experiment cards, quiz, run history and spaced review** on the lab page: s01 is fully playable and repeatable.
-3. **Tutor:** questions and hints based on your actual run.
+2. **Guided steps, experiments, quiz, run history and spaced review** on the lab page: s01 is fully playable and repeatable.
+3. **Tutor:** "Ask the tutor" on every step, answering with questions and hints based on your actual run.
 
-**Later, only if needed:** the React and Monaco workbench (editing in the page, plus line highlights for the "Why?" chain).
+**Later, only if needed:** the React and Monaco workbench (editing in the page with richer code tools).
 
 ## Lab 02 roadmap: what each step adds to the app
 | Step | New in the app |
 |---|---|
-| s01 One call | Runner, thin relay, lab page, experiment cards, quiz, run history, tutor |
+| s01 One call | Runner, thin relay, lab page, guided steps with code highlights and run values, experiments, quiz, run history, tutor |
 | s02 Manual loop | The Meridian mock API (vendored `meridian_api.py`) as the tools' backend; a messages view of what each turn added; a timeline of all calls |
 | s03 Parallel tool calls | Several tool calls per turn on the timeline; an automatic check that all `tool_result`s went back in one user message |
 | s04 Gate and block | A "block tool X" toggle (`work/policy.json`); the mock API's write log proving zero writes; the "Why?" chain from outcome back to the code line, shown as a highlighted snippet |
 | s05 Tool runner and approval | The run pauses for Approve or Deny in the UI |
 | s06 Strict schema | A malformed-call fuzzer and its results |
 
+## Module 02 outline (proposed: awaiting Ashish's OK)
+Seventeen lessons after s01, then the two guided projects. Each lesson's guide-step titles are approved before it is built.
+
+| # | Lesson | Teaches | Hands-on | New in the app |
+|---|---|---|---|---|
+| **Lab 02** | | | | |
+| 1 | s02 The manual loop | Tool definitions; `tool_use` → run → `tool_result` → call again until `end_turn`; history only grows | A Meridian lookup tool, turn by turn; drop a `tool_result` and see the 400 | Meridian mock API backend; per-turn messages view; call timeline |
+| 2 | s03 Parallel tool calls | Several `tool_use` blocks in a turn; all results in one user message; `is_error` | A question needing 3 lookups at once | Parallel calls on the timeline; "one message" check |
+| 3 | s04 Gate and block | Policy enforced in code, not the prompt | Prompt-only "don't write" against a code gate; the request log proves zero writes | Block-tool toggle; the API's request log |
+| 4 | s05 Tool runner and approval | `@beta_tool`, `tool_runner`, approval gates | Replace the s02 loop with the runner; approve or deny a write | Run pauses for Approve or Deny |
+| 5 | s06 Strict tool schemas | `strict: true`, `required`, `additionalProperties: false`; forced `tool_choice` is a 400 on Opus 5.5 | Malformed inputs with strict off, then on | Malformed-input fuzzer |
+| **02-A** | | | | |
+| 6 | Designing tools | Names, descriptions and errors that steer the model; few tools or many | Rewrite a vague description; measure the wrong-tool rate over 10 runs | "Run N times and tally" |
+| 7 | Memory | Context against a memory store; the memory tool | Notes that last across runs | Memory-file viewer |
+| 8 | MCP | Serving tools over MCP; discovery | Meridian as a small MCP server, called from your agent | Runner starts the MCP server beside the lesson |
+| 9 | The Claude Agent SDK | The same loop, packaged: `query()`, in-process tools, hooks, subagents | Rebuild the s02 agent and compare the calls | The SDK's calls in the inspector (relay routing to be verified) |
+| **02-B** | | | | |
+| 10 | Prompt chains | Typed, schema-validated hand-offs; retry once, then fail naming the step | classify → enrich → respond on 3 tickets | Step view: input, output, validation |
+| 11 | Routing and early exit | Classify once; route map and precedence as data; a cheap exit | Mixed and spam tickets; the cost of exiting early | Decision view |
+| 12 | LangGraph basics | State, nodes, conditional edges, reducers | Lesson 10's chain as a graph | Graph view: nodes visited, state after each |
+| 13 | Fan-out and aggregation | Parallel workers (`Send` or subagents), per-worker timeouts, failing honestly; supervisor against swarm | Three checks in parallel, one deliberately slowed | Parallel lanes; "slow this worker" switch |
+| 14 | Checkpoints and human-in-the-loop | Checkpointers, resume after a crash, `interrupt()` | Kill a run halfway and resume; approve mid-graph | Kill and resume; the s05 approval pause reused |
+| **02-C** | | | | |
+| 15 | Prompt injection | Untrusted text as data; delimiting; a detection signal | `[ADMIN OVERRIDE]`-style tickets against your chain | Attack-case table |
+| 16 | Enforcement outside the model | Output checks in code | Catch a draft that promises a refund or leaks internal notes | Check results per run |
+| **02-D** | | | | |
+| 17 | Idempotency and compaction | Retries that don't write twice; long loops within the context window | A retried write with and without an idempotency key; compaction on a long loop | Context size per turn |
+
+**Then:** Project 01, ticket triage (from lessons 9 to 11, 15 and 16), and Project 02, vendor screening (from lessons 9, 13 and 14), each a guided project; then `/quiz m02`.
+
 ## Curriculum
-Every module ends with `/quiz <module>` (all misses listed and recorded) and then a project build.
+Every module ends with its guided project ("Module projects") and `/quiz <module>` (all misses listed and recorded).
 1. **Module 02, The Agent Loop.**
    - Lab 02 (above).
    - 02-A: tools, skills, memory and MCP, including a small MCP server over the Meridian API.
@@ -173,4 +259,5 @@ Every module ends with `/quiz <module>` (all misses listed and recorded) and the
 - Learner state lives in SQLite, and the export is committed.
 
 ## Open items
+- **The Module 02 projects** (including Project 02's SDK: its spec says the Claude Agent SDK, while the curriculum said a LangGraph `Send` fan-out): discussed with Ashish after all 17 lessons, not before.
 - The programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk.

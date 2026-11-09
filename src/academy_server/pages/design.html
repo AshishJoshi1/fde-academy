@@ -109,7 +109,7 @@
         <span class="pill pill-paused">paused · awaiting approval</span>
         <span class="pill pill-accent">added this turn</span>
         <span class="pill pill-plain pill-mono">end_turn</span>
-        <span class="pill pill-plain pill-mono">replay · cassette hit</span>
+        <span class="pill pill-plain pill-mono">live · via gateway</span>
       </div></div>
 
     <div><p class="demo-label">Pills: step status</p>
@@ -231,7 +231,7 @@ response = client.messages.<span class="tok-fn">create</span>(
       </div>
       <div class="pane-body">
         <div role="tabpanel" id="wb-console" aria-labelledby="wb-t-console" hidden>
-<div class="console"><span class="meta">$ python -X utf8 -u -m labkit.run main.py   (replay · cassette happy/blocked-update)</span>
+<div class="console"><span class="meta">$ python -X utf8 -u main.py   (model claude-opus-5-5, limit 120 s)</span>
 → get_opportunity(opportunity_id="OPP-003")
 → update_opportunity(opportunity_id="OPP-003", stage="won")
   <span class="prompt">gate: deny update_opportunity (rule: policy.deny)</span>
@@ -246,9 +246,9 @@ usage: 3 calls · input=9,418 output=642 cache_read=4,096
         <div role="tabpanel" id="wb-why" aria-labelledby="wb-t-why" data-clone="#demo-why"></div>
       </div>
       <div class="pane-foot">
-        <span class="pill pill-plain pill-mono">replay · cassette hit</span>
+        <span class="pill pill-plain pill-mono">live · via gateway</span>
         <span class="num">3 LLM calls</span><span class="num">4.0 s</span><span class="spacer"></span>
-        <span class="num">$0.0000 spent (≈ $0.041 live)</span>
+        <span class="num">spent $0.041</span>
       </div>
     </div>
   </div>
@@ -314,7 +314,7 @@ usage: 3 calls · input=9,418 output=642 cache_read=4,096
           <dt>stop_reason</dt><dd><code>tool_use</code></dd>
           <dt>input_tokens</dt><dd>3,212</dd>
           <dt>output_tokens</dt><dd>118</dd>
-          <dt>Cost (replay, ≈ live)</dt><dd>$0.0152</dd>
+          <dt>Cost</dt><dd>$0.0152</dd>
           <dt>Call site</dt><dd><code>main.py:21</code></dd>
         </dl>
       </div>
@@ -416,7 +416,7 @@ usage: 3 calls · input=9,418 output=642 cache_read=4,096
         <div class="seg seg-3" style="--w:9.9"></div><div class="seg seg-track" style="--w:56.5"></div>
       </div>
       <div class="callout"><span class="icon icon-info" aria-hidden="true"></span>
-        <p class="small">Prices come from <code>pricing.yaml</code> and cassettes store usage only, so changing a price re-prices every replay.
+        <p class="small">Prices come from <code>pricing.yaml</code> and runs store usage only, so changing a price re-prices every past run.
         This example: 1,432 × $4 + 2,048 × $0.20 + 412 × $20, per million tokens.</p></div>
     </div>
   </div>

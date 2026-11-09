@@ -50,6 +50,10 @@ def cmd_status(args) -> int:
         + (f" (concepts: {concepts})" if concepts else "") + f", {q['fixed_after_retry']} fixed after retry",
         f"Spend: today ${st['spend']['today_usd']:.4f}, total ${st['spend']['total_usd']:.4f}",
     ]
+    pr = st.get("predictions")
+    if pr and pr["graded"]:
+        lines.insert(3, f"Predictions: {pr['right']}/{pr['graded']} right, {pr['explained']}/{pr['surprises']} "
+                        f"surprises explained, {pr['cards_done']} card(s) done")
     if not args.brief:
         lines += [f"Failing checks (latest run per step): {st['failing_checks']}", f"DB: {st['db']}"]
     print("\n".join(lines))

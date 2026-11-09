@@ -6,6 +6,9 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
 - Remote: https://github.com/AshishJoshi1/fde-academy (private), branch `main`.
 - **How we work:** the app is built lesson by lesson (`docs/PLAN.md`, "How a lesson is made").
   - Each lesson is its content, plus the app features it needs, plus Ashish doing it in the UI. No feature without a lesson that needs it.
+  - **Outline first:** before building a lesson, propose its guide-step titles (one line each, plus any experiment) and get Ashish's OK. No content or features before that.
+  - **One lesson per session:** a session builds one lesson (or one build stage), then ends with `/wrap`. The next lesson starts in a fresh session, because every turn resends the whole conversation.
+  - Lessons teach before they ask: guided steps (teach, highlight the code, do, your run, check), then experiments (`docs/PLAN.md`, "The experience").
   - Teach while building: explain the code, and give Ashish a hands-on part where a feature is course material (the relay, the tutor).
   - Live calls only: no cassettes, replay or recording.
   - Simple features first: server-rendered pages and vanilla JavaScript.
@@ -33,6 +36,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - `playground/<step-id>/` (tracked in git) holds Ashish's code for each step. He edits it in the lab page's simple editor or in VS Code. A save from the page refuses to overwrite a file changed on disk (409) unless he confirms.
 - Run the app with `python run.py`. Run tests with `.venv/Scripts/python -X utf8 -m pytest`, and validate lessons with `.venv/Scripts/python -X utf8 tools/labctl.py content validate`.
 - Run a lesson step from the browser: `python run.py`, then open `/lab/<step-id>`. It shows the console and every model call's exact request and response.
+- Browser-check a lesson: `.venv/Scripts/python -X utf8 tools/browser_check.py <step-id>`. It walks every guide step in headless Edge (Run, checks, experiments, quiz) against a fake gateway, with its own temporary data and playground: no API spend, and your progress is untouched. It reports JavaScript errors and saves a screenshot per step. Run it before handing a lesson to Ashish.
 - Run a lesson step from the command line: `.venv/Scripts/python -X utf8 tools/run_live.py <step-id>` (`--reset`, `--model`).
   - The first run copies the starter into `playground/`, and later runs never overwrite edits.
   - Prefix `ANTHROPIC_LOG=debug` to log each request body and retry decision. It never logs the key.

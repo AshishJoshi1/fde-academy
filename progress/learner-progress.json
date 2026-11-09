@@ -1,7 +1,7 @@
 {
- "exported_at": "2026-11-06T20:09:29.599+00:00",
+ "exported_at": "2026-11-09T09:09:00.511+00:00",
  "format": "fde-academy-progress",
- "schema_version": 2,
+ "schema_version": 3,
  "tables": {
   "check_results": [],
   "code_snapshots": [
@@ -11,6 +11,7 @@
     "filename": "main.py",
     "id": 1,
     "kind": "run",
+    "run_id": "20261107-010935-3ba5bc",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -19,6 +20,7 @@
     "filename": "main.py",
     "id": 2,
     "kind": "run",
+    "run_id": "20261107-011042-68c9a8",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -27,6 +29,7 @@
     "filename": "main.py",
     "id": 3,
     "kind": "run",
+    "run_id": "20261107-011109-68d073",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -35,6 +38,7 @@
     "filename": "main.py",
     "id": 4,
     "kind": "run",
+    "run_id": "20261107-011139-bfe71a",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -43,6 +47,7 @@
     "filename": "main.py",
     "id": 5,
     "kind": "run",
+    "run_id": "20261107-013301-ed34b3",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -51,6 +56,7 @@
     "filename": "main.py",
     "id": 6,
     "kind": "run",
+    "run_id": "20261107-013324-3b8a62",
     "step_id": "m02.lab02.s01"
    },
    {
@@ -59,21 +65,70 @@
     "filename": "main.py",
     "id": 7,
     "kind": "run",
+    "run_id": "20261107-013331-51a7cc",
+    "step_id": "m02.lab02.s01"
+   },
+   {
+    "code": "import os\n\nimport anthropic\n\nclient = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\nMODEL = os.getenv(\"LAB_MODEL\", \"claude-opus-5-5\")\n\nresponse = client.messages.create(\n    model=MODEL,\n    max_tokens=1024,\n    output_config={\"effort\": \"low\"},  # Opus 5.5: thinking can't be disabled; effort is the dial\n    messages=[{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}],\n)\n\nprint(\"stop_reason:\", response.stop_reason)\nprint(\"blocks:\", [block.type for block in response.content])\n\n# Keep only text blocks: content[0] may be a (empty) thinking block.\nanswer = \"\".join(block.text for block in response.content if block.type == \"text\")\nprint(\"answer:\", answer)\n\nu = response.usage\nprint(f\"usage: input={u.input_tokens} output={u.output_tokens} \"\n      f\"cache_write={u.cache_creation_input_tokens} cache_read={u.cache_read_input_tokens}\")\n",
+    "created_at": "2026-11-09T08:43:55.456+00:00",
+    "filename": "main.py",
+    "id": 8,
+    "kind": "run",
+    "run_id": "20261109-141355-3fd162",
     "step_id": "m02.lab02.s01"
    }
   ],
+  "experiment_attempts": [],
   "position": [
    {
     "cursor_col": null,
     "cursor_line": null,
     "filename": "main.py",
     "id": 1,
-    "last_run_id": "20261107-013331-51a7cc",
+    "last_run_id": "20261109-141355-3fd162",
     "step_id": "m02.lab02.s01",
-    "updated_at": "2026-11-06T20:03:31.559+00:00"
+    "updated_at": "2026-11-09T08:43:55.456+00:00"
    }
   ],
-  "quiz_attempts": [],
+  "predictions": [],
+  "quiz_attempts": [
+   {
+    "answer_json": "2",
+    "concepts_json": "[]",
+    "correct": 0,
+    "correct_json": "\"The whole conversation so far, plus the new message\"",
+    "created_at": "2026-11-09T08:45:13.724+00:00",
+    "feedback": null,
+    "graded_by": "auto",
+    "id": 1,
+    "item_id": "m02.lab02.s01:g1:c2",
+    "item_version": 1,
+    "module_id": "m02",
+    "question": "Your agent makes a second call to continue the conversation. What must that call's messages contain?",
+    "score": null,
+    "source": "app",
+    "step_id": "m02.lab02.s01",
+    "type": "mcq"
+   },
+   {
+    "answer_json": "1",
+    "concepts_json": "[]",
+    "correct": 1,
+    "correct_json": "\"max_tokens\"",
+    "created_at": "2026-11-09T08:45:14.789+00:00",
+    "feedback": null,
+    "graded_by": "auto",
+    "id": 2,
+    "item_id": "m02.lab02.s01:g1:c1",
+    "item_version": 1,
+    "module_id": "m02",
+    "question": "Which field stops the model from generating more than a fixed number of tokens?",
+    "score": null,
+    "source": "app",
+    "step_id": "m02.lab02.s01",
+    "type": "mcq"
+   }
+  ],
   "run_events": [
    {
     "data_json": "{\"step_id\": \"m02.lab02.s01\", \"model\": \"claude-sonnet-5-5\", \"entry\": \"main.py\", \"timeout_s\": 120, \"pid\": 30068, \"job_object\": true}",
@@ -802,6 +857,62 @@
     "seq": 32,
     "t_ms": 2900,
     "type": "run.exit"
+   },
+   {
+    "data_json": "{\"step_id\": \"m02.lab02.s01\", \"model\": \"claude-opus-5-5\", \"entry\": \"main.py\", \"timeout_s\": 120, \"pid\": 26220, \"job_object\": true}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 1,
+    "t_ms": 22,
+    "type": "run.started"
+   },
+   {
+    "data_json": "{\"call\": 1, \"method\": \"POST\", \"path\": \"/v1/messages\", \"query\": null, \"headers\": {\"x-stainless-timeout\": \"600\", \"x-stainless-retry-count\": \"0\", \"x-stainless-read-timeout\": \"600\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"user-agent\": \"Anthropic/Python 2.6.0\", \"x-stainless-lang\": \"python\", \"x-stainless-package-version\": \"2.6.0\", \"x-stainless-os\": \"Windows\", \"x-stainless-arch\": \"other:amd64\", \"x-stainless-runtime\": \"CPython\", \"x-stainless-runtime-version\": \"3.14.7\", \"x-stainless-async\": \"false\", \"anthropic-version\": \"2026-10-21\"}, \"body\": {\"max_tokens\": 1024, \"messages\": [{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}], \"model\": \"claude-opus-5-5\", \"output_config\": {\"effort\": \"low\"}}}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 2,
+    "t_ms": 2281,
+    "type": "llm.request"
+   },
+   {
+    "data_json": "{\"call\": 1, \"status\": 200, \"stream\": false, \"ms\": 3026, \"headers\": {\"alt-svc\": \"h3=\\\":443\\\"; ma=2592000\", \"content-security-policy\": \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'\", \"content-type\": \"application/json\", \"date\": \"Mon, 09 Nov 2026 08:43:59 GMT, Mon, 09 Nov 2026 08:43:59 GMT\", \"referrer-policy\": \"strict-origin-when-cross-origin\", \"strict-transport-security\": \"max-age=31536000; includeSubDomains\", \"via\": \"1.1 Caddy\", \"x-content-type-options\": \"nosniff\", \"x-frame-options\": \"DENY\", \"x-litellm-call-id\": \"fa256fc9-03d4-486c-abc8-14f27699eaa6\", \"x-litellm-key-max-budget\": \"50.0\", \"x-litellm-key-rpm-limit\": \"60\", \"x-litellm-key-spend\": \"0.014914999999999998\", \"x-litellm-key-tpm-limit\": \"100000\", \"x-litellm-model-id\": \"bc14cacc45f8785e90924f8f06c035ca683f5479b9e8f38934e2742e6a6b4a4e\", \"x-litellm-response-cost-discount-amount\": \"0.0\", \"x-litellm-response-cost-margin-amount\": \"0.0\", \"x-litellm-response-cost-margin-percent\": \"0.0\", \"x-litellm-response-cost-original\": \"0.001668\", \"x-litellm-version\": \"1.84.1\", \"transfer-encoding\": \"chunked\"}, \"body\": {\"model\": \"claude-opus-5-5\", \"id\": \"msg_011Cgs4PQQA5VV6GgbhdNErt\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"An agent loop is the repeating cycle in which an AI model observes its current state or context, decides on an action (such as calling a tool), executes it, feeds the result back into its context, and continues iterating until the task is complete or a stopping condition is met.\"}], \"container\": null, \"stop_reason\": \"end_turn\", \"stop_sequence\": null, \"stop_details\": null, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 79, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 101}, \"diagnostics\": null}, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 79, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 101}, \"cost_usd\": 0.001668}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 3,
+    "t_ms": 5308,
+    "type": "llm.response"
+   },
+   {
+    "data_json": "{\"text\": \"stop_reason: end_turn\"}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 4,
+    "t_ms": 5340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"blocks: ['text']\"}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 5,
+    "t_ms": 5340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"answer: An agent loop is the repeating cycle in which an AI model observes its current state or context, decides on an action (such as calling a tool), executes it, feeds the result back into its context, and continues iterating until the task is complete or a stopping condition is met.\"}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 6,
+    "t_ms": 5340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"usage: input=22 output=79 cache_write=0 cache_read=0\"}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 7,
+    "t_ms": 5340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"outcome\": \"ok\", \"exit_code\": 0}",
+    "run_id": "20261109-141355-3fd162",
+    "seq": 8,
+    "t_ms": 5827,
+    "type": "run.exit"
    }
   ],
   "runs": [
@@ -895,6 +1006,19 @@
     "run_id": "20261107-013331-51a7cc",
     "started_at": "2026-11-06T20:03:31.559+00:00",
     "step_id": "m02.lab02.s01"
+   },
+   {
+    "checks_passed": 0,
+    "checks_total": 0,
+    "cost_usd": 0.001668,
+    "ended_at": "2026-11-09T08:44:01.288+00:00",
+    "mode": "live",
+    "model": "claude-opus-5-5",
+    "module_id": "m02",
+    "outcome": "ok",
+    "run_id": "20261109-141355-3fd162",
+    "started_at": "2026-11-09T08:43:55.456+00:00",
+    "step_id": "m02.lab02.s01"
    }
   ],
   "spend": [
@@ -957,14 +1081,26 @@
     "run_id": "20261107-013324-3b8a62",
     "source": "run",
     "ts": "2026-11-06T20:03:29.288+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "cost_usd": 0.001668,
+    "id": 6,
+    "input_tokens": 22,
+    "model": "claude-opus-5-5",
+    "output_tokens": 79,
+    "run_id": "20261109-141355-3fd162",
+    "source": "run",
+    "ts": "2026-11-09T08:44:00.764+00:00"
    }
   ],
   "step_progress": [
    {
-    "attempts": 7,
+    "attempts": 8,
     "code_hash": null,
     "completed_at": null,
-    "last_opened_at": "2026-11-06T20:03:31.559+00:00",
+    "last_opened_at": "2026-11-09T08:43:55.456+00:00",
     "module_id": "m02",
     "status": "in_progress",
     "step_id": "m02.lab02.s01"

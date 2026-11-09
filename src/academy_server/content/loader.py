@@ -40,7 +40,8 @@ class LoadedStep:
             "has_solution": bool(s.solution), "panels": s.panels, "run": s.run.model_dump(),
             "toggles": [t.model_dump() for t in s.toggles], "faults": s.faults,
             "checks": [{"id": c.check_id, "type": c.type, "severity": c.severity} for c in s.checks],
-            "hints": s.hints, "quiz": [q.public() for q in s.quiz],
+            "hints": s.hints, "experiments": [e.public() for e in s.experiments],
+            "quiz": [q.public() for q in s.quiz],
         }
 
 

@@ -1,9 +1,10 @@
 """Server-rendered HTML pages, all styled by /static/academy.css.
 
-The home placeholder, the styled 401 page (served before any session exists) and
-the /design style guide, and the lab page where a step is run.
+The home page, the styled 401 page (served before any session exists), the /design
+style guide, and the lab page where a step is run.
 
-Standard library only. Every dynamic value goes through html.escape.
+Every dynamic value goes through html.escape. Lesson markdown is rendered with raw HTML
+disabled, so step.md can't inject markup either.
 """
 from __future__ import annotations
 
@@ -52,6 +53,12 @@ def esc(value: Any) -> str:
 
 def theme_or_none(value: str | None) -> str | None:
     return value if value in THEMES else None
+
+
+def markdown(text: str) -> str:
+    """Lesson markdown (CommonMark plus tables) to HTML. Raw HTML in the source is escaped."""
+    from markdown_it import MarkdownIt   # only the lab page needs it
+    return MarkdownIt("commonmark", {"html": False}).enable("table").render(text)
 
 
 def status_pill(status: str) -> str:
@@ -119,22 +126,25 @@ def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
           <a class="btn btn-primary" href="/lab/{esc(resume_id)}">Open the lab</a>
           <a class="btn" href="/design">See the design system</a>
         </div>
-        <p class="small muted" style="margin:0">The lab runs your code from the browser and shows the console and
-        every model call. Experiment cards, the quiz and the tutor come next.</p>
+        <p class="small muted" style="margin:0">The lab runs your code from the browser, shows the console and
+        every model call, and grades your predictions against the run. The tutor comes next.</p>
       </div>"""
     else:
         continue_card = """
       <div class="card card-pad"><p class="eyebrow">No lessons yet</p>
       <p>No lesson steps were found under <code>content/</code>.</p></div>"""
 
+    pr = st["predictions"]
+    accuracy = f"{pr['right'] / pr['graded']:.0%}" if pr["graded"] else "–"
     tiles = "".join(f"""
         <div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{value}</div>
         <div class="stat-sub">{sub}</div></div>""" for label, value, sub in [
-        ("Steps opened", f"{opened:,}", f"of {len(tree.steps):,} written"),
-        ("Quiz attempts", f"{st['quiz']['attempts']:,}", f"{st['quiz']['correct']:,} correct"),
-        ("Still wrong", f"{st['quiz']['still_wrong']:,}", f"{st['quiz']['fixed_after_retry']:,} fixed after retry"),
+        ("Predictions right", accuracy, f"{pr['right']:,} of {pr['graded']:,} graded"),
+        ("Surprises explained", f"{pr['explained']:,}", f"of {pr['surprises']:,} wrong predictions"),
+        ("Mistakes cleared", f"{st['quiz']['fixed_after_retry']:,}", f"{st['quiz']['still_wrong']:,} quiz items still wrong"),
         ("Spend today", f"${st['spend']['today_usd']:.4f}", f"${st['spend']['total_usd']:.4f} total"),
     ])
+    review = review_card(tree, store)
 
     modules = []
     for m in tree.outline(step_status):
@@ -167,15 +177,16 @@ def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
 
     body = f"""
 <section class="container page-head">
-  <p class="eyebrow">Interactive course · GenAI and agent engineering</p>
+  <p class="eyebrow">A learning lab · GenAI and agent engineering</p>
   <h1>Learn agent engineering by watching it run.</h1>
-  <p class="lede">Lesson code on the left, the live outcome on the right: the trace, the actual
-  <code>messages</code> array, tokens and cost, and a “Why?” chain from every result back to the line that caused it.</p>
+  <p class="lede">Every lesson is a set of experiments: predict, change one thing, run it live, compare
+  what the run measured with what you expected, then explain the gap.</p>
 </section>
 <section class="container stack-lg" style="padding-bottom:var(--sp-7)">
   <div class="grid-2">{continue_card}
     <div class="grid-tiles" style="align-content:start">{tiles}</div>
   </div>
+  {review}
   <div>
     <h2>Course</h2>
     <div class="stack-lg">{''.join(modules) or '<p class="muted">No modules yet.</p>'}</div>
@@ -183,6 +194,44 @@ def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
   </div>
 </section>"""
     return shell("FDE Academy", body, theme=theme, active="home")
+
+
+def review_card(tree: Any, store: Any) -> str:
+    """Spaced review: quiz items still wrong, then wrong predictions, oldest first."""
+    still = store.mistakes()["still_wrong"]
+    surprises = store.surprises()
+    items = []
+    for m in still[:6]:
+        step = m["step_id"] if m["step_id"] in tree.steps else None
+        parts = m["item_id"].split(":")      # <step>:<quiz id> or <step>:<guide step>:<check id>
+        anchor = parts[1] if len(parts) == 3 else "quiz"
+        link = (f'<a class="btn btn-sm" href="/lab/{esc(step)}#{esc(anchor)}">Retry in the lab</a>' if step
+                else '<span class="small muted">asked in chat; re-asked by /today</span>')
+        items.append(f"""
+          <li class="row" style="justify-content:space-between;gap:var(--sp-3)">
+            <span><span class="pill pill-critical">Quiz</span> {esc(m['question'] or m['item_id'])}
+            <span class="small muted">· missed {m['misses']} of {m['tries']}</span></span>{link}</li>""")
+    for sp in surprises[:6]:
+        step = sp["step_id"] if sp["step_id"] in tree.steps else None
+        exp = tree.steps[step].spec.experiment(sp["experiment_id"]) if step else None
+        title = f"{sp['experiment_id'].upper()} {exp.title}" if exp else sp["experiment_id"].upper()
+        link = f'<a class="btn btn-sm" href="/lab/{esc(step)}#{esc(sp['experiment_id'])}">Redo the card</a>' if step else ""
+        explained = "" if sp["explained_at"] else ' <span class="pill pill-warning">not explained yet</span>'
+        items.append(f"""
+          <li class="row" style="justify-content:space-between;gap:var(--sp-3)">
+            <span><span class="pill pill-accent">{esc(title)}</span> {esc(sp['prompt'] or sp['item_id'])}
+            <span class="small muted">· the run measured {esc(sp['actual_display'] or '?')}</span>{explained}</span>
+            {link}</li>""")
+    body = (f'<ul class="stack" style="list-style:none;margin:0;padding:0">{"".join(items)}</ul>' if items
+            else '<p class="small muted" style="margin:0">Nothing to review: no missed quiz items or wrong predictions.</p>')
+    return f"""
+  <div class="card card-pad stack">
+    <p class="eyebrow">Spaced review</p>
+    <h2 style="margin:0">What to look at again</h2>
+    <p class="small secondary" style="margin:0">Quiz items you got wrong, and predictions the run proved wrong
+    (from each card's latest attempt). Right answers on a retry clear them.</p>
+    {body}
+  </div>"""
 
 
 # ------------------------------------------------------------- unauthorized
@@ -226,15 +275,19 @@ def unauthorized_page(port: int, *, reason: str = "no_session") -> str:
 
 # ------------------------------------------------------------------- design
 def lab_page(step: Any, code_path: Path, *, gateway: bool, theme: str | None = None) -> str:
-    """Stage 1 lab: Run, the live console and every model call (exact request and response)."""
+    """The lab: the lesson, the editor, Run with its console and model calls, the experiment cards and the quiz."""
     note = "" if gateway else (
         '<div class="callout callout-warning" style="margin-top:var(--sp-3)"><span class="icon icon-alert" aria-hidden="true">'
         '</span><p class="small">No gateway credentials were found when the server started, so model calls will fail '
         'with 503. Add <code>ANTHROPIC_BASE_URL</code> and <code>ANTHROPIC_API_KEY</code> to '
         f'<code>{esc(paths.credentials_path())}</code> and restart <code>python run.py</code>.</p></div>')
     body = (HERE / "lab.html").read_text(encoding="utf-8")
+    lesson = step.body_md
+    if lesson.lstrip().startswith("# "):     # the page shows the title already
+        lesson = lesson.lstrip().split("\n", 1)[1] if "\n" in lesson.lstrip() else ""
     for key, value in {"{{step_id_json}}": json.dumps(step.full_id), "{{step_id}}": esc(step.full_id),
                        "{{title}}": esc(step.spec.title), "{{code_path}}": esc(code_path),
+                       "{{lesson_html}}": markdown(lesson) if lesson.strip() else "<p>No lesson text.</p>",
                        "{{gateway_note}}": note,
                        "{{model_options}}": "".join(f"<option>{esc(m)}</option>" for m in LAB_MODELS),
                        "{{model_notes_json}}": json.dumps(LAB_MODELS)}.items():

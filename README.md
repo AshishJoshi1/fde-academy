@@ -2,14 +2,9 @@
 
 A local lab for learning GenAI and agent engineering in depth: agent loops, tools, guardrails, retrieval, evals, observability and deployment, with Python, the Anthropic SDK and LangGraph. It's built for one learner.
 
-Every lesson is a set of experiments. For each one you:
-1. predict what will happen;
-2. change one thing in real code;
-3. run it live against Claude;
-4. compare the result with your prediction;
-5. explain the gap.
+Every lesson is a guided walkthrough in the browser. Each step teaches one idea, highlights the code it's about, has you run or change that code live against Claude, shows what your own run measured, and checks your understanding. Once an idea is taught, experiments test it: predict, change one thing, run, compare, explain the gap.
 
-A Claude tutor guides you with questions and hints. Each lesson ends with a quiz, and missed items come back in spaced review.
+Each lesson ends with a quiz, and missed items come back in spaced review. Each module ends with a project built step by step in the same format, connecting what the lessons taught. A Claude tutor on every step answers your "why?" with questions and hints.
 
 > Status: built lesson by lesson. See [docs/PLAN.md](docs/PLAN.md) and [PROGRESS.md](PROGRESS.md).
 

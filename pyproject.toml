@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.27",            # relay upstream client + FastAPI TestClient
     "pydantic>=2.9",
     "pyyaml>=6",
+    "markdown-it-py>=3",      # lesson text (step.md) on the lab page; raw HTML disabled
     "truststore>=0.9",        # corporate TLS interception (Windows cert store)
 ]
 

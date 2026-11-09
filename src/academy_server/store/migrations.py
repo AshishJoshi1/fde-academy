@@ -120,4 +120,41 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (run_id, seq)
     );
     """,
+    # 3: experiments (predictions graded against a run), and which run each code snapshot is from
+    """
+    ALTER TABLE code_snapshots ADD COLUMN run_id TEXT;   -- set on kind = 'run'
+    CREATE INDEX code_snapshots_by_run ON code_snapshots (run_id);
+    -- Earlier run snapshots: each was written in its run's start transaction, just after the run row.
+    UPDATE code_snapshots SET run_id = (
+        SELECT r.run_id FROM runs r WHERE r.step_id = code_snapshots.step_id
+          AND r.started_at <= code_snapshots.created_at ORDER BY r.started_at DESC, r.run_id DESC LIMIT 1)
+    WHERE kind = 'run';
+
+    CREATE TABLE experiment_attempts (
+        id            INTEGER PRIMARY KEY,
+        step_id       TEXT NOT NULL,
+        module_id     TEXT NOT NULL,
+        experiment_id TEXT NOT NULL,                -- e.g. e2
+        attempt       INTEGER NOT NULL,             -- 1, then 2 after a redo, ...
+        run_id        TEXT REFERENCES runs (run_id),  -- the run the predictions are graded against
+        explanation   TEXT,                         -- the learner's own why, before the card's
+        committed_at  TEXT NOT NULL,
+        graded_at     TEXT,
+        explained_at  TEXT,
+        UNIQUE (step_id, experiment_id, attempt)
+    );
+
+    CREATE TABLE predictions (
+        attempt_id  INTEGER NOT NULL REFERENCES experiment_attempts (id) ON DELETE CASCADE,
+        item_id     TEXT NOT NULL,                  -- e.g. p1
+        type        TEXT NOT NULL,                  -- mcq | numeric | text
+        prompt      TEXT,
+        answer_json TEXT NOT NULL,
+        actual_json TEXT,                           -- what the run measured, once graded
+        actual_display TEXT,
+        correct     INTEGER,                        -- NULL: not auto-graded, or not measured
+        note        TEXT,
+        PRIMARY KEY (attempt_id, item_id)
+    );
+    """,
 ]

@@ -4,11 +4,6 @@ files:
   main.py: starter/main.py
 solution:
   main.py: solution/main.py
-panels: [console, messages, tokens, trace]
-run:
-  mode: replay
-  step: llm
-  cassettes: [happy]
 hints:
   - "Print response.content[0].type. Is it always 'text'?"
   - "Thinking tokens are billed as output tokens even when the thinking text is empty."
@@ -17,6 +12,402 @@ checks:
     count: 1
   - type: cost_below
     usd: 0.02
+
+guide:
+  - id: g1
+    title: "The request"
+    code: ["5-13"]
+    teach: |
+      Every agent you build in this course is made of one thing, repeated: **a single call to
+      the model**. So start by looking at one call very closely.
+
+      **Line 5** makes a client. `anthropic.Anthropic()` reads two settings from the environment:
+      `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`. In this lab your code gets a dummy key and the
+      address of the lab's **relay**. The relay swaps in the real key and forwards the call to the
+      Bounteous gateway, which forwards it to Anthropic. Because every call passes through the
+      relay, the lab can show you exactly what was sent and what came back.
+
+      **Lines 8 to 13** are one HTTP request: `POST /v1/messages` with a JSON body. It has four fields:
+
+      | Field | What it does |
+      |---|---|
+      | `model` | Which model answers. Line 6 picks `claude-opus-5-5` unless the lab sets another. |
+      | `max_tokens` | A hard cap on how many tokens the model may *generate*, thinking included. |
+      | `output_config.effort` | How much the model may spend on thinking and answering: `low`, `medium` (the default on Opus 5.5), `high`, `xhigh`, `max`. |
+      | `messages` | The conversation so far. Here, one user message. |
+
+      The API is **stateless**: it remembers nothing between calls. Every call sends the whole
+      conversation again. An agent's "memory" is just the `messages` list your code keeps growing.
+    do: "Press **Run** (above your code). Then, under **Model calls**, open **Call 1** and read the **Request body**."
+    show: [request.model, request.max_tokens, request.effort, request.retry_count, run.first_call_ms]
+    notice: |
+      The request body holds exactly your four fields: the SDK adds nothing to it. The SDK does add
+      **headers**. Open **Request headers**: `x-stainless-retry-count` is `0` because this is the first
+      attempt. If the call failed with a 429 or a 5xx, the SDK would retry and send `1`, then `2`.
+
+      The call reached the relay about **3 seconds** after your program started, before any network
+      time. Most of that is Python importing the `anthropic` SDK: `import anthropic` alone takes
+      about 2.3 seconds on this machine.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which field stops the model from generating more than a fixed number of tokens?"
+        options: ["model", "max_tokens", "output_config.effort", "messages"]
+        answer: 1
+        explanation: "max_tokens is the hard cap on generated tokens, thinking included. Effort only sets how much the model may spend; it isn't a cap."
+      - id: c2
+        type: mcq
+        prompt: "Your agent makes a second call to continue the conversation. What must that call's messages contain?"
+        options:
+          - "Only the new user message: the API remembers the rest"
+          - "The whole conversation so far, plus the new message"
+          - "Only the model's last answer"
+        answer: 1
+        explanation: "The API is stateless. Each call must carry the whole conversation; your code keeps the list and appends to it."
+
+  - id: g2
+    title: "Content blocks"
+    code: [16, 19]
+    teach: |
+      The response is **not a string**. Its `content` is a **list of blocks**, and each block has a
+      `type`:
+
+      | Type | What it holds |
+      |---|---|
+      | `text` | The answer. |
+      | `thinking` | The model's reasoning. On Opus 5.5 its text is empty by default, but the block is there and it's billed. |
+      | `tool_use` | A request for your code to run a tool. You'll meet it in s02, the agent loop. |
+
+      On Opus 5.5 **thinking can't be turned off**. The model decides on each request whether to
+      think. When it does, the thinking block comes **before** the text.
+
+      **Line 16** prints the type of every block. **Line 19** joins the text of the `text` blocks only.
+      Why not just `response.content[0].text`? Because when the model thinks, `content[0]` is a
+      thinking block, and a thinking block has no `.text`. Always filter by `block.type`; never
+      assume positions.
+    do: "If you haven't run yet, press **Run**. Read the `blocks:` line in the **Console**, then open **Response body** in Call 1."
+    show: [response.blocks, response.has_thinking, response.text_chars]
+    notice: |
+      At effort `low` on an easy one-sentence question, the model usually decides not to think, so
+      you'll most likely see `['text']`. Run it two or three times: the model decides each time. In
+      step 5 you'll raise the effort and watch a thinking block appear.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which blocks did your latest run return?"
+        options:
+          - {label: "Only a text block", value: "text"}
+          - {label: "A thinking block, then a text block", value: "thinking, text"}
+        answer_from: response.blocks
+        explanation: "The console's blocks: line and the response body's content list both show it. At low effort the model often skips thinking, but not always."
+      - id: c2
+        type: mcq
+        prompt: "Code reads response.content[0].text, and a run comes back with a thinking block first. What happens?"
+        options:
+          - "It prints the thinking"
+          - "It raises AttributeError, because a thinking block has no .text"
+          - "It prints the answer anyway"
+          - "The SDK reorders the blocks so text comes first"
+        answer: 1
+        explanation: "content[0] is the thinking block, and a thinking block has a thinking field, not a text field. That's why line 19 filters by block.type."
+
+  - id: g3
+    title: "stop_reason: why it stopped"
+    code: [15]
+    teach: |
+      Before you trust `content`, check **`stop_reason`**. It says why the model stopped:
+
+      | stop_reason | Meaning | What your code does |
+      |---|---|---|
+      | `end_turn` | It finished. | Use the answer. |
+      | `max_tokens` | It hit the `max_tokens` cap. The answer is cut off. | Raise the cap, or treat the answer as incomplete. |
+      | `tool_use` | It wants your code to run a tool. | Run the tool, send the result back, call again. |
+      | `pause_turn` | The server paused a long turn. | Send the response back to let it continue. |
+      | `refusal` | It declined. | Don't read content as an answer. |
+
+      This is the heart of an **agent loop**: call the model, look at `stop_reason`, act on it, call
+      again, until it says `end_turn`. **Line 15** prints `stop_reason`, but this code never *acts*
+      on it. In step 7 you'll see why that's a bug.
+    do: "Find `stop_reason` in the **Console** and in the **Response body**."
+    show: [response.stop_reason]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In an agent loop, which stop_reason means 'run the requested tools, then call the model again'?"
+        options: ["end_turn", "tool_use", "max_tokens", "pause_turn"]
+        answer: 1
+        explanation: "tool_use: the response holds tool_use blocks. Your code runs them, sends every result back in one user message, and calls again. You'll build this in s02."
+
+  - id: g4
+    title: "Usage and cost"
+    code: ["22-24"]
+    teach: |
+      `usage` counts what you pay for, in **tokens** (chunks of text, about 3.5 to 4 characters of
+      English each):
+
+      - `input_tokens`: everything you sent, including a few tokens of message framing.
+      - `output_tokens`: everything the model generated: the text **and** any thinking.
+      - `cache_creation_input_tokens` and `cache_read_input_tokens`: prompt caching, in Module 01.
+
+      **Cost = input tokens x input price + output tokens x output price.** On Opus 5.5 that's
+      **$4 per million input** tokens and **$20 per million output** tokens. Output costs 5 times as
+      much, so long answers and thinking drive the bill.
+
+      The lab prices each call from `pricing.yaml`. The gateway also reports its own price in a
+      response header, `x-litellm-response-cost-original`, so you can check one against the other.
+    do: "Read the usage line printed by lines 22 to 24, or the usage numbers on Call 1."
+    show: [response.usage.input_tokens, response.usage.output_tokens, response.cost_usd, response.gateway_cost_usd]
+    notice: |
+      Your prompt is 8 words but costs **22 input tokens**: the text is 14 tokens, and the message
+      around it adds 8. The lab's cost and the gateway's should match. The header shows float noise
+      like `0.0013880000000000001`, which is why the lab adds dollars with `Decimal`.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "Using your run's input_tokens and output_tokens, at $4 and $20 per million, what did the call cost?"
+        hint: "cost = input x 4 / 1,000,000 + output x 20 / 1,000,000"
+        answer_from: response.cost_usd
+        tol_pct: 2
+        unit: USD
+        explanation: "For example 22 input and 65 output tokens: 22 x $4/1M = $0.000088, plus 65 x $20/1M = $0.0013, total $0.001388. Output is most of it."
+
+  - id: g5
+    title: "Effort and thinking"
+    code: [11]
+    teach: |
+      **Effort** is the main dial on Opus 5.5. It sets how much the model *may* spend, on thinking
+      and on the answer. It is not an order to think: the model still decides per request.
+
+      - Higher effort lets the model think longer on hard problems: better answers, but more output
+        tokens, more cost and more waiting.
+      - Lower effort is faster and cheaper, and fine for easy tasks.
+      - Thinking can't be disabled on Opus 5.5: `thinking={"type": "disabled"}` returns a 400. Lower
+        the effort instead.
+      - The thinking text is **omitted** by default: the block comes back with an empty `thinking`
+        field. You still pay for those tokens. To see a summary, send
+        `thinking={"type": "adaptive", "display": "summarized"}`.
+
+      Now test it. Predict what turning effort up does to this easy question, then change line 11.
+    experiment: e2
+
+  - id: g6
+    title: "Hidden tokens"
+    teach: |
+      `output_tokens` is often more than the text you can read. Where do the extra tokens go?
+
+      First, **don't estimate tokens from characters** when it matters. "About 4 characters per
+      token" is only a rule of thumb, and it varies by text and by model. Measure with
+      `client.messages.count_tokens(...)`: it is free, and it uses the model's own tokenizer.
+      The **Count tokens** tool in this step does that for any text.
+
+      Then compare: **output_tokens = the text's tokens + thinking tokens + a small fixed overhead.**
+    experiment: e3
+
+  - id: g7
+    title: "Hit the cap"
+    code: [10]
+    teach: |
+      `max_tokens` is a hard cap on everything the model generates, thinking included. The model
+      isn't told the cap, so it doesn't write a shorter answer to fit: it is cut off, often
+      mid-word, and `stop_reason` is `max_tokens`.
+
+      Code that doesn't check `stop_reason` treats that fragment as a complete answer, and so does
+      everything downstream of it. That's the bug from step 3.
+
+      In real code, set `max_tokens` well above the answer you expect (16000 is a common default
+      without streaming) and ask for short answers in the prompt instead.
+    experiment: e4
+
+  - id: g8
+    title: "Models aren't interchangeable"
+    teach: |
+      The same request isn't valid on every model.
+
+      - **Haiku 4.5** is the previous generation. It has no `effort` parameter, and it thinks only
+        when you send `thinking={"type": "enabled", "budget_tokens": N}`.
+      - A **4xx** error means the request itself is wrong, so the SDK doesn't retry it. A 429, a 5xx
+        or a dropped connection is retried, twice by default.
+      - Models also **tokenize differently**: the same text can be a different number of tokens.
+    experiment: e5
+
+  - id: g9
+    title: "Quiz"
+    teach: |
+      Three questions on the whole step. Every answer is saved; a miss comes back in spaced review
+      on the home page until you get it right.
+    quiz: true
+
+experiments:
+  - id: e2
+    title: "Turn up effort"
+    question: "What does output_config.effort change on Opus 5.5?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "At effort high, will a thinking block come back?"
+        options: ["yes", "no"]
+        answer_from: response.has_thinking
+      - id: p2
+        type: mcq
+        prompt: "What will the thinking block's text show?"
+        options:
+          - {label: "There will be no thinking block", value: "none"}
+          - {label: "An empty string", value: "empty"}
+          - {label: "The model's reasoning, readable", value: "readable"}
+        answer_from: response.thinking_text
+      - id: p3
+        type: mcq
+        prompt: "Output tokens compared with your previous run (effort low)?"
+        options:
+          - "About the same (under 1.5x)"
+          - "About double (1.5x to 4x)"
+          - "Four times or more"
+        bins: [1.5, 4]
+        answer_from: ratio.output_tokens
+    change: 'In main.py, line 11: change output_config={"effort": "low"} to {"effort": "high"}. Change nothing else.'
+    observe:
+      - "Response body: the content block types"
+      - "The call's usage line: output tokens, against your previous run"
+    explain: |
+      Effort is how much the model *may* spend on thinking and answering, not an order to
+      think. On an easy one-sentence question, even `high` usually adds one short thinking
+      block, about 10 to 20 tokens: roughly 1.1 to 1.3 times the tokens, not 10 times. On
+      hard problems the gap grows. Measure it on your own workload before you pick a level.
+
+      The thinking block's text is empty because Opus 5.5's default thinking display is
+      `"omitted"`. You still pay for those tokens: they're in `output_tokens`.
+
+      Unchanged code also varies from run to run (65 to 76 output tokens at `low`), so a small
+      difference from one run can be noise. One run is an anecdote.
+
+  - id: e3
+    title: "The missing tokens"
+    question: "output_tokens is more than the answer you can read. Where do the extra tokens go?"
+    tools: [count_tokens]
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many tokens is the answer text alone?"
+        hint: "The console prints the answer. A rule of thumb is about 4 characters per token."
+        answer_from: response.text_tokens
+        tol_pct: 10
+        unit: tokens
+      - id: p2
+        type: mcq
+        prompt: "output_tokens minus the text's tokens: how big is the gap?"
+        options: ["0 to 3 tokens", "4 to 30 tokens", "More than 30 tokens"]
+        bins: [4, 31]
+        answer_from: response.hidden_output_tokens
+      - id: p3
+        type: text
+        prompt: "What do you think the gap is made of?"
+        show_from: response.blocks
+    change: "Nothing: keep effort at high and run again. Then put the answer through Count tokens."
+    observe:
+      - "Count tokens: the answer's own tokens"
+      - "The call's usage line: output tokens"
+      - "Response body: is there a thinking block?"
+    explain: |
+      Characters divided by 4 is only a rough guide. This answer is about 230 to 260 characters
+      but about 63 to 74 tokens (about 3.6 characters per token), so the rule of thumb says 58
+      when the real count is 63.
+
+      How the lab measures the text: `count_tokens` counts a whole message, and a message wraps
+      its text in about 8 tokens of its own. The lab measures that wrapper with one-character
+      text and subtracts it.
+
+      The gap: with no thinking block (effort `low`), it is a small fixed overhead of about
+      2 tokens that never appears as text. With a thinking block (effort `high`), the rest of
+      the gap is the hidden thinking: billed as output tokens even though its text is empty.
+
+      Try it: set effort back to `low`, run, and count again. The gap drops to about 2.
+
+  - id: e4
+    title: "Hit the cap"
+    question: "What does max_tokens do when the answer needs more?"
+    tools: [count_tokens]
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "What will stop_reason be?"
+        options: ["end_turn", "max_tokens", "refusal"]
+        answer_from: response.stop_reason
+      - id: p2
+        type: numeric
+        prompt: "How many output tokens?"
+        answer_from: response.usage.output_tokens
+        unit: tokens
+      - id: p3
+        type: mcq
+        prompt: "Will any text come back at all?"
+        hint: "Effort is still high from steps 5 and 6."
+        options: ["yes", "no"]
+        answer_from: response.has_text
+      - id: p4
+        type: numeric
+        prompt: "How many of those tokens are text you can read?"
+        answer_from: response.text_tokens
+        tol: 3
+        unit: tokens
+    change: "In main.py, line 10: change max_tokens=1024 to max_tokens=20. Change nothing else."
+    observe:
+      - "Console: the answer, and what the code says about it"
+      - "Response body: stop_reason and the content blocks"
+    explain: |
+      The answer stops mid-word, and `stop_reason` is `max_tokens`. The code still printed it as
+      "answer:", because it never checks `stop_reason`. A cut-off answer looks complete unless
+      you branch on `stop_reason` first.
+
+      At effort `high`, the hidden thinking spends most of the cap before the text starts. On
+      this machine it gave a thinking block plus "An agent loop is the rep", about 6 text
+      tokens out of 20. At `low` the same cap gives "...an AI model observ", all 20 tokens text.
+      If thinking had used all 20, there would be no text at all.
+
+      Set `max_tokens` back to 1024 when you're done.
+
+  - id: e5
+    title: "Switch the model"
+    question: "Is the same request valid on every model?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "Run this exact code on claude-haiku-4-5. What HTTP status comes back?"
+        options:
+          - {label: "200 OK", value: 200}
+          - {label: "400 Bad Request", value: 400}
+          - {label: "401 Unauthorized", value: 401}
+          - {label: "500 Internal Server Error", value: 500}
+        answer_from: response.status
+      - id: p2
+        type: numeric
+        prompt: "How many requests will reach the relay, the SDK's retries included?"
+        hint: "By default the SDK retries 408, 409, 429, 5xx and connection errors, twice."
+        answer_from: run.calls
+      - id: p3
+        type: text
+        prompt: "If it fails, what will the error say?"
+        show_from: response.error_message
+    change: "Pick claude-haiku-4-5 in the Model menu. Change no code."
+    observe:
+      - "Response body: the gateway's error, with Anthropic's error JSON inside its message"
+      - "Console: the traceback (anthropic.BadRequestError)"
+    explain: |
+      Haiku 4.5 has no effort parameter, so the request is invalid: `400 invalid_request_error`,
+      "This model does not support the effort parameter." A 4xx means the request itself is
+      wrong, so the SDK doesn't retry it: one request.
+
+      The gateway wraps Anthropic's error JSON, as a string, inside its own error message. The
+      SDK still raises `BadRequestError`, because it picks the class from the HTTP status, not
+      the body.
+
+      Challenge: make main.py run on both models. Send `output_config` only when the model takes
+      it. On Haiku 4.5, thinking is off unless you send
+      `thinking={"type": "enabled", "budget_tokens": 1024}` (at least 1024, and less than
+      `max_tokens`). Then compare `input_tokens`: the same prompt is 17 tokens on Haiku 4.5 and
+      22 on Opus 5.5, because they use different tokenizers.
+
+      Switch the Model menu back to claude-opus-5-5 when you're done.
+
 quiz:
   - id: q1
     type: mcq
@@ -29,8 +420,8 @@ quiz:
     answer: 1
     concepts: [content-blocks, adaptive-thinking]
     explanation: >
-      Opus 5.5 can't disable thinking. With the default display ("omitted") you get thinking blocks
-      with an empty thinking field, usually before the text. content[0] may not be text.
+      Opus 5.5 can't disable thinking, and the model decides when to think. When it does, a thinking
+      block (with an empty thinking field by default) comes before the text. content[0] may not be text.
   - id: q2
     type: numeric
     prompt: "A call to claude-opus-5-5 used 30 input tokens and 120 output tokens, with no caching. What did it cost in USD? ($4 / $20 per million tokens)"
@@ -52,5 +443,6 @@ quiz:
     explanation: "Always branch on stop_reason before trusting content. 'end_turn' means finished, 'tool_use' means run the tools, and 'max_tokens' means truncated."
 tutor_notes: >
   Common misconception: content[0].text is the answer. Another: thinking can be turned off on
-  Opus 5.5. It can't; lower output_config.effort instead. Point the learner at the Tokens panel
-  to see that output_tokens includes thinking.
+  Opus 5.5. It can't; lower output_config.effort instead. A third: tokens can be estimated from
+  characters. Point the learner at the call's usage line and the Count tokens tool: output_tokens
+  includes the hidden thinking.

@@ -1,27 +1,31 @@
-<!-- Lab page: edit your code, run it, watch its console, read every model call exactly.
-     Placeholders are filled (and HTML-escaped) by pages.lab_page(). Experiment cards and the quiz are added here in s01 stage 2. -->
-<section class="container page-head" style="padding-bottom:var(--sp-4)">
+<!-- Lab page. Left: the lesson, one guided step at a time (teach, point at the code, do, look at your
+     run, check). Right: your code, Run, the console and every model call.
+     Placeholders are filled (and HTML-escaped) by pages.lab_page(). Dynamic values are set with
+     textContent; the only innerHTML is lesson markdown the server rendered with raw HTML disabled. -->
+<section class="container page-head" style="padding-bottom:var(--sp-3)">
   <div class="breadcrumb"><span>{{step_id}}</span></div>
   <h1>{{title}}</h1>
-  <p class="lede">Your code: <code class="path">{{code_path}}</code>. Edit it below (Ctrl+S saves) or in VS Code.
-  Run saves first, then runs exactly what's on disk.</p>
+  <div class="prose lede">{{lesson_html}}</div>
   {{gateway_note}}
-  <div class="row" style="margin-top:var(--sp-4)">
-    <label class="small secondary" for="model">Model</label>
-    <select class="select" id="model">{{model_options}}</select>
-    <button class="btn btn-primary" id="run" type="button">Run</button>
-    <button class="btn" id="stop" type="button" disabled>Stop</button>
-    <span class="pill pill-not_started" id="status">no run yet</span>
-    <span class="small secondary num" id="cost"></span>
-    <span class="spacer"></span>
-    <span class="small muted" id="run-id"></span>
-  </div>
-  <p class="small secondary" id="model-note" style="margin:var(--sp-2) 0 0"></p>
 </section>
 
 <section class="container" style="padding-bottom:var(--sp-7)">
-  <div class="workbench">
-    <div class="stack-lg" style="min-width:0">
+  <div class="lab-grid">
+    <div class="guide" id="guide">
+      <nav class="guide-nav" id="guide-nav" aria-label="Lesson steps"></nav>
+      <article class="card card-pad guide-step stack" id="guide-step"><p class="small muted">Loading the lesson…</p></article>
+    </div>
+
+    <div class="lab-side" id="lab-side">
+      <div class="row">
+        <label class="small secondary" for="model">Model</label>
+        <select class="select" id="model">{{model_options}}</select>
+        <button class="btn btn-primary" id="run" type="button">Run</button>
+        <button class="btn" id="stop" type="button" disabled>Stop</button>
+        <span class="pill pill-not_started" id="status">no run yet</span>
+        <span class="small secondary num" id="cost"></span>
+      </div>
+      <p class="small secondary" id="model-note" style="margin:0"></p>
       <div class="pane">
         <div class="pane-head" style="padding-left:var(--sp-2)">
           <div class="tabs" role="tablist" aria-label="Files" id="file-tabs"></div>
@@ -32,40 +36,78 @@
         </div>
         <div class="editor-box">
           <pre class="editor-gutter" id="gutter" aria-hidden="true"></pre>
-          <textarea class="editor-input" id="code" spellcheck="false" wrap="off" autocapitalize="off"
-                    autocomplete="off" aria-label="Your code"></textarea>
+          <div class="editor-code">
+            <div class="editor-marks" id="marks" aria-hidden="true"></div>
+            <textarea class="editor-input" id="code" spellcheck="false" wrap="off" autocapitalize="off"
+                      autocomplete="off" aria-label="Your code"></textarea>
+          </div>
         </div>
+        <div class="pane-foot small muted">Your copy: <code class="path">{{code_path}}</code>. Ctrl+S saves; Run saves first. VS Code edits the same file.</div>
       </div>
       <div class="pane">
-        <div class="pane-head"><h3 class="card-title">Console</h3></div>
+        <div class="pane-head"><h3 class="card-title">Console</h3><span class="spacer"></span><span class="small muted" id="run-id"></span></div>
         <div class="pane-body"><div class="console" id="console"><span class="meta">Press Run. Output appears here as it happens.</span></div></div>
       </div>
-    </div>
-    <div class="pane">
-      <div class="pane-head"><h3 class="card-title">Model calls</h3><span class="spacer"></span><span class="small muted" id="calls-count"></span></div>
-      <div class="pane-body stack" id="calls"><p class="small muted">Each call your code makes appears here: the exact request, then the exact response.</p></div>
+      <div class="pane">
+        <div class="pane-head"><h3 class="card-title">Model calls</h3><span class="spacer"></span>
+          <span class="small muted" id="calls-count"></span>
+          <label class="sr-only" for="history">Reopen a past run</label>
+          <select class="select" id="history" style="max-width:15rem" title="Reopen a past run (free: nothing is re-run)"></select>
+        </div>
+        <div class="pane-body stack">
+          <div id="run-diff"></div>
+          <div class="stack" id="calls"><p class="small muted">Each call your code makes appears here: the exact request, then the exact response.</p></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <script>
-// The editor: one textarea per file, saved straight to playground/<step-id>/.
+// The editor: one textarea per file, saved straight to playground/<step-id>/. Lesson steps highlight lines.
 (function () {
   var STEP = {{step_id_json}};
   var $ = function (id) { return document.getElementById(id); };
-  var files = {}, order = [], current = null;
-  var area = $("code"), gutter = $("gutter"), state = $("save-state");
+  var files = {}, order = [], current = null, entry = null, marked = [];
+  var area = $("code"), gutter = $("gutter"), marks = $("marks"), state = $("save-state");
 
   function url(name) { return "/api/steps/" + encodeURIComponent(STEP) + "/files/" + encodeURIComponent(name); }
   function setState(text, cls) { state.textContent = text; state.className = "small " + (cls || "muted"); }
   function isDirty(name) { return !!files[name] && files[name].code !== files[name].saved; }
   function anyDirty() { return order.some(isDirty); }
   function showDirty() { if (anyDirty()) setState("unsaved changes", "secondary"); renderTabs(); }
+  function lineHeight() { return parseFloat(getComputedStyle(area).lineHeight) || 20.8; }
+  function shownMarks() { return current === entry ? marked : []; }
   function renderGutter() {
-    var n = area.value.split("\n").length, nums = [];
-    for (var i = 1; i <= n; i++) nums.push(i);
-    gutter.textContent = nums.join("\n");
+    var n = area.value.split("\n").length, hl = shownMarks();
+    gutter.textContent = "";
+    for (var i = 1; i <= n; i++) {
+      var s = document.createElement("span");
+      s.textContent = String(i);
+      if (hl.indexOf(i) >= 0) s.className = "hl";
+      gutter.append(s);
+    }
     gutter.scrollTop = area.scrollTop;
+    renderMarks();
+  }
+  function renderMarks() {
+    marks.textContent = "";
+    var lh = lineHeight(), top = parseFloat(getComputedStyle(area).paddingTop) || 10;
+    shownMarks().forEach(function (n) {
+      var m = document.createElement("div");
+      m.className = "mark";
+      m.style.top = (top + (n - 1) * lh - area.scrollTop) + "px";
+      m.style.height = lh + "px";
+      marks.append(m);
+    });
+  }
+  // Called by the lesson: highlight these lines of the entry file and scroll them into view.
+  function highlight(lines) {
+    marked = lines || [];
+    if (marked.length && current !== entry && files[entry]) open(entry);
+    renderGutter();
+    if (marked.length) area.scrollTop = Math.max(0, (Math.min.apply(null, marked) - 3) * lineHeight());
+    renderMarks();
   }
   function renderTabs() {
     var bar = $("file-tabs");
@@ -85,10 +127,11 @@
     renderGutter(); renderTabs();
   }
   function load(view) {
-    files = {}; order = Object.keys(view.files); current = null;
+    files = {}; order = Object.keys(view.files); current = null; entry = view.entry;
     order.forEach(function (n) { files[n] = {code: view.files[n].code, saved: view.files[n].code, hash: view.files[n].hash}; });
     open(order.indexOf(view.entry) >= 0 ? view.entry : order[0]);
     setState("saved", "muted");
+    highlight(marked);
   }
   function save(name, force) {
     var f = files[name];
@@ -127,7 +170,7 @@
   }
 
   area.addEventListener("input", function () { files[current].code = area.value; renderGutter(); showDirty(); });
-  area.addEventListener("scroll", function () { gutter.scrollTop = area.scrollTop; });
+  area.addEventListener("scroll", function () { gutter.scrollTop = area.scrollTop; renderMarks(); });
   area.addEventListener("keydown", function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveAll(); return; }
     if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); insert("    "); return; }
@@ -147,18 +190,19 @@
   });
   window.addEventListener("beforeunload", function (e) { if (anyDirty()) { e.preventDefault(); e.returnValue = ""; } });
   fetch("/api/steps/" + encodeURIComponent(STEP) + "/files").then(function (r) { return r.json(); }).then(load);
-  window.labEditor = {saveAll: saveAll};
+  window.labEditor = {saveAll: saveAll, highlight: highlight};
 })();
 </script>
 
 <script>
+// The run: start it, stream its events, show the console and every model call. Reopen past runs.
 (function () {
   var STEP = {{step_id_json}}, MODEL_NOTES = {{model_notes_json}};
   var $ = function (id) { return document.getElementById(id); };
   function showModelNote() { $("model-note").textContent = MODEL_NOTES[$("model").value] || ""; }
   $("model").addEventListener("change", showModelNote);
   showModelNote();
-  var es = null, current = null, calls = {}, total = 0, done = false;
+  var es = null, current = null, calls = {}, total = 0, done = false, live = false, running = false, lastBody = null;
 
   function pill(cls, text) { $("status").className = "pill " + cls; $("status").textContent = text; }
   function line(text, cls) {
@@ -192,6 +236,21 @@
   }
   function usd(x) { return x == null ? "price unknown" : "$" + x.toFixed(6); }
   function badge(c, cls, text) { var p = document.createElement("span"); p.className = "pill " + cls; p.textContent = text; c.head.append(p); }
+  function setRunning(on) { running = on; $("run").disabled = on; $("stop").disabled = !on; }
+  // The answer text of the last response in the run being shown (for the token counter).
+  function answerText() {
+    if (!lastBody) return "";
+    var text = "";
+    if (lastBody.events) {
+      lastBody.events.forEach(function (e) {
+        var d = e.data || {};
+        if (d.type === "content_block_delta" && d.delta && d.delta.type === "text_delta") text += d.delta.text;
+      });
+      return text;
+    }
+    (lastBody.content || []).forEach(function (b) { if (b.type === "text") text += b.text; });
+    return text;
+  }
 
   function onEvent(ev) {
     var d = ev.data, c;
@@ -221,6 +280,7 @@
         c.card.append(details(d.stream ? "Response stream: every server-sent event" : "Response body: exactly what came back", d.body, true),
                       details("Response headers (the gateway's included)", d.headers, false));
         if (d.cost_usd) { total += d.cost_usd; $("cost").textContent = "spent " + usd(total); }
+        if (d.status < 400) lastBody = d.body;
         break;
       case "llm.error":
         c = card(d.call); badge(c, "pill-critical", "no response"); c.card.append(pre(d.error));
@@ -235,41 +295,721 @@
     var m = map[d.outcome] || ["pill-plain", d.outcome];
     pill(m[0], m[1] + (d.exit_code != null ? " · exit " + d.exit_code : ""));
     if (d.error) line(d.error, "stderr");
-    $("run").disabled = false; $("stop").disabled = true;
+    if (live) {
+      setRunning(false);
+      loadHistory();
+      document.dispatchEvent(new CustomEvent("lab:run-exit", {detail: {run_id: current, outcome: d.outcome}}));
+    }
   }
-  function watch(id, live) {
+  function diffView(text) {
+    var p = document.createElement("pre");
+    p.className = "diff-view";
+    text.replace(/\n$/, "").split("\n").forEach(function (l) {
+      var s = document.createElement("span");
+      s.className = l.startsWith("+++") || l.startsWith("---") ? "diff-file" : l.startsWith("@@") ? "diff-hunk"
+                  : l.startsWith("+") ? "diff-add" : l.startsWith("-") ? "diff-del" : "diff-ctx";
+      s.textContent = l;
+      p.append(s);
+    });
+    return p;
+  }
+  // "Change one thing": what this run changed since the previous run of the step.
+  function renderDiff(target, j, open) {
+    target.textContent = "";
+    var d = document.createElement("details"), s = document.createElement("summary"), body = document.createElement("div");
+    d.className = "disclosure"; d.open = !!open; body.className = "stack";
+    var changes = [];
+    if (j.model.prev && j.model.prev !== j.model.now) changes.push("model " + j.model.prev + " → " + j.model.now);
+    if (j.diff) changes.push("code");
+    s.textContent = j.prev_run_id ? "Changed since the previous run: " + (changes.join(" and ") || "nothing")
+                                  : "Changed since the previous run";
+    d.append(s, body);
+    if (j.note) { var n = document.createElement("p"); n.className = "small muted"; n.textContent = j.note; body.append(n); }
+    if (j.model.prev && j.model.prev !== j.model.now) {
+      var m = document.createElement("p"); m.className = "small"; m.textContent = "Model: " + j.model.prev + " → " + j.model.now;
+      body.append(m);
+    }
+    if (j.diff) body.append(diffView(j.diff));
+    else if (j.prev_run_id && !j.note) {
+      var same = document.createElement("p"); same.className = "small muted";
+      same.textContent = "The code is the same as in run " + j.prev_run_id + ".";
+      body.append(same);
+    }
+    target.append(d);
+  }
+  function loadDiff(runId, target, open) {
+    return fetch("/api/runs/" + encodeURIComponent(runId) + "/diff").then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j) renderDiff(target, j, open); });
+  }
+  function watch(id, isLive) {
     if (es) es.close();
-    current = id; calls = {}; total = 0; done = false;
+    current = id; calls = {}; total = 0; done = false; live = !!isLive; lastBody = null;
     $("calls").textContent = ""; $("calls-count").textContent = ""; $("cost").textContent = "";
     $("run-id").textContent = "run " + id;
-    if (live) { pill("pill-in_progress", "running"); $("run").disabled = true; $("stop").disabled = false; }
+    $("history").value = id;
+    loadDiff(id, $("run-diff"), false);
+    if (live) { setRunning(true); pill("pill-in_progress", "running"); }
     es = new EventSource("/api/runs/" + encodeURIComponent(id) + "/events");
     es.onmessage = function (m) { onEvent(JSON.parse(m.data)); };
     es.addEventListener("end", function () {
       es.close();
-      if (!done) { pill("pill-plain", "incomplete"); $("run").disabled = false; $("stop").disabled = true; }
+      if (!done) { pill("pill-plain", "incomplete"); if (live) setRunning(false); }
     });
   }
-  $("run").addEventListener("click", function () {
+  // experiment: grade that card's committed predictions against this run (null: a plain run).
+  function startRun(experiment) {
+    if (running) return Promise.resolve();
     $("run").disabled = true;
-    window.labEditor.saveAll().then(function (saved) {       // run what you see: save first
+    return window.labEditor.saveAll().then(function (saved) {       // run what you see: save first
       if (!saved) { $("run").disabled = false; return; }
       return fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs", {
         method: "POST", headers: {"content-type": "application/json"},
-        body: JSON.stringify({model: $("model").value})
+        body: JSON.stringify({model: $("model").value, experiment: experiment || null})
       }).then(function (r) { return r.json().then(function (j) { return [r, j]; }); })
         .then(function (rj) {
           if (!rj[0].ok) { $("run").disabled = false; line("could not start: " + (rj[1].detail || rj[0].status), "stderr"); return; }
           watch(rj[1].run_id, true);
+          document.dispatchEvent(new CustomEvent("lab:run-start", {detail: {run_id: rj[1].run_id}}));
         });
     });
-  });
+  }
+  function loadHistory() {
+    return fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs").then(function (r) { return r.json(); }).then(function (j) {
+      var sel = $("history");
+      sel.textContent = "";
+      var head = document.createElement("option");
+      head.value = ""; head.textContent = j.runs.length ? "Reopen a run (" + j.runs.length + ")" : "No runs yet";
+      head.disabled = true; sel.append(head);
+      j.runs.forEach(function (r) {
+        var o = document.createElement("option");
+        o.value = r.run_id;
+        o.textContent = r.started_at.slice(5, 16).replace("T", " ") + " · " + (r.model || "?").replace("claude-", "") +
+          " · " + (r.outcome || "running") + (r.experiment_id ? " · " + r.experiment_id.toUpperCase() : "");
+        sel.append(o);
+      });
+      sel.value = current || "";
+      return j.runs;
+    });
+  }
+  $("history").addEventListener("change", function () { if ($("history").value) watch($("history").value, false); });
+  $("run").addEventListener("click", function () { startRun(null); });
   $("stop").addEventListener("click", function () {
     if (current) fetch("/api/runs/" + encodeURIComponent(current) + "/stop", {method: "POST"});
   });
   // Reopen your latest run of this step (free: it's replayed from the store, not re-run).
-  fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs").then(function (r) { return r.json(); }).then(function (j) {
-    if (j.runs && j.runs.length) { watch(j.runs[0].run_id, false); $("model").value = j.runs[0].model || "claude-opus-5-5"; showModelNote(); }
-  });
+  loadHistory().then(function (runs) { if (runs.length) watch(runs[0].run_id, false); });
+  window.labRun = {run: startRun, watch: watch, answerText: answerText, loadDiff: loadDiff,
+                   isRunning: function () { return running; }, model: function () { return $("model").value; }};
+})();
+</script>
+
+<script>
+// The lesson: guided steps, each with its checks, experiment card or quiz.
+(function () {
+  var STEP = {{step_id_json}};
+  var $ = function (id) { return document.getElementById(id); };
+  var base = "/api/steps/" + encodeURIComponent(STEP), saved = "academy-guide:" + STEP;
+  var guide = [], runId = null, cards = [], quiz = [], at = 0, redo = {};
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function api(path, body) {
+    var opts = body === undefined ? {} : {method: "POST", headers: {"content-type": "application/json"},
+                                         body: JSON.stringify(body)};
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+        return j;
+      });
+    });
+  }
+  function html(cls, markup) {   // lesson markdown, rendered by the server with raw HTML disabled
+    var d = el("div", cls);
+    d.innerHTML = markup;
+    return d;
+  }
+  // Card text: paragraphs, `code` and *emphasis*, built as DOM nodes (no HTML parsing).
+  function rich(text) {
+    var box = el("div", "stack");
+    text.trim().split(/\n\s*\n/).forEach(function (para) {
+      var p = el("p");
+      p.style.margin = "0";
+      para.replace(/\s*\n\s*/g, " ").split(/(`[^`]+`)/).forEach(function (part) {
+        if (/^`[^`]+`$/.test(part)) { p.append(el("code", null, part.slice(1, -1))); return; }
+        part.split(/(\*[^*\s][^*]*\*)/).forEach(function (bit) {
+          if (/^\*[^*\s][^*]*\*$/.test(bit)) p.append(el("em", null, bit.slice(1, -1)));
+          else if (bit) p.append(document.createTextNode(bit));
+        });
+      });
+      box.append(p);
+    });
+    return box;
+  }
+  function label(option) { return typeof option === "string" ? option : option.label; }
+  function shown(item, answer) {
+    if (item.type === "mcq") return label(item.options[answer]);
+    if (item.type === "numeric") return String(answer) + (item.unit ? " " + item.unit : "");
+    return String(answer);
+  }
+  function verdictPill(correct) {
+    return correct === true ? el("span", "pill pill-good", "Right")
+         : correct === false ? el("span", "pill pill-critical", "Surprise")
+         : el("span", "pill pill-plain", "Not graded");
+  }
+  function phase(text) { return el("p", "exp-phase", text); }
+  function value(key, v) {
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    if (/cost_usd$/.test(key) && typeof v === "number") return "$" + v.toFixed(6);
+    if (/_ms$/.test(key)) return v + " ms";
+    return String(v);
+  }
+  function cardOf(id) { return cards.find(function (c) { return c.card.id === id; }); }
+
+  // ----------------------------------------------------------- loading, navigation
+  function load() {
+    return Promise.all([api(base + "/guide"), api(base + "/experiments"), api(base + "/quiz")]).then(function (r) {
+      guide = r[0].steps; runId = r[0].run_id; cards = r[1].experiments; quiz = r[2].items;
+      render();
+    }).catch(function (e) { $("guide-step").textContent = "Could not load the lesson: " + e.message; });
+  }
+  function refresh() {   // after a run: new values for the steps, new state for the cards
+    return Promise.all([api(base + "/guide"), api(base + "/experiments")]).then(function (r) {
+      guide = r[0].steps; runId = r[0].run_id; cards = r[1].experiments;
+      render(true);
+    });
+  }
+  function fromHash() {
+    var h = location.hash.slice(1);
+    if (!h) return -1;
+    return guide.findIndex(function (g) { return g.id === h || g.experiment === h || (h === "quiz" && g.quiz); });
+  }
+  function done(g) {
+    if (g.experiment) { var c = cardOf(g.experiment); return !!c && c.status === "explained"; }
+    if (g.quiz) return quiz.length > 0 && quiz.every(function (q) { return q.last && q.last.correct; });
+    if (g.check.length) return g.check.every(function (c) { return g.answers[c.id] && g.answers[c.id].correct; });
+    return false;
+  }
+  function go(i) {
+    at = Math.max(0, Math.min(guide.length - 1, i));
+    try { localStorage.setItem(saved, guide[at].id); } catch (e) {}
+    history.replaceState(null, "", "#" + guide[at].id);
+    render();
+    $("guide").scrollIntoView({behavior: "smooth", block: "start"});
+  }
+
+  function render(keepScroll) {
+    if (!guide.length) { $("guide-step").textContent = "This step has no guided lesson yet."; return; }
+    if (!keepScroll && render.first !== false) {
+      render.first = false;
+      var h = fromHash(), stored = null;
+      try { stored = localStorage.getItem(saved); } catch (e) {}
+      at = h >= 0 ? h : Math.max(0, guide.findIndex(function (g) { return g.id === stored; }));
+    }
+    var nav = $("guide-nav");
+    nav.textContent = "";
+    guide.forEach(function (g, i) {
+      var b = el("button", "btn btn-sm", (i + 1) + " " + g.title);
+      b.type = "button";
+      if (done(g)) b.prepend(el("span", "icon icon-check"));
+      if (i === at) b.setAttribute("aria-current", "step");
+      b.addEventListener("click", function () { go(i); });
+      nav.append(b);
+    });
+    var g = guide[at], box = $("guide-step");
+    box.textContent = "";
+    box.append(el("p", "eyebrow", "Step " + (at + 1) + " of " + guide.length), el("h2", null, g.title));
+    box.lastChild.style.margin = "0";
+    box.append(html("prose guide-prose", g.teach_html));
+    if (g.lines.length) {
+      var row = el("div", "row"), show = el("button", "btn btn-sm", "Show in the code");
+      show.type = "button";
+      show.addEventListener("click", function () { window.labEditor.highlight(g.lines); });
+      row.append(el("span", "small secondary", "Highlighted in your code: line" + (g.lines.length > 1 ? "s " : " ") +
+                    span(g.lines) + "."), show);
+      box.append(row);
+    }
+    if (render.lit !== g.id) { window.labEditor.highlight(g.lines); render.lit = g.id; }   // only on opening a step
+    if (g.do_html) {
+      var call = el("div", "callout callout-accent");
+      call.append(el("span", "icon icon-info"));
+      var inner = el("div");
+      inner.append(el("b", null, "Do this"), html("guide-do", g.do_html));
+      call.append(inner);
+      box.append(call);
+    }
+    if (g.show.length) box.append(yourRun(g));
+    if (g.check.length) box.append(checks(g));
+    if (g.experiment && cardOf(g.experiment)) box.append(renderCard(cardOf(g.experiment)));
+    if (g.quiz) box.append(quizBlock());
+    var foot = el("div", "row guide-foot");
+    if (at > 0) {
+      var back = el("button", "btn", "Back");
+      back.type = "button"; back.addEventListener("click", function () { go(at - 1); });
+      foot.append(back);
+    }
+    foot.append(el("span", "spacer"));
+    if (at < guide.length - 1) {
+      var next = el("button", "btn btn-primary", "Next: " + guide[at + 1].title);
+      next.type = "button"; next.addEventListener("click", function () { go(at + 1); });
+      foot.append(next);
+    }
+    box.append(foot);
+  }
+  function span(lines) {   // [5,6,7,9] -> "5–7, 9"
+    var out = [], start = lines[0], prev = lines[0];
+    lines.slice(1).concat([null]).forEach(function (n) {
+      if (n === prev + 1) { prev = n; return; }
+      out.push(start === prev ? String(start) : start + "–" + prev);
+      start = prev = n;
+    });
+    return out.join(", ");
+  }
+
+  // ----------------------------------------------------------- your run, checks
+  function yourRun(g) {
+    var box = el("div", "well stack");
+    box.append(el("p", "exp-phase", "Your latest run" + (runId ? " · " + runId : "")));
+    if (!runId) {
+      box.append(el("p", "secondary", "No run yet. Press Run above your code, and your values appear here."));
+      return box;
+    }
+    var t = el("table", "table facts-table"), body = el("tbody");
+    g.show.forEach(function (f) {
+      var tr = el("tr"), k = el("td"), v = el("td", "num");
+      k.append(el("code", null, f.key), el("div", "small muted", f.label));
+      v.textContent = value(f.key, f.value);
+      tr.append(k, v); body.append(tr);
+    });
+    t.append(body); box.append(t);
+    if (g.notice_html) box.append(el("p", "exp-phase", "What to notice"), html("prose guide-prose", g.notice_html));
+    return box;
+  }
+  function checks(g) {
+    var box = el("div", "stack");
+    box.append(el("p", "exp-phase", "Check your understanding"));
+    g.check.forEach(function (item, i) { box.append(checkItem(g, item, i)); });
+    return box;
+  }
+  function checkItem(g, item, i) {
+    var form = el("form", "predict-item stack"), name = g.id + "-" + item.id;
+    form.addEventListener("submit", function (e) { e.preventDefault(); });
+    form.append(el("p", "quiz-q", item.prompt));
+    if (item.hint) form.append(el("p", "small muted", item.hint));
+    var fs = null, input = null;
+    if (item.type === "mcq") {
+      fs = el("fieldset", "quiz-options");
+      fs.append(el("legend", "sr-only", "Options"));
+      item.options.forEach(function (o, k) {
+        var lab = el("label", "quiz-option"), r = el("input");
+        r.type = "radio"; r.name = name; r.value = String(k);
+        lab.append(r, el("span", null, label(o)), el("span", "verdict"));
+        fs.append(lab);
+      });
+      form.append(fs);
+    } else {
+      var aff = el("span", "input-affix");
+      input = el("input", "input num");
+      input.inputMode = "decimal"; input.style.width = "14ch"; input.setAttribute("aria-label", item.prompt);
+      aff.append(input);
+      if (item.unit) aff.append(el("span", "secondary small", item.unit));
+      form.append(aff);
+    }
+    var row = el("div", "row"), btn = el("button", "btn btn-primary", "Check"), msg = el("span", "small error-text"),
+        fb = el("div");
+    btn.type = "submit";
+    row.append(btn, msg);
+    form.append(row, fb);
+    function feedback(res) {
+      fb.textContent = "";
+      var f = el("div", "quiz-feedback " + (res.correct ? "is-correct" : "is-wrong"));
+      f.append(el("div", "fb-title", res.correct ? "Right." : "Not quite. It comes back in your review until you get it."));
+      if (item.answer_from && res.actual_display) f.append(el("p", "small", "Your run: " + res.actual_display));
+      if (res.explanation) f.append(el("p", null, res.explanation));
+      [].forEach.call(f.querySelectorAll("p"), function (p) { p.style.margin = "4px 0 0"; });
+      fb.append(f);
+      if (fs) fs.querySelectorAll("input").forEach(function (r) { r.checked = Number(r.value) === res.answer; });
+      else input.value = String(res.answer);
+      btn.textContent = "Check again";
+    }
+    btn.addEventListener("click", function () {
+      var answer;
+      if (fs) {
+        var c = fs.querySelector("input:checked");
+        if (!c) { msg.textContent = "Pick an answer."; return; }
+        answer = Number(c.value);
+      } else {
+        answer = Number(input.value);
+        if (input.value.trim() === "" || !isFinite(answer)) { msg.textContent = "Enter a number."; return; }
+      }
+      msg.textContent = ""; btn.disabled = true;
+      var body = {answers: {}};
+      body.answers[item.id] = answer;
+      api(base + "/guide/" + g.id + "/check", body).then(function (j) {
+        var res = j.results[item.id];
+        g.answers[item.id] = {answer: res.answer, correct: res.correct, explanation: res.explanation,
+                              correct_answer: res.actual_display};
+        feedback(res);
+        renderNav();
+      }).catch(function (e) { msg.textContent = e.message; }).finally(function () { btn.disabled = false; });
+    });
+    var last = g.answers[item.id];
+    if (last) feedback({correct: last.correct, answer: last.answer, explanation: last.explanation,
+                        actual_display: last.correct_answer});
+    return form;
+  }
+  function renderNav() {
+    var buttons = $("guide-nav").querySelectorAll("button");
+    guide.forEach(function (g, i) {
+      var b = buttons[i];
+      if (b && done(g) && !b.querySelector(".icon-check")) b.prepend(el("span", "icon icon-check"));
+    });
+  }
+
+  // ----------------------------------------------------------- experiment cards
+  function renderCard(s) {
+    var c = s.card, wrap = el("div", "card card-pad exp-card stack");
+    wrap.append(el("p", "eyebrow", "Experiment" + (s.attempt ? " · attempt " + s.attempt.attempt : "")),
+                el("h3", null, c.title), el("p", "lede", c.question));
+    var predicting = s.status === "predict" || redo[c.id];
+    wrap.append(phase("1 · Predict"));
+    if (predicting) {
+      wrap.append(el("p", "small secondary", "Before you change anything: what do you expect? Commit your predictions, " +
+                     "then the card tells you what to change and gives you a Run button."));
+      wrap.append(predictForm(s));
+      return wrap;
+    }
+    if (s.status === "committed" || s.status === "running") wrap.append(yourPredictions(s));
+    else wrap.append(el("p", "small secondary", "Your " + s.attempt.predictions.length +
+                        " predictions are compared with the run below."));
+    wrap.append(change(c));
+    if (s.status === "committed") {
+      wrap.append(phase("3 · Run"));
+      var row = el("div", "row"), run = el("button", "btn btn-primary", "Run for this experiment");
+      run.type = "button";
+      run.disabled = window.labRun.isRunning();
+      run.addEventListener("click", function () { window.labRun.run(c.id); });
+      row.append(run, el("span", "small secondary", "Saves your code, then runs it on " + window.labRun.model() +
+                         ". This run is graded against your predictions."));
+      wrap.append(row);
+      if (c.tools.indexOf("count_tokens") >= 0) wrap.append(tokenTool());
+      return wrap;
+    }
+    if (s.status === "running") {
+      wrap.append(phase("3 · Run"), el("p", "secondary", "Running. The comparison appears here when the run ends."));
+      return wrap;
+    }
+    wrap.append(phase("3 · Run"), runLine(s));
+    wrap.append(phase("4 · Compare"), compare(s));
+    if (c.tools.indexOf("count_tokens") >= 0) wrap.append(tokenTool());
+    wrap.append(phase("5 · Explain"), explain(s));
+    return wrap;
+  }
+
+  function predictForm(s) {
+    var c = s.card, form = el("form", "stack");
+    form.addEventListener("submit", function (e) { e.preventDefault(); });
+    c.predict.forEach(function (item, i) {
+      var box = el("div", "predict-item stack");
+      box.append(el("p", "quiz-q", (i + 1) + ". " + item.prompt));
+      if (item.hint) box.append(el("p", "small muted", item.hint));
+      var name = c.id + "-" + item.id;
+      if (item.type === "mcq") {
+        var fs = el("fieldset", "quiz-options");
+        fs.append(el("legend", "sr-only", "Options"));
+        item.options.forEach(function (o, k) {
+          var lab = el("label", "quiz-option"), input = el("input");
+          input.type = "radio"; input.name = name; input.value = String(k);
+          lab.append(input, el("span", null, label(o)), el("span", "verdict"));
+          fs.append(lab);
+        });
+        box.append(fs);
+      } else if (item.type === "numeric") {
+        var aff = el("span", "input-affix"), input = el("input", "input num");
+        input.name = name; input.inputMode = "decimal"; input.style.width = "12ch"; input.setAttribute("aria-label", item.prompt);
+        aff.append(input);
+        if (item.unit) aff.append(el("span", "secondary small", item.unit));
+        box.append(aff);
+      } else {
+        var ta = el("textarea", "textarea");
+        ta.name = name; ta.rows = 2; ta.maxLength = 2000; ta.setAttribute("aria-label", item.prompt);
+        box.append(ta);
+      }
+      form.append(box);
+    });
+    var row = el("div", "row"), commit = el("button", "btn btn-primary", "Commit predictions"), msg = el("span", "small");
+    commit.type = "submit";
+    row.append(commit, msg);
+    if (redo[c.id]) {
+      var cancel = el("button", "btn btn-ghost", "Cancel the redo");
+      cancel.type = "button";
+      cancel.addEventListener("click", function () { delete redo[c.id]; render(true); });
+      row.append(cancel);
+    }
+    form.append(row);
+    commit.addEventListener("click", function () {
+      var answers = {}, missing = [];
+      c.predict.forEach(function (item) {
+        var name = c.id + "-" + item.id, v = null;
+        if (item.type === "mcq") {
+          var checked = form.querySelector('input[name="' + name + '"]:checked');
+          v = checked ? Number(checked.value) : null;
+        } else {
+          var f = form.elements[name];
+          v = f.value.trim() === "" ? null : (item.type === "numeric" ? Number(f.value) : f.value.trim());
+          if (item.type === "numeric" && v !== null && !isFinite(v)) v = null;
+        }
+        if (v === null) missing.push(item.id); else answers[item.id] = v;
+      });
+      if (missing.length) { msg.className = "small error-text"; msg.textContent = "Answer every question first."; return; }
+      commit.disabled = true;
+      api(base + "/experiments/" + c.id + "/predictions", {answers: answers}).then(function (state) {
+        delete redo[c.id];
+        cards[cards.indexOf(cardOf(c.id))] = state;
+        render(true);
+      }).catch(function (e) { commit.disabled = false; msg.className = "small error-text"; msg.textContent = e.message; });
+    });
+    return form;
+  }
+
+  function change(c) {
+    var box = el("div", "stack");
+    box.append(phase("2 · Change"));
+    var call = el("div", "callout callout-accent");
+    call.append(el("span", "icon icon-info"));
+    var inner = el("div");
+    inner.append(rich(c.change));
+    call.append(inner);
+    box.append(call);
+    if (c.observe.length) {
+      var ul = el("ul", "small secondary");
+      ul.style.margin = "0";
+      c.observe.forEach(function (o) { ul.append(el("li", null, o)); });
+      box.append(el("p", "small", "Where to look after the run:"), ul);
+    }
+    return box;
+  }
+
+  function yourPredictions(s) {
+    var c = s.card, t = el("table", "table"), head = el("tr"), body = el("tbody");
+    ["Prediction", "You said"].forEach(function (h) { head.append(el("th", null, h)); });
+    var thead = el("thead"); thead.append(head); t.append(thead, body);
+    var answers = {};
+    s.attempt.predictions.forEach(function (p) { answers[p.item_id] = p.answer; });
+    c.predict.forEach(function (item) {
+      var tr = el("tr");
+      tr.append(el("td", null, item.prompt), el("td", null, item.id in answers ? shown(item, answers[item.id]) : "—"));
+      body.append(tr);
+    });
+    var box = el("div", "stack");
+    box.append(el("p", "small secondary", "Your predictions are committed."), t);
+    if (s.earlier.length) box.append(earlier(s));
+    return box;
+  }
+
+  function earlier(s) {
+    var d = el("details", "disclosure"), sum = el("summary", null, "Your earlier attempts (" + s.earlier.length + ")");
+    d.append(sum);
+    s.earlier.forEach(function (a) {
+      var ul = el("ul", "small");
+      a.predictions.forEach(function (p) {
+        var item = s.card.predict.find(function (i) { return i.id === p.item_id; });
+        if (!item) return;
+        var li = el("li", null, item.prompt + " You said: " + shown(item, p.answer) +
+                    (p.actual_display ? "; the run: " + p.actual_display : "") + " ");
+        li.append(verdictPill(p.correct));
+        ul.append(li);
+      });
+      d.append(el("p", "small secondary", "Attempt " + a.attempt), ul);
+    });
+    return d;
+  }
+
+  function runLine(s) {
+    var row = el("div", "row"), reopen = el("button", "btn btn-sm", "Show this run");
+    reopen.type = "button";
+    reopen.addEventListener("click", function () { window.labRun.watch(s.attempt.run_id, false); });
+    row.append(el("span", "small secondary", "Graded against run " + s.attempt.run_id + "."), reopen);
+    return row;
+  }
+
+  function compare(s) {
+    var c = s.card, box = el("div", "stack"), t = el("table", "table"), thead = el("thead"), head = el("tr"), body = el("tbody");
+    ["Prediction", "You said", "The run measured", ""].forEach(function (h) { head.append(el("th", null, h)); });
+    thead.append(head); t.append(thead, body);
+    var right = 0, wrong = 0, byId = {};
+    s.attempt.predictions.forEach(function (p) { byId[p.item_id] = p; });
+    c.predict.forEach(function (item) {
+      var p = byId[item.id];
+      if (!p) return;
+      if (p.correct === true) right++; else if (p.correct === false) wrong++;
+      var tr = el("tr"), measured = el("td");
+      measured.append(el("div", null, p.actual_display || "—"));
+      if (p.note) measured.append(el("div", "small muted", p.note));
+      var v = el("td"); v.append(verdictPill(p.correct));
+      tr.append(el("td", null, item.prompt), el("td", null, shown(item, p.answer)), measured, v);
+      body.append(tr);
+    });
+    box.append(el("p", "secondary", right + " right, " + wrong + " surprise" + (wrong === 1 ? "" : "s") +
+                  (wrong ? ": explain each one below." : ".")), t);
+    var diff = el("div");
+    box.append(diff);
+    window.labRun.loadDiff(s.attempt.run_id, diff, true);
+    if (s.earlier.length) box.append(earlier(s));
+    return box;
+  }
+
+  function explain(s) {
+    var c = s.card, box = el("div", "stack");
+    if (s.status === "graded") {
+      box.append(el("p", "secondary", "Why did the run do what it did? Write it in your own words first, " +
+                    "then read the explanation."));
+      var ta = el("textarea", "textarea"), row = el("div", "row"), go = el("button", "btn btn-primary", "Show the explanation"),
+          msg = el("span", "small");
+      ta.rows = 4; ta.maxLength = 4000; ta.setAttribute("aria-label", "Your explanation");
+      go.type = "button";
+      row.append(go, msg);
+      box.append(ta, row);
+      go.addEventListener("click", function () {
+        if (!ta.value.trim()) { msg.className = "small error-text"; msg.textContent = "Write your explanation first."; return; }
+        go.disabled = true;
+        api(base + "/experiments/" + c.id + "/explain", {text: ta.value}).then(function (state) {
+          cards[cards.indexOf(cardOf(c.id))] = state; render(true);
+        }).catch(function (e) { go.disabled = false; msg.className = "small error-text"; msg.textContent = e.message; });
+      });
+      return box;
+    }
+    var mine = el("div", "well stack");
+    mine.append(el("p", "small secondary", "Your explanation"), el("p", null, s.attempt.explanation));
+    mine.lastChild.style.margin = "0"; mine.lastChild.style.whiteSpace = "pre-wrap";
+    var theirs = el("div", "quiz-feedback is-correct stack");
+    theirs.append(el("div", "fb-title", "The explanation"), rich(s.explain || ""));
+    var row = el("div", "row"), again = el("button", "btn", "Redo this experiment");
+    again.type = "button";
+    again.addEventListener("click", function () { redo[c.id] = true; render(true); });
+    row.append(again);
+    box.append(mine, theirs, row);
+    return box;
+  }
+
+  // In-lab tool: count tokens (free; count_tokens isn't billed).
+  function tokenTool() {
+    var box = el("div", "well stack"), ta = el("textarea", "textarea"), row = el("div", "row"),
+        use = el("button", "btn btn-sm", "Use the last answer"), go = el("button", "btn btn-sm btn-primary", "Count tokens (free)"),
+        out = el("p", "small secondary");
+    box.append(el("p", "exp-phase", "Tool · count tokens"));
+    ta.rows = 3; ta.setAttribute("aria-label", "Text to count");
+    ta.placeholder = "Paste any text, or use the last answer.";
+    use.type = go.type = "button";
+    out.style.margin = "0";
+    row.append(use, go);
+    box.append(ta, row, out);
+    use.addEventListener("click", function () {
+      ta.value = window.labRun.answerText();
+      out.textContent = ta.value ? ta.value.length + " characters." : "The run shown on the right has no answer text.";
+    });
+    go.addEventListener("click", function () {
+      if (!ta.value) { out.textContent = "Nothing to count."; return; }
+      go.disabled = true; out.textContent = "Counting…";
+      api("/api/tools/count_tokens", {text: ta.value, model: window.labRun.model()}).then(function (j) {
+        out.textContent = j.text_tokens + " tokens of text (" + ta.value.length + " characters, " +
+          (ta.value.length / Math.max(j.text_tokens, 1)).toFixed(1) + " per token) on " + j.model +
+          ". As a user message it is " + j.input_tokens + ": the message wrapper adds " + j.wrapper_tokens + ".";
+      }).catch(function (e) { out.textContent = e.message; }).finally(function () { go.disabled = false; });
+    });
+    return box;
+  }
+
+  // ----------------------------------------------------------------- quiz
+  function quizBlock() {
+    var box = el("div", "stack-lg");
+    quiz.forEach(function (q, i) { box.append(quizCard(q, i, quiz.length)); });
+    return box;
+  }
+  function quizCard(q, i, n) {
+    var form = el("form", "card card-pad quiz-card"), meta = el("div", "quiz-meta");
+    form.addEventListener("submit", function (e) { e.preventDefault(); });
+    meta.append(el("span", null, "Question " + (i + 1) + " of " + n));
+    if (q.concepts.length) meta.append(el("span", null, "·"), el("span", null, q.concepts.join(", ")));
+    form.append(meta, el("p", "quiz-q", q.prompt));
+    var input = null, fs = null;
+    if (q.type === "mcq") {
+      fs = el("fieldset", "quiz-options");
+      fs.append(el("legend", "sr-only", "Options"));
+      q.options.forEach(function (o, k) {
+        var lab = el("label", "quiz-option"), r = el("input");
+        r.type = "radio"; r.name = "quiz-" + q.id; r.value = String(k);
+        lab.append(r, el("span", null, o), el("span", "verdict pill"));
+        fs.append(lab);
+      });
+      form.append(fs);
+    } else {
+      var aff = el("span", "input-affix");
+      input = el("input", "input num");
+      input.inputMode = "decimal"; input.style.width = "14ch"; input.setAttribute("aria-label", "Your answer");
+      aff.append(input);
+      if (q.unit) aff.append(el("span", "secondary small", q.unit));
+      form.append(aff);
+    }
+    var row = el("div", "row"), check = el("button", "btn btn-primary", "Check"), msg = el("span", "small error-text");
+    check.type = "submit";
+    row.append(check, msg);
+    row.style.marginTop = "var(--sp-3)";
+    var feedback = el("div");
+    form.append(row, feedback);
+
+    function show(result, answer) {
+      feedback.textContent = "";
+      var fb = el("div", "quiz-feedback " + (result.correct ? "is-correct" : "is-wrong"));
+      fb.style.marginTop = "var(--sp-3)";
+      fb.append(el("div", "fb-title", result.correct ? "Right." : "Not quite. Saved to your review list."),
+                document.createTextNode(result.explanation || ""));
+      feedback.append(fb);
+      if (fs) {
+        var right = [].concat(result.correct_answer);
+        fs.querySelectorAll(".quiz-option").forEach(function (lab, k) {
+          var v = lab.querySelector(".verdict");
+          lab.classList.toggle("is-correct", right.indexOf(k) >= 0);
+          lab.classList.toggle("is-wrong", k === answer && right.indexOf(k) < 0);
+          v.className = "verdict pill " + (right.indexOf(k) >= 0 ? "pill-good" : "pill-critical");
+          v.textContent = right.indexOf(k) >= 0 ? "Correct" : (k === answer ? "Your answer" : "");
+          lab.querySelector("input").checked = k === answer;
+        });
+      } else {
+        input.value = String(answer);
+        if (!result.correct) fb.append(document.createTextNode(" Correct answer: " + result.correct_answer + (q.unit ? " " + q.unit : "") + "."));
+      }
+      check.textContent = "Check again";
+    }
+    check.addEventListener("click", function () {
+      var answer;
+      if (fs) {
+        var c = fs.querySelector("input:checked");
+        if (!c) { msg.textContent = "Pick an answer."; return; }
+        answer = Number(c.value);
+      } else {
+        answer = Number(input.value);
+        if (input.value.trim() === "" || !isFinite(answer)) { msg.textContent = "Enter a number."; return; }
+      }
+      msg.textContent = ""; check.disabled = true;
+      api(base + "/quiz/" + q.id, {answer: answer}).then(function (r) {
+        q.last = {answer: answer, correct: r.correct, correct_answer: r.correct_answer, explanation: r.explanation,
+                  tries: ((q.last && q.last.tries) || 0) + 1};
+        show(r, answer);
+        renderNav();
+      }).catch(function (e) { msg.textContent = e.message; }).finally(function () { check.disabled = false; });
+    });
+    if (q.last) show(q.last, q.last.answer);
+    return form;
+  }
+
+  window.addEventListener("hashchange", function () { var i = fromHash(); if (i >= 0 && i !== at) go(i); });
+  document.addEventListener("lab:run-start", function () { refresh(); });
+  document.addEventListener("lab:run-exit", function () { refresh(); });
+  load();
 })();
 </script>
