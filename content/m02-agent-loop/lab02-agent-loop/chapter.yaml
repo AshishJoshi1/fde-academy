@@ -5,3 +5,4 @@ summary: >
   the SDK tool runner with an approval gate, and a strict tool schema.
 steps:
   - s01-one-call
+  - s02-manual-loop

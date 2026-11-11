@@ -365,7 +365,8 @@ def lab_page(step: Any, code_path: Path, *, gateway: bool, theme: str | None = N
                                                           "Start this lesson over"),
                        "{{start_over_js}}": _START_OVER_JS,
                        "{{model_options}}": "".join(f"<option>{esc(m)}</option>" for m in LAB_MODELS),
-                       "{{model_notes_json}}": json.dumps(LAB_MODELS)}.items():
+                       "{{model_notes_json}}": json.dumps(LAB_MODELS),
+                       "{{panels_json}}": json.dumps(step.spec.panels)}.items():
         body = body.replace(key, value)
     return shell(f"{step.spec.title} · FDE Academy", body, theme=theme)
 

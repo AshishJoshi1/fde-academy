@@ -30,6 +30,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - `src/academy_server` is the FastAPI server: content loader, store, security and server-rendered pages, plus:
     - `runs/`: `proctree.py` (Job Object process tree) and `manager.py` (the run lifecycle and its ordered events);
     - `relay.py` (the thin relay to the gateway);
+    - `fixtures/`: the mock Meridian API (`meridian/meridian_api.py` and its seed, vendored unchanged from Projects/04), started for each run of a step with `run: {fixture: meridian}`;
     - `tutor.py` (the tutor's request layers; its default rules are `tutor_rules.md`, and Ashish's copy is `playground/tutor/rules.md`);
     - `pricing.py`, `credentials.py` and `playground.py`.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
@@ -94,5 +95,5 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
 - **Passes through unchanged:** `output_config`, `count_tokens` and all four usage fields. No truststore needed.
 
 ## Related folders
-- `C:\Users\AshishKumarJoshi\FDE\Projects\0{1..4}-*`: capstone specs. 04 ships `mock_api/meridian_api.py`, which is vendored as the lesson fixture.
+- `C:\Users\AshishKumarJoshi\FDE\Projects\0{1..4}-*`: capstone specs. 04 ships `mock_api/meridian_api.py`, vendored unchanged in `src/academy_server/fixtures/meridian/` (a test checks the copy matches).
 - Each project becomes its own git repo when its build starts. List it under "Tracked repos" in PROGRESS.md so `/wrap` commits it.

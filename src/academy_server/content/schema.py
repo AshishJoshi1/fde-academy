@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 ID = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]*$", max_length=40)]
 
-PanelName = Literal["console", "trace", "messages", "tokens", "flow", "fixture",
+PanelName = Literal["console", "timeline", "trace", "messages", "tokens", "flow", "fixture",
                     "why", "variables", "compare"]
 
 
@@ -129,10 +129,15 @@ FACTS: dict[str, str] = {
     "run.calls": "model calls the relay saw",
     "run.first_call_ms": "ms from process start to the first model call reaching the relay",
     "run.model": "the model picked for the run (LAB_MODEL)",
+    "run.cost_usd": "the relay's cost of every call in the run, added up",
     "request.model": "model in the last request body",
     "request.max_tokens": "max_tokens in the last request body",
     "request.effort": "output_config.effort in the last request body, or 'not set'",
     "request.retry_count": "the SDK's x-stainless-retry-count header on the last request",
+    "request.tool_names": "the tools defined in the last request, by name",
+    "request.messages": "how many messages the last request sent",
+    "request.last_message": "role and block types of the last request's last message, e.g. 'user: tool_result'",
+    "request.history_grows": "whether each call's messages start with the previous call's messages, unchanged",
     "response.status": "HTTP status of the last call",
     "response.error_message": "the error message of a failed call (the gateway's wrapper unwrapped)",
     "response.stop_reason": "stop_reason of the last response",
@@ -143,14 +148,23 @@ FACTS: dict[str, str] = {
     "response.text_chars": "characters in the text blocks",
     "response.text_tokens": "tokens in the text blocks, measured with count_tokens",
     "response.hidden_output_tokens": "usage.output_tokens minus response.text_tokens",
-    "response.usage.input_tokens": "usage.input_tokens",
-    "response.usage.output_tokens": "usage.output_tokens",
-    "response.usage.cache_creation_input_tokens": "usage.cache_creation_input_tokens",
-    "response.usage.cache_read_input_tokens": "usage.cache_read_input_tokens",
-    "response.cost_usd": "the relay's cost: usage x pricing.yaml",
+    "response.usage.input_tokens": "usage.input_tokens of the last call",
+    "response.usage.output_tokens": "usage.output_tokens of the last call",
+    "response.usage.cache_creation_input_tokens": "usage.cache_creation_input_tokens of the last call",
+    "response.usage.cache_read_input_tokens": "usage.cache_read_input_tokens of the last call",
+    "response.cost_usd": "the relay's cost of the last call: usage x pricing.yaml",
     "response.gateway_cost_usd": "the gateway's x-litellm-response-cost-original header",
     "response.cost_matches_gateway": "whether those two costs agree (to 0.1%)",
     "response.ms": "how long the call took, in ms",
+    "first.response.stop_reason": "stop_reason of the run's first call",
+    "first.response.blocks": "content block types of the first call's response",
+    "first.response.tool_name": "name of the first tool_use block in the first response",
+    "first.response.tool_input": "input of that tool_use block, as JSON",
+    "first.response.usage.input_tokens": "usage.input_tokens of the first call",
+    "loop.input_growth": "the last call's input_tokens minus the first call's",
+    "loop.input_ratio": "the last call's input_tokens divided by the first call's",
+    "api.requests": "requests your code made to the step's mock API",
+    "api.last_request": "the last of those requests, with the status it got",
     "prev.response.usage.output_tokens": "usage.output_tokens of your previous run of this step",
     "ratio.output_tokens": "this run's output_tokens divided by the previous run's",
 }

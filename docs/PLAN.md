@@ -90,6 +90,10 @@ After a module's lessons, its project is built as one more guided lesson, in the
   - Serves `/relay/{run_token}/v1/*` and forwards to the gateway with the real key. The lesson process gets a dummy key and the relay's URL, so the real key never enters lesson code.
   - Records each call (request body, response body or stream, status, headers, timing, usage) as a run event, in order.
   - No cassettes. No budgets, because the gateway enforces them.
+- **Fixtures** (`src/academy_server/fixtures/`): a step with `run: {fixture: meridian}` gets the mock Meridian API (vendored unchanged from Projects/04) for each run:
+  - started in the server on a free port with a fresh token, which the lesson process gets as `MERIDIAN_API_URL` and `MERIDIAN_API_TOKEN`, and stopped when the run ends;
+  - every request it answers is an `api.request` run event (method, path, query, status, the body sent back), recorded before the response goes out, so the events keep the true order;
+  - `tools/run_live.py` starts it too, and prints each request.
 - **Store:** existing tables, plus run events, predictions and experiment progress (new migrations). Cost comes from usage × `pricing.yaml`.
 - **Tutor** (`src/academy_server/tutor.py`, `POST /api/steps/{id}/tutor/{guide_id}`):
   - `claude-sonnet-5-5` at effort `low`, called by the server through the gateway with the SDK. Lesson code never sees the key.
@@ -104,6 +108,7 @@ After a module's lessons, its project is built as one more guided lesson, in the
   - lesson text and the code diff
   - guided lesson steps, experiments and quiz
   - console, call inspector, usage and cost
+  - for steps that turn them on (`panels:`): the timeline (model calls, the tool run between them, mock API requests), the messages each call sent (carried over or new), and the mock API's request log
   - run history
   - tutor
   - home
@@ -198,6 +203,20 @@ experiments:
    - **Hands-on, since the tutor is an LLM app:** H1 read its request (what's in `system` and what's in `messages`, where the cache breakpoints sit); H2 predict, then check, its cache writes and reads on turn 1 and turn 2; H3 try to get a check answer out of it, and tighten `playground/tutor/rules.md` if it gives one.
 
 **Later, only if needed:** the React and Monaco workbench (editing in the page with richer code tools).
+
+## s02 "The manual loop": the end result
+One tool, `get_opportunity`, backed by the mock Meridian API; Opus 5.5 at effort `low`. Measured on 2026-11-11 (3 runs, all alike): Call 1 is 469 input tokens (33 for the question, 436 for the tool) and returns only a `tool_use` block; Call 2 sends 3 messages and 724 input tokens and ends with `end_turn`; the run costs about $0.008 to $0.009.
+
+| Step | Teaches | Your run shows | Then |
+|---|---|---|---|
+| 1 Define a tool | `name`, `description`, `input_schema`; tools are sent, and cost tokens, on every call | the tool names, Call 1's input tokens | Checks |
+| 2 The model asks for it | `stop_reason: tool_use` and the `tool_use` block | Call 1's stop_reason, blocks, tool and input | Checks |
+| 3 Run the tool | Your code runs it; the model never sees the URL or token | API requests, the last one | Checks |
+| 4 Send the result back | The whole assistant turn, then one user message of `tool_result`s matched by id | messages sent, the last message | Checks |
+| 5 Loop until end_turn | The loop, a turn cap, and checking how it ended | calls, last stop_reason, run cost | Checks |
+| 6 History only grows | Every call resends everything; never edit earlier turns | | Experiment E1 |
+| 7 Drop a tool_result | The API's pairing rule: a 400, not retried | | Experiment E2 |
+| 8 Quiz | | | q1 to q3 |
 
 ## Lab 02 roadmap: what each step adds to the app
 | Step | New in the app |

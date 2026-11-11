@@ -18,11 +18,14 @@ import uvicorn
 from conftest import TOKEN
 
 from academy_server.app import AppSettings, create_app
+from academy_server.experiments import run_facts
 from academy_server.relay import Upstream, parse_sse
 from academy_server.runs import DUMMY_KEY
 from academy_server.runs.proctree import pid_alive
 
 REAL_KEY = "sk-real-gateway-key-must-never-reach-lesson-code"
+S02_STARTER = (Path(__file__).resolve().parent.parent / "content" / "m02-agent-loop" / "lab02-agent-loop"
+               / "s02-manual-loop" / "starter" / "main.py")
 MESSAGE = {"id": "msg_test", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
            "content": [{"type": "text", "text": "An agent loop repeats until the task is done."}],
            "stop_reason": "end_turn", "stop_sequence": None,
@@ -69,6 +72,7 @@ pathlib.Path("child.pid").write_text(str(child.pid))
 print("spawned", child.pid, flush=True)
 time.sleep(120)
 """, 5),
+    "loop": (S02_STARTER.read_text(encoding="utf-8"), 120),    # the real s02 code, against the real mock API
     "orphan": ("""
 import pathlib, subprocess, sys
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
@@ -100,6 +104,7 @@ def write_content(root: Path) -> None:
         (chapter / name / "starter").mkdir(parents=True)
         (chapter / name / "step.yaml").write_text(
             f'id: {name}\ntitle: "{name}"\nfiles:\n  main.py: starter/main.py\nrun:\n  timeout_s: {limit}\n'
+            + ("  fixture: meridian\n" if name == "loop" else "")
             + (EXPERIMENT if name == "call" else ""), encoding="utf-8")
         (chapter / name / "step.md").write_text(f"# {name}\n", encoding="utf-8")
         (chapter / name / "starter" / "main.py").write_text(code.lstrip(), encoding="utf-8")
@@ -111,8 +116,14 @@ class FakeGateway:
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        if json.loads(request.content or b"{}").get("stream"):
+        body = json.loads(request.content or b"{}")
+        if body.get("stream"):
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=SSE.encode())
+        last = (body.get("messages") or [{}])[-1].get("content")
+        if body.get("tools") and not (isinstance(last, list) and any(b.get("type") == "tool_result" for b in last)):
+            return httpx.Response(200, json={**MESSAGE, "stop_reason": "tool_use", "content": [
+                {"type": "tool_use", "id": "toolu_test1", "name": "get_opportunity",
+                 "input": {"opportunity_id": "OPP-1042"}}]})
         return httpx.Response(200, json=MESSAGE, headers={"x-litellm-call-id": "call-123"})
 
 
@@ -233,6 +244,36 @@ def test_lesson_environment_is_allowlisted(server, monkeypatch):
     assert not {"FDE_TEST_SECRET", "ANTHROPIC_AUTH_TOKEN", "HTTPS_PROXY"} & set(seen["keys"])
     assert seen["key"] == DUMMY_KEY
     assert seen["url"].startswith(f"http://127.0.0.1:{server.port}/relay/")
+    assert not {"MERIDIAN_API_URL", "MERIDIAN_API_TOKEN"} & set(seen["keys"])   # only a step with the fixture
+
+
+def test_a_fixture_step_runs_the_loop_against_the_mock_api(server):
+    view = run_to_end(server, "loop")
+    assert view["run"]["outcome"] == "ok", console(view)
+    events = view["events"]
+    started = first(view, "run.started")
+    assert started["fixture"]["name"] == "meridian" and started["fixture"]["url"].startswith("http://127.0.0.1:")
+    # The order things happened: call 1 asks for the tool, the tool's API request, call 2 carries its result.
+    order = [(e["type"], e["data"].get("call")) for e in events
+             if e["type"] in ("llm.request", "llm.response", "api.request")]
+    assert order == [("llm.request", 1), ("llm.response", 1), ("api.request", None),
+                     ("llm.request", 2), ("llm.response", 2)]
+    api = first(view, "api.request")
+    assert (api["n"], api["fixture"], api["method"], api["path"], api["status"]) == \
+        (1, "meridian", "GET", "/opportunities/OPP-1042", 200)
+    assert api["body"]["opportunity_id"] == "OPP-1042" and api["body"]["account_id"] == "ACC-017"
+    second = [e["data"]["body"] for e in events if e["type"] == "llm.request"][1]
+    result = second["messages"][2]["content"][0]
+    assert result["type"] == "tool_result" and result["tool_use_id"] == "toolu_test1"
+    assert json.loads(result["content"]) == api["body"]          # what the API sent is what the model got
+    facts = run_facts(events)
+    assert facts["api.requests"] == 1 and facts["api.last_request"] == "GET /opportunities/OPP-1042 → 200"
+    assert facts["first.response.stop_reason"] == "tool_use" and facts["response.stop_reason"] == "end_turn"
+    assert facts["request.messages"] == 3 and facts["request.last_message"] == "user: tool_result"
+    assert facts["request.history_grows"] is True and facts["request.tool_names"] == "get_opportunity"
+    assert any(line.startswith("answer:") for line in console(view))
+    with pytest.raises((httpx.ConnectError, httpx.ConnectTimeout)):   # the mock API stopped with the run
+        httpx.get(started["fixture"]["url"] + "/accounts", timeout=2, trust_env=False)
 
 
 def test_timeout_kills_the_whole_process_tree(server):

@@ -118,9 +118,10 @@ def test_start_over_can_reset_the_code_too(client, home):
 def test_start_all_over_marks_every_step_and_never_creates_a_playground(client, home):
     r = client.post("/api/start-over", json={"code": True})
     assert r.status_code == 200
-    assert r.json()["steps"] == [STEP] and r.json()["code_reset"] == []
-    assert not (home / "playground" / STEP).exists()
-    assert client.app.state.store.started_over_at(STEP) == r.json()["started_over_at"]
+    every = list(client.app.state.content.steps)
+    assert STEP in every and sorted(r.json()["steps"]) == sorted(every) and r.json()["code_reset"] == []
+    assert not any((home / "playground" / s).exists() for s in every)
+    assert all(client.app.state.store.started_over_at(s) == r.json()["started_over_at"] for s in every)
 
 
 def test_start_over_pages(client):

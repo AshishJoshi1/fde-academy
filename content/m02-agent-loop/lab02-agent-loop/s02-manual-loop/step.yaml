@@ -1,0 +1,418 @@
+id: s02
+title: "The manual loop"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages, fixture]
+run:
+  fixture: meridian
+hints:
+  - "Print response.stop_reason after every call. Which value makes your loop call again?"
+  - "A tool_result goes in a user message, and its tool_use_id must equal the tool_use block's id."
+
+guide:
+  - id: g1
+    title: "Define a tool"
+    code: ["13-22", 41]
+    teach: |
+      In s01 the model could only answer from what it already knew, and it knows nothing about
+      Meridian's CRM. To let it look things up, you give it a **tool**. The model never runs
+      anything itself: a tool is a *description* you send with the request, plus a promise that
+      your code will do the work when the model asks.
+
+      **Lines 13 to 22** define one tool, `get_opportunity`:
+
+      | Field | What it's for |
+      |---|---|
+      | `name` | What the model writes when it wants the tool. Your code uses it to pick the function to run. |
+      | `description` | When to use the tool and what it returns. The model decides whether to call it from this text, so write it like documentation for a new colleague. |
+      | `input_schema` | A JSON Schema for the input. The model writes its input to match it: here, an object with a required string `opportunity_id`. |
+
+      **Line 41** sends the list as `tools=TOOLS`. Tools are part of the request, like the
+      messages, and the API keeps nothing between calls, so they're sent again on every call.
+
+      They also cost tokens. Measured with `count_tokens`, your question alone is **33 tokens**,
+      and the same question with the tool is **469**. About 436 tokens go on the definition plus
+      the instructions the API adds to explain tool use to the model, on every call.
+    do: "Press **Run**. Under **Model calls**, open **Call 1** and find `tools` in the **Request body**."
+    show: [request.tool_names, first.response.usage.input_tokens]
+    notice: |
+      Call 1's `input_tokens` is about 469, though your question is one sentence: most of it is
+      the tool. An agent with twenty tools can spend thousands of tokens per call on definitions
+      before the conversation even starts. Module 02-A, "Designing tools", comes back to this.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Who runs get_opportunity when the model asks for it?"
+        options:
+          - "The model, on Anthropic's servers"
+          - "The gateway"
+          - "Your code, in main.py"
+          - "The Meridian API, by itself"
+        answer: 2
+        explanation: "The model only writes a request for it (a tool_use block). Your code decides whether and how to run it: lines 26 to 28 and line 52."
+      - id: c2
+        type: mcq
+        prompt: "What does input_schema tell the model?"
+        options:
+          - "How to call the Meridian API"
+          - "The shape of the input it must write for this tool"
+          - "What the tool returns"
+          - "Which models may use the tool"
+        answer: 1
+        explanation: "It's a JSON Schema for the tool's input, so the model writes {\"opportunity_id\": \"OPP-1042\"}. The URL, the token and the shape of the result stay in your code."
+
+  - id: g2
+    title: "The model asks for it"
+    code: [44, "46-47"]
+    teach: |
+      Call 1 doesn't come back with an answer. It comes back with a **request**: `stop_reason`
+      is `tool_use`, and `content` holds a `tool_use` block like this one:
+
+      ```json
+      {"type": "tool_use", "id": "toolu_01RLMp...", "name": "get_opportunity",
+       "input": {"opportunity_id": "OPP-1042"}}
+      ```
+
+      - `name` is the tool it wants, from your `tools` list.
+      - `input` matches your `input_schema`. The model took `OPP-1042` from your question.
+      - `id` is unique to this request. Your code sends the result back under this id.
+
+      This is the s01 table at work: **`tool_use` means "run the tools I asked for, send me the
+      results, and call me again"**. `end_turn` would mean it had finished. **Line 44** prints
+      `stop_reason` and the block types, and **lines 46 to 47** leave the loop on anything but
+      `tool_use`.
+
+      The content can also hold a `text` block before the `tool_use` ("I'll look that up") or a
+      `thinking` block. Filter by `block.type`, as in s01: never assume positions.
+    do: "Read the `turn 1:` line in the **Console**, then open Call 1's **Response body**."
+    show: [first.response.stop_reason, first.response.blocks, first.response.tool_name, first.response.tool_input]
+    notice: |
+      At effort `low` the model went straight to the tool in every measured run: one `tool_use`
+      block, with no text and no thinking, in 60 output tokens. Its input is exactly the ID from
+      your question.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What stop_reason did Call 1 come back with?"
+        options: ["end_turn", "tool_use", "max_tokens"]
+        answer_from: first.response.stop_reason
+        explanation: "tool_use: the model needs a tool run before it can answer. The turn 1: line in the Console and Call 1's response body both show it."
+      - id: c2
+        type: mcq
+        prompt: "Call 1 came back with stop_reason tool_use. What does your code do next?"
+        options:
+          - "Print the text: the model is done"
+          - "Run the tool it asked for, send the result back, and call the model again"
+          - "Call the model again with the same messages"
+          - "Stop: tool_use is an error"
+        answer: 1
+        explanation: "tool_use means: run these tools, then call me again with their results. end_turn is the one that means done."
+
+  - id: g3
+    title: "Run the tool"
+    code: ["25-31", 52]
+    teach: |
+      Now your code does the work. **Line 52** looks up the function by the name the model wrote
+      (`RUN[block.name]`, from line 31) and calls it with the model's input as keyword arguments:
+      `get_opportunity(opportunity_id="OPP-1042")`.
+
+      **Lines 26 to 28** are an ordinary HTTP call to the Meridian API. The lab starts a mock of
+      it for each run, and gives your code its URL and a token (lines 9 and 10).
+
+      Notice what the model never sees: the URL, the token, the HTTP request. It sees the tool's
+      name and description, and later only the result you choose to send back. That boundary is
+      where you enforce rules: which tools exist, what they may touch, what goes back. s04,
+      "Gate and block", builds on it.
+
+      The tool runs **between** two model calls. On the **Timeline** it's the `get_opportunity`
+      row between Call 1 and Call 2, with its API request under it.
+    do: "Open the **Timeline** and the **Mock API · request log** panels on the right."
+    show: [api.requests, api.last_request]
+    notice: |
+      One request, `GET /opportunities/OPP-1042`, answered with a 200. The whole tool step,
+      from Call 1's response to Call 2's request, takes about 0.1 s, while each model call takes
+      2 to 3 seconds: the model calls are most of the run's time.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many requests did your run make to the mock Meridian API?"
+        answer_from: api.requests
+        explanation: "One. The model asked for one tool call, and your code made one API request for it."
+      - id: c2
+        type: mcq
+        prompt: "The Meridian API needs a bearer token. Where is it in this run?"
+        options:
+          - "In the tool's description"
+          - "In the messages, so the model can call the API"
+          - "Only in your code's environment: the model never sees it"
+          - "In the tool_use block's input"
+        answer: 2
+        explanation: "Line 10 reads it from the environment, and line 27 sends it. Nothing the model reads or writes contains it."
+
+  - id: g4
+    title: "Send the result back"
+    code: [45, "54-55"]
+    teach: |
+      Call 2 must carry the whole conversation so far, because the API is stateless (s01, step 1).
+      Two appends build it.
+
+      1. **Line 45** appends Call 1's response as an `assistant` message: **all of
+         `response.content`, exactly as it came back**, so any thinking and text blocks go back
+         with the `tool_use`. Opus 5.5 ties its thinking blocks to the turn they came from, so
+         don't pick blocks out or rewrite them.
+      2. **Lines 54 and 55** append one `user` message holding a `tool_result` block for each
+         `tool_use`:
+
+      ```python
+      {"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(output)}
+      ```
+
+      `tool_use_id` copies the `id` of the `tool_use` block: that is how the API pairs each result
+      with its request. `content` is a string, here the opportunity as JSON.
+
+      So Call 2's `messages` is: `[0]` your question, `[1]` the assistant's `tool_use`, and
+      `[2]` your `tool_result`. The **Messages** panel shows that list, and marks the messages
+      that are new since Call 1.
+    do: "Open the **Messages** panel. Switch between **Call 1** and **Call 2**, and match the `tool_result`'s `tool_use_id` with the `tool_use`'s `id`."
+    show: [request.messages, request.last_message]
+    notice: |
+      Call 2 sent 3 messages, and the last one is `user: tool_result`. A tool result comes from
+      the **user** side, because your code is the one answering the model. There is no "tool"
+      role in the Messages API.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which role carries a tool_result?"
+        options: ["assistant", "user", "tool", "system"]
+        answer: 1
+        explanation: "user. The Messages API has only user and assistant turns, and the results from your code go in a user message."
+      - id: c2
+        type: mcq
+        prompt: "How does the API know which tool_use a tool_result answers?"
+        options:
+          - "By their order in the message"
+          - "By the tool's name"
+          - "The tool_result's tool_use_id equals the tool_use block's id"
+          - "The SDK pairs them for you"
+        answer: 2
+        explanation: "By id. Line 54 copies block.id into tool_use_id. With several tool calls in one turn (s03), that's the only thing that ties each result to its request."
+
+  - id: g5
+    title: "Loop until end_turn"
+    code: [36, "46-47", "57-60"]
+    teach: |
+      Put those steps in a loop and you have an agent:
+
+      ```
+      call the model
+        stop_reason is tool_use   ->  run each tool, append the results, call again
+        anything else             ->  stop
+      ```
+
+      **Line 36** loops, and **lines 46 to 47** decide. Here it takes two calls: Call 2 has the
+      opportunity in its messages, so it answers and returns `end_turn`.
+
+      Every loop needs two guards:
+
+      - **A cap on turns.** Line 36 allows at most 5 calls. A model that keeps asking for tools,
+        or a tool that keeps failing, would otherwise loop, and spend, without end.
+      - **A check of how it ended.** The loop also stops on `max_tokens` (cut off), on `refusal`,
+        or at the cap. Only `end_turn` means the answer is complete, so lines 57 to 60 print an
+        answer only then.
+
+      You pay for both calls, and Call 2 costs more, because it resends everything Call 1 sent
+      plus the tool exchange.
+    do: "Read the Console from `turn 1:` to `answer:`, then the input tokens per call under the **Timeline**."
+    show: [run.calls, response.stop_reason, run.cost_usd]
+    notice: |
+      Two calls, about $0.008 to $0.009 for the run, against about $0.003 for Call 1 alone.
+      Call 2 has more input (the history) and more output (the written answer).
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which stop_reason ended your loop?"
+        options: ["end_turn", "tool_use", "max_tokens", "refusal"]
+        answer_from: response.stop_reason
+        explanation: "end_turn: the model had what it needed and answered. The loop leaves at line 47, and line 58 prints the answer."
+      - id: c2
+        type: mcq
+        prompt: "Your loop reaches its cap of 5 calls, and the last stop_reason is still tool_use. What should the code report?"
+        options:
+          - "The last text it got, as the answer"
+          - "That it stopped without an answer: the task isn't finished"
+          - "Nothing: raise the cap and keep calling"
+        answer: 1
+        explanation: "The cap is a safety stop, not success. Lines 57 to 60 print an answer only on end_turn, and say plainly when the loop stopped without one."
+
+  - id: g6
+    title: "History only grows"
+    teach: |
+      Every call sends the **whole** conversation again, and an agent's conversation only gets
+      longer: each turn adds an assistant message and a tool result. Two things follow.
+
+      - **Input tokens grow with every turn.** Each call pays again for everything before it,
+        every tool result included. A large tool result (a whole document, a page of records) is
+        paid for again on every later call.
+      - **Never edit an earlier turn.** Append; don't rewrite. Opus 5.5 ties its thinking blocks
+        to the conversation they came from, and prompt caching (Module 01) needs the start of the
+        request to stay exactly the same from call to call.
+
+      Predict how much Call 2 grows, then measure it.
+    experiment: e1
+
+  - id: g7
+    title: "Drop a tool_result"
+    teach: |
+      The API checks the structure of the conversation on every call. One of its rules: **every
+      `tool_use` must be answered by a `tool_result` with the same id, in the very next
+      message.** A loop that loses one (a tool raised an exception, or a bug skipped the append)
+      gets its call rejected.
+
+      Break it on purpose: stop the results from being sent, and predict what happens.
+    experiment: e2
+
+  - id: g8
+    title: "Quiz"
+    teach: |
+      Three questions on the whole step. Every answer is saved, and a miss comes back in spaced
+      review on the home page until you get it right.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Watch the history grow"
+    question: "What does Call 2 send that Call 1 didn't, and how big is it?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many messages will Call 2's request hold?"
+        answer_from: request.messages
+      - id: p2
+        type: mcq
+        prompt: "Call 2's input tokens, compared with Call 1's?"
+        options:
+          - "About the same (under 1.2x)"
+          - "Half as much again (1.2x to 2x)"
+          - "More than double (2x or more)"
+        bins: [1.2, 2]
+        answer_from: loop.input_ratio
+      - id: p3
+        type: numeric
+        prompt: "How many more input tokens will Call 2 send than Call 1?"
+        hint: "The tool result is the opportunity as JSON, about 440 characters. A rule of thumb is about 4 characters per token."
+        answer_from: loop.input_growth
+        tol_factor: 1.5
+        unit: tokens
+      - id: p4
+        type: mcq
+        prompt: "Will Call 2's messages start with exactly Call 1's messages, unchanged?"
+        options: ["yes", "no"]
+        answer_from: request.history_grows
+    change: "Nothing: run the code as it is. This run is the measurement."
+    observe:
+      - "Messages: Call 2's list, and which messages are new in it"
+      - "Timeline: the input tokens per call, under the chart"
+      - "Model calls: the usage line on each call"
+    explain: |
+      Call 2 held 3 messages: your question, carried over unchanged, plus the two this turn
+      added, the assistant's `tool_use` and your `tool_result`.
+
+      Its input was 724 tokens against Call 1's 469: 255 more, about 1.5 times as much.
+      Measured with `count_tokens`, about 190 of those are the tool result (the opportunity's
+      440 characters of JSON). The rest is the `tool_use` turn and the message framing. The
+      tool definition, about 436 tokens, is in both calls.
+
+      Now scale it up. In a loop of 10 calls where each turn adds a 2,000-token tool result,
+      call 10 carries about 18,000 tokens of earlier results, and the run's total input grows
+      with the square of the number of calls. That's why a tool should return only what the
+      model needs, and why long agents use prompt caching and compaction (Module 02-D).
+
+  - id: e2
+    title: "Drop the tool_result"
+    question: "What does the API do when a tool_use gets no tool_result?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "What HTTP status will Call 2 get?"
+        options:
+          - {label: "200 OK", value: 200}
+          - {label: "400 Bad Request", value: 400}
+          - {label: "429 Too Many Requests", value: 429}
+          - {label: "500 Internal Server Error", value: 500}
+        answer_from: response.status
+      - id: p2
+        type: numeric
+        prompt: "How many model calls will reach the relay, the SDK's retries included?"
+        hint: "By default the SDK retries 408, 409, 429, 5xx and connection errors, twice."
+        answer_from: run.calls
+      - id: p3
+        type: numeric
+        prompt: "How many requests will your tool make to the mock API?"
+        answer_from: api.requests
+      - id: p4
+        type: text
+        prompt: "If Call 2 fails, what will the error say?"
+        show_from: response.error_message
+    change: 'In main.py, line 55: put a # in front of messages.append({"role": "user", "content": results}), so the results are never sent. Change nothing else.'
+    observe:
+      - "Timeline: the get_opportunity row, and Call 2's status"
+      - "Messages: Call 2's list ends with the assistant's tool_use"
+      - "Console: the traceback (anthropic.BadRequestError)"
+    explain: |
+      `400 invalid_request_error`: "messages.1: `tool_use` ids were found without `tool_result`
+      blocks immediately after: toolu_…. Each `tool_use` block must have a corresponding
+      `tool_result` block in the next message." `messages.1` is the assistant message holding
+      the `tool_use`, counting from 0.
+
+      A 400 means the request itself is wrong, so the SDK doesn't retry it: 2 calls in all, and
+      the run ends with a traceback. The tool did run (one API request). Its result just never
+      reached the model.
+
+      The same rule catches a tool that crashes: if `get_opportunity` raised an exception, there
+      would be no result to send. Don't skip it. Send a `tool_result` with `is_error: true` and
+      the error text, so the model can try again or tell the user. s03 does this.
+
+      Remove the # when you're done.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "Why does line 45 append the whole response.content as the assistant message, instead of only its tool_use block?"
+    options:
+      - "To save tokens"
+      - "Each call must send earlier turns back exactly as they came, thinking blocks included; the tool_result in the next message then answers the tool_use by id"
+      - "Because the SDK only accepts a list"
+      - "So the model can run the tool again by itself"
+    answer: 1
+    concepts: [agent-loop, history]
+    explanation: >
+      History only grows, and it's sent back as it came. On Opus 5.5 the thinking blocks are tied to
+      the turn they came from, and the API pairs each tool_result with its tool_use by id. Picking
+      blocks out or rewriting a turn breaks that.
+  - id: q2
+    type: numeric
+    prompt: "A loop makes two calls on claude-opus-5-5. Call 1: 470 input and 60 output tokens. Call 2: 720 input and 130 output. At $4 / $20 per million tokens, what does the run cost in USD?"
+    answer: 0.00856
+    tol: 0.00001
+    unit: USD
+    concepts: [cost-estimation, history]
+    explanation: "Input: (470 + 720) x $4/1M = $0.00476. Output: (60 + 130) x $20/1M = $0.0038. Total $0.00856, close to your run. Call 2's input includes everything Call 1 sent."
+  - id: q3
+    type: mcq
+    prompt: "In your loop, what does the model actually do when it 'uses a tool'?"
+    options:
+      - "It calls the Meridian API over HTTP"
+      - "It returns a tool_use block; your code runs the tool and sends a tool_result back in the next call"
+      - "The SDK runs the tool inside client.messages.create"
+      - "Anthropic's servers run the tool"
+    answer: 1
+    concepts: [tool-use]
+    explanation: "The model only writes the request. Your code runs the tool (line 52) and sends the result back (lines 54 and 55); the next call sees it."
+tutor_notes: >
+  Common misconceptions: the model runs the tool itself (it only writes a tool_use block; main.py runs
+  it at line 52); a tool result goes in an assistant or "tool" message (it goes in a user message,
+  matched by tool_use_id); the API remembers the tool result between calls (it doesn't: Call 2 resends
+  it). end_turn and tool_use are easy to mix up: point at the turn 1: and turn 2: lines in the Console
+  and at the Timeline, where each call's stop_reason is its label.

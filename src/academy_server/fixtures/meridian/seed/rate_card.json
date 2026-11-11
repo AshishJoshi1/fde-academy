@@ -1,0 +1,425 @@
+[
+  {
+    "role": "R-ARCH",
+    "location": "UK",
+    "day_rate": 1100.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-ARCH",
+    "location": "PL",
+    "day_rate": 682.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-ARCH",
+    "location": "IN",
+    "day_rate": 374.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "UK",
+    "day_rate": 910.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "PL",
+    "day_rate": 564.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "IN",
+    "day_rate": 309.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DSCI",
+    "location": "UK",
+    "day_rate": 1000.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DSCI",
+    "location": "PL",
+    "day_rate": 620.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-DSCI",
+    "location": "IN",
+    "day_rate": 340.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "UK",
+    "day_rate": 1030.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "PL",
+    "day_rate": 638.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "IN",
+    "day_rate": 350.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "UK",
+    "day_rate": 860.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "PL",
+    "day_rate": 533.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "IN",
+    "day_rate": 292.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "UK",
+    "day_rate": 960.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "PL",
+    "day_rate": 595.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "IN",
+    "day_rate": 326.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "UK",
+    "day_rate": 745.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "PL",
+    "day_rate": 462.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "IN",
+    "day_rate": 253.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "UK",
+    "day_rate": 595.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "PL",
+    "day_rate": 369.0,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "IN",
+    "day_rate": 202.5,
+    "currency": "EUR",
+    "version": "RC-2025.2",
+    "valid_from": "2025-10-01",
+    "valid_to": "2026-09-30"
+  },
+  {
+    "role": "R-ARCH",
+    "location": "UK",
+    "day_rate": 1150.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-ARCH",
+    "location": "PL",
+    "day_rate": 713.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-ARCH",
+    "location": "IN",
+    "day_rate": 391.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "UK",
+    "day_rate": 950.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "PL",
+    "day_rate": 589.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-DENG",
+    "location": "IN",
+    "day_rate": 323.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-DSCI",
+    "location": "UK",
+    "day_rate": 1050.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-DSCI",
+    "location": "PL",
+    "day_rate": 651.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "UK",
+    "day_rate": 1080.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "PL",
+    "day_rate": 669.5,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-MLE",
+    "location": "IN",
+    "day_rate": 367.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "UK",
+    "day_rate": 900.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "PL",
+    "day_rate": 558.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-CLOUD",
+    "location": "IN",
+    "day_rate": 306.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "UK",
+    "day_rate": 1000.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "PL",
+    "day_rate": 620.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-PM",
+    "location": "IN",
+    "day_rate": 340.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "UK",
+    "day_rate": 780.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "PL",
+    "day_rate": 483.5,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-BA",
+    "location": "IN",
+    "day_rate": 265.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "UK",
+    "day_rate": 620.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "PL",
+    "day_rate": 384.5,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  },
+  {
+    "role": "R-QA",
+    "location": "IN",
+    "day_rate": 211.0,
+    "currency": "EUR",
+    "version": "RC-2026.1",
+    "valid_from": "2026-10-01",
+    "valid_to": "2027-09-30"
+  }
+]

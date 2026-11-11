@@ -122,6 +122,10 @@ def run_text(run_id: str | None, events: list[dict[str, Any]], cost_usd: float |
                          f"  headers: {_compact(hdrs)}\n  body: {_clip(_compact(d.get('body')), BODY_CHARS)}")
         elif e["type"] == "llm.error":
             lines.append(f"Call {d.get('call')} failed after {d.get('ms')} ms: {d.get('error')}")
+        elif e["type"] == "api.request":
+            query = f"?{d['query']}" if d.get("query") else ""
+            lines.append(f"{d.get('fixture') or 'API'} request {d.get('n')} from his tool code: {d.get('method')} "
+                         f"{d.get('path')}{query} -> {d.get('status')}\n  body: {_clip(_compact(d.get('body')), BODY_CHARS)}")
     return _clip("\n".join(lines), RUN_CHARS)
 
 

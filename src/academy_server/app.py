@@ -291,7 +291,8 @@ def create_app(settings: AppSettings) -> FastAPI:
         dest, files = step_files(step)
         try:
             run = manager.start(step_id=step.full_id, module_id=step.module_id, entry=step.spec.entry,
-                                playground=dest, files=files, model=model, timeout_s=step.spec.run.timeout_s)
+                                playground=dest, files=files, model=model, timeout_s=step.spec.run.timeout_s,
+                                fixture=step.spec.run.fixture)
         except RunBusy as busy:
             raise HTTPException(409, f"run {busy} is still running; stop it first")
         if attempt is not None:

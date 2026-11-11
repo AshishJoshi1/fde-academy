@@ -9,6 +9,8 @@
   there. Later runs never overwrite your edits; --reset copies the starter again.
 - ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY come from %LOCALAPPDATA%\\fde-academy\\anthropic.env and
   go into the lesson process only, never into your shell. The key is never printed.
+- A step with a fixture (`run: {fixture: meridian}`) gets it here too: the mock Meridian API starts on a
+  free port for the run, and each request it answers is printed as a [meridian] line.
 
 Lesson code runs with your real key, so only run code you've read. Spend is capped by the
 gateway's per-key budget, not by this tool.
@@ -23,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from academy_server import paths, playground  # noqa: E402
+from academy_server import fixtures, paths, playground  # noqa: E402
 from academy_server.credentials import REQUIRED, CredentialsError, load_credentials  # noqa: E402
 
 KEEP = ("ANTHROPIC_LOG",)   # SDK logging switch: ANTHROPIC_LOG=debug prints each request body and retry decision
@@ -67,8 +69,20 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"live run · {step.full_id} · {model} via {host}")
     print(f"your code: {play / entry}" + ("  (fresh copy of the starter)" if written else ""))
+    env = child_env(creds, model)
+    fixture = None
+    if step.spec.run.fixture:
+        def show(method, path, query, status, body):
+            print(f"[{step.spec.run.fixture}] {method} {path}{'?' + query if query else ''} -> {status}", flush=True)
+        fixture = fixtures.start(step.spec.run.fixture, on_request=show)
+        env.update(fixture.env)
+        print(f"fixture: {fixture.name} mock API on {fixture.url}")
     print("note: live calls cost money; the gateway enforces your key's budget\n", flush=True)
-    return subprocess.call([sys.executable, "-X", "utf8", "-u", entry], cwd=play, env=child_env(creds, model))
+    try:
+        return subprocess.call([sys.executable, "-X", "utf8", "-u", entry], cwd=play, env=env)
+    finally:
+        if fixture is not None:
+            fixture.stop()
 
 
 if __name__ == "__main__":

@@ -100,6 +100,87 @@ def test_a_run_without_model_calls_measures_nothing():
     assert facts["run.calls"] == 0 and facts["run.first_call_ms"] is None and facts["response.status"] is None
 
 
+TOOL_USE = {"type": "message", "role": "assistant", "model": "claude-opus-5-5", "stop_reason": "tool_use",
+            "content": [{"type": "tool_use", "id": "toolu_1", "name": "get_opportunity",
+                         "input": {"opportunity_id": "OPP-1042"}}],
+            "usage": {"input_tokens": 469, "output_tokens": 60, "cache_creation_input_tokens": 0,
+                      "cache_read_input_tokens": 0}}
+ANSWERED = {**LOW, "usage": {**LOW["usage"], "input_tokens": 724, "output_tokens": 130}}
+NO_RESULT_400 = {"error": {"message": '{"type":"error","error":{"type":"invalid_request_error","message":'
+                                      '"messages.1: `tool_use` ids were found without `tool_result` blocks immediately '
+                                      'after: toolu_1."}}', "code": "400"}}
+
+
+def loop_events(*, edit_history=False, drop_result=False):
+    """Two calls of the s02 loop, with the mock API request between them."""
+    question = {"role": "user", "content": "What discount did procurement ask for on OPP-1042?"}
+    tools = [{"name": "get_opportunity", "description": "Look up one opportunity.",
+              "input_schema": {"type": "object", "properties": {"opportunity_id": {"type": "string"}}}}]
+    asked = {"role": "assistant", "content": TOOL_USE["content"]}
+    result = {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": '{"x": 1}'}]}
+    second = [{"role": "user", "content": "edited"} if edit_history else question, asked] + ([] if drop_result else [result])
+    failed = drop_result
+    rows = [("run.started", {"model": "claude-opus-5-5", "fixture": {"name": "meridian", "url": "http://127.0.0.1:1"}}),
+            ("llm.request", {"call": 1, "body": {"model": "claude-opus-5-5", "messages": [question], "tools": tools}}),
+            ("llm.response", {"call": 1, "status": 200, "ms": 1800, "body": TOOL_USE, "usage": TOOL_USE["usage"],
+                              "cost_usd": 0.003076, "headers": {}}),
+            ("api.request", {"n": 1, "fixture": "meridian", "method": "GET", "path": "/opportunities/OPP-1042",
+                             "query": None, "status": 200, "body": {"x": 1}}),
+            ("llm.request", {"call": 2, "body": {"model": "claude-opus-5-5", "messages": second, "tools": tools}}),
+            ("llm.response", {"call": 2, "status": 400 if failed else 200, "ms": 2400,
+                              "body": NO_RESULT_400 if failed else ANSWERED, "usage": None if failed else ANSWERED["usage"],
+                              "cost_usd": None if failed else 0.005496, "headers": {}}),
+            ("run.exit", {"outcome": "error" if failed else "ok", "exit_code": 1 if failed else 0})]
+    return [{"seq": i + 1, "t_ms": i * 100, "type": t, "data": d} for i, (t, d) in enumerate(rows)]
+
+
+def test_loop_facts_first_call_history_and_the_mock_api():
+    facts = run_facts(loop_events())
+    assert facts["run.calls"] == 2 and facts["run.cost_usd"] == 0.008572
+    assert facts["first.response.stop_reason"] == "tool_use" and facts["first.response.blocks"] == "tool_use"
+    assert facts["first.response.tool_name"] == "get_opportunity"
+    assert facts["first.response.tool_input"] == '{"opportunity_id": "OPP-1042"}'
+    assert facts["first.response.usage.input_tokens"] == 469 and facts["response.usage.input_tokens"] == 724
+    assert facts["loop.input_growth"] == 255 and facts["loop.input_ratio"] == 1.544
+    assert facts["request.messages"] == 3 and facts["request.last_message"] == "user: tool_result"
+    assert facts["request.history_grows"] is True and facts["request.tool_names"] == "get_opportunity"
+    assert facts["api.requests"] == 1 and facts["api.last_request"] == "GET /opportunities/OPP-1042 → 200"
+    assert facts["response.stop_reason"] == "end_turn"
+
+
+def test_an_edited_earlier_turn_is_measured():
+    assert run_facts(loop_events(edit_history=True))["request.history_grows"] is False
+
+
+def test_a_dropped_tool_result_is_a_400_after_the_tool_ran():
+    facts = run_facts(loop_events(drop_result=True))
+    assert facts["response.status"] == 400 and facts["run.calls"] == 2 and facts["api.requests"] == 1
+    assert facts["response.error_message"].startswith("messages.1: `tool_use` ids were found without `tool_result`")
+    assert facts["request.last_message"] == "assistant: tool_use" and facts["request.history_grows"] is True
+    assert facts["loop.input_growth"] is None and facts["run.cost_usd"] == 0.003076
+
+
+def test_api_facts_only_for_a_step_with_a_mock_api():
+    facts = run_facts(events(LOW))
+    assert facts["api.requests"] is None and facts["api.last_request"] is None
+    assert facts["request.tool_names"] == "(none)" and facts["request.last_message"] == "user: text"
+
+
+def test_a_streamed_tool_use_input_is_rebuilt():
+    sse = [{"event": "message_start", "data": {"type": "message_start", "message": {
+               "type": "message", "role": "assistant", "content": [], "stop_reason": None}}},
+           {"event": "content_block_start", "data": {"type": "content_block_start", "index": 0, "content_block": {
+               "type": "tool_use", "id": "toolu_s", "name": "get_opportunity", "input": {}}}},
+           {"event": "content_block_delta", "data": {"type": "content_block_delta", "index": 0, "delta": {
+               "type": "input_json_delta", "partial_json": '{"opportunity_'}}},
+           {"event": "content_block_delta", "data": {"type": "content_block_delta", "index": 0, "delta": {
+               "type": "input_json_delta", "partial_json": 'id": "OPP-1042"}'}}},
+           {"event": "message_delta", "data": {"type": "message_delta", "delta": {"stop_reason": "tool_use"}}}]
+    facts = run_facts(events({"events": sse}))
+    assert facts["first.response.tool_input"] == '{"opportunity_id": "OPP-1042"}'
+    assert facts["response.stop_reason"] == "tool_use"
+
+
 # ----------------------------------------------------------------- grading
 def mcq(**kw):
     return PredictMCQ(id="p", type="mcq", prompt="?", **kw)

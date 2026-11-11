@@ -18,7 +18,9 @@ def test_the_build_deck_loads_without_errors():
     tree = load_content(REPO / "content")
     assert tree.errors == []
     deck = tree.decks["build"]
-    assert len(deck.cards) == 14 and set(deck.tags) == {"workflow", "cost", "security", "gateway", "engineering"}
+    on_disk = (REPO / "content" / "cards" / "build.yaml").read_text(encoding="utf-8").count("\n  - id: ")
+    assert len(deck.cards) == on_disk >= 14   # every card in the file loaded; /wrap adds more
+    assert set(deck.tags) == {"workflow", "cost", "security", "gateway", "engineering"}
     assert all(c.source for c in deck.cards)
 
 
@@ -47,7 +49,7 @@ def test_a_bad_deck_is_reported_with_its_path(tmp_path):
 def test_cards_api_and_page(make_client):
     client = make_client()
     [deck] = client.get("/api/cards").json()["decks"]
-    assert deck["id"] == "build" and len(deck["cards"]) == 14
+    assert deck["id"] == "build" and len(deck["cards"]) == len(client.app.state.content.decks["build"].cards)
     card = deck["cards"][0]
     assert card["front_html"].startswith("<p>") and "<strong>stateless</strong>" in card["back_html"]
     assert card["last"] is None and card["source"]

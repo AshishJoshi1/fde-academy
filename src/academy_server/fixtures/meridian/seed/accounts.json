@@ -1,0 +1,262 @@
+[
+  {
+    "account_id": "ACC-001",
+    "legal_name": "Aldgate Retail Group plc",
+    "industry": "retail",
+    "contracting_region": "UK",
+    "competitor_ids": [
+      "ACC-004"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-088",
+        "closed_on": "2026-06-20",
+        "outcome": "won",
+        "amount": 36800.0,
+        "currency": "EUR",
+        "discount_pct": 5,
+        "service_line": "cloud"
+      }
+    ]
+  },
+  {
+    "account_id": "ACC-002",
+    "legal_name": "Nordhavn Shipping A/S",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-003",
+    "legal_name": "Harrow & Finch Insurance plc",
+    "industry": "insurance",
+    "contracting_region": "UK",
+    "competitor_ids": [
+      "ACC-007"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-012",
+        "closed_on": "2025-02-10",
+        "outcome": "won",
+        "amount": 150000.0,
+        "currency": "EUR",
+        "discount_pct": 7,
+        "service_line": "data"
+      },
+      {
+        "deal_id": "D-066",
+        "closed_on": "2026-03-30",
+        "outcome": "lost",
+        "amount": 72000.0,
+        "currency": "EUR",
+        "discount_pct": 12,
+        "service_line": "cloud"
+      }
+    ]
+  },
+  {
+    "account_id": "ACC-004",
+    "legal_name": "Cascadia Outfitters Inc.",
+    "industry": "retail",
+    "contracting_region": "US",
+    "competitor_ids": [
+      "ACC-001",
+      "ACC-012"
+    ],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-005",
+    "legal_name": "Transportes Peñalara S.L.",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-006",
+    "legal_name": "Łódź Freight Sp. z o.o.",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-007",
+    "legal_name": "Bluegum Mutual Ltd",
+    "industry": "insurance",
+    "contracting_region": "APAC",
+    "competitor_ids": [
+      "ACC-003"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-083",
+        "closed_on": "2026-07-14",
+        "outcome": "won",
+        "amount": 54000.0,
+        "currency": "AUD",
+        "discount_pct": 4,
+        "service_line": "data"
+      }
+    ]
+  },
+  {
+    "account_id": "ACC-008",
+    "legal_name": "Rhein-Spedition Köhler AG",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [
+      "ACC-017"
+    ],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-009",
+    "legal_name": "Lakeshore Health Partners LLC",
+    "industry": "healthcare",
+    "contracting_region": "US",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-010",
+    "legal_name": "Sakura Denki K.K.",
+    "industry": "manufacturing",
+    "contracting_region": "APAC",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-011",
+    "legal_name": "Fjällbacka Logistik AB",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-012",
+    "legal_name": "Evergreen Grocers Inc.",
+    "industry": "retail",
+    "contracting_region": "US",
+    "competitor_ids": [
+      "ACC-004"
+    ],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-013",
+    "legal_name": "Tasman Power & Gas Pty Ltd",
+    "industry": "energy",
+    "contracting_region": "APAC",
+    "competitor_ids": [
+      "ACC-014"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-041",
+        "closed_on": "2025-09-01",
+        "outcome": "won",
+        "amount": 310000.0,
+        "currency": "EUR",
+        "discount_pct": 11,
+        "service_line": "ai"
+      }
+    ]
+  },
+  {
+    "account_id": "ACC-014",
+    "legal_name": "Kiwi Grid Energy Ltd",
+    "industry": "energy",
+    "contracting_region": "APAC",
+    "competitor_ids": [
+      "ACC-013"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-087",
+        "closed_on": "2026-06-02",
+        "outcome": "won",
+        "amount": 72500.0,
+        "currency": "EUR",
+        "discount_pct": 6,
+        "service_line": "ai"
+      }
+    ]
+  },
+  {
+    "account_id": "ACC-015",
+    "legal_name": "São Bento Energia S.A.",
+    "industry": "energy",
+    "contracting_region": "EU",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-016",
+    "legal_name": "Pinecrest Bank N.A.",
+    "industry": "financial_services",
+    "contracting_region": "US",
+    "competitor_ids": [],
+    "deals": []
+  },
+  {
+    "account_id": "ACC-017",
+    "legal_name": "Müller Logistik GmbH",
+    "industry": "logistics",
+    "contracting_region": "EU",
+    "competitor_ids": [
+      "ACC-008"
+    ],
+    "deals": [
+      {
+        "deal_id": "D-030",
+        "closed_on": "2024-11-12",
+        "outcome": "won",
+        "amount": 64000.0,
+        "currency": "EUR",
+        "discount_pct": 6,
+        "service_line": "data"
+      },
+      {
+        "deal_id": "D-052",
+        "closed_on": "2025-04-03",
+        "outcome": "won",
+        "amount": 88500.0,
+        "currency": "EUR",
+        "discount_pct": 10,
+        "service_line": "cloud"
+      },
+      {
+        "deal_id": "D-077",
+        "closed_on": "2025-12-15",
+        "outcome": "won",
+        "amount": 41200.0,
+        "currency": "EUR",
+        "discount_pct": 5,
+        "service_line": "data"
+      },
+      {
+        "deal_id": "D-091",
+        "closed_on": "2026-05-28",
+        "outcome": "won",
+        "amount": 123750.0,
+        "currency": "EUR",
+        "discount_pct": 8,
+        "service_line": "ai"
+      },
+      {
+        "deal_id": "D-095",
+        "closed_on": "2026-08-19",
+        "outcome": "lost",
+        "amount": 97000.0,
+        "currency": "EUR",
+        "discount_pct": 15,
+        "service_line": "data"
+      }
+    ]
+  }
+]

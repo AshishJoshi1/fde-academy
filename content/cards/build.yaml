@@ -118,6 +118,18 @@ cards:
       Lesson code defaults to Opus 5.5, the model the lessons measure.
     source: "docs/PLAN.md, Architecture: Tutor; pricing.yaml; PROGRESS.md (tutor measured live)"
 
+  - id: tool-tokens
+    tag: cost
+    front: |
+      In s02, the question alone is 33 tokens, but Call 1 sends 469 input tokens. Where do the other
+      436 go?
+    back: |
+      To the **tool**. The API is stateless, so the `tools` list is sent again on every call, and
+      one definition plus the instructions the API adds to explain tool use is about 436 tokens.
+
+      Every tool you define is paid for on every call, used or not. Measured with `count_tokens`.
+    source: "docs/PLAN.md, s02 \"The manual loop\": the end result (measured 2026-11-11)"
+
   # ----------------------------------------------------------------- security
   - id: dummy-key
     tag: security
@@ -188,3 +200,28 @@ cards:
 
       The one part that needs packages, `labctl content validate`, says so and asks for the venv.
     source: "CLAUDE.md, Repo conventions"
+
+  - id: no-tool-result
+    tag: engineering
+    front: |
+      An agent loop sends a `tool_use` with no `tool_result` in the next message. What comes back, and
+      does the SDK retry it?
+    back: |
+      **400 `invalid_request_error`**: "`tool_use` ids were found without `tool_result` blocks
+      immediately after". A 4xx means the request itself is wrong, so the SDK doesn't retry: 2 calls
+      in all, and the tool had already run.
+
+      A tool that fails still gets a `tool_result`, with `is_error: true`.
+    source: "content/m02-agent-loop/lab02-agent-loop/s02-manual-loop/step.yaml, experiment e2 (measured 2026-11-11)"
+
+  - id: record-before-send
+    tag: engineering
+    front: |
+      Why does the lab's mock API record each request as a run event *before* it sends the response?
+    back: |
+      To keep the run's events in the true order. Recorded after, the lesson could already have the
+      response and made its next model call, so the timeline would show the API request after the
+      call it fed.
+
+      Record an event at the point where its outcome is decided, not after it is handed on.
+    source: "src/academy_server/fixtures/__init__.py, module docstring"

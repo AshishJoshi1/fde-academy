@@ -37,15 +37,32 @@ def _message(body: Any) -> dict[str, Any] | None:
             blocks[d.get("index", len(blocks))] = dict(d.get("content_block") or {})
         elif kind == "content_block_delta":
             block, delta = blocks.setdefault(d.get("index", 0), {}), d.get("delta") or {}
-            for delta_type, field in (("text_delta", "text"), ("thinking_delta", "thinking")):
+            for delta_type, field in (("text_delta", "text"), ("thinking_delta", "thinking"),
+                                      ("input_json_delta", "partial_json")):
                 if delta.get("type") == delta_type:
                     block[field] = block.get(field, "") + delta.get(field, "")
         elif kind == "message_delta" and msg is not None:
             msg.update(d.get("delta") or {})
     if msg is None:
         return None
+    for block in blocks.values():          # a streamed tool_use sends its input as JSON fragments
+        if "partial_json" in block:
+            try:
+                block["input"] = json.loads(block.pop("partial_json") or "{}")
+            except ValueError:
+                pass
     msg["content"] = [blocks[i] for i in sorted(blocks)]
     return msg
+
+
+def message_shape(message: Any) -> str:
+    """A request message in a few words: its role and its block types, e.g. 'user: tool_result'."""
+    if not isinstance(message, dict):
+        return "?"
+    content = message.get("content")
+    kinds = "text" if isinstance(content, str) else ", ".join(
+        str(b.get("type", "?")) if isinstance(b, dict) else "?" for b in (content or [])) or "(empty)"
+    return f"{message.get('role', '?')}: {kinds}"
 
 
 def error_message(body: Any) -> str | None:
@@ -98,6 +115,9 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
     f["run.outcome"] = ended[-1]["data"].get("outcome") if ended else None
     f["run.calls"] = len(requests)
     f["run.first_call_ms"] = requests[0]["t_ms"] if requests else None
+    responses = _events(events, "llm.response")
+    if responses:
+        f["run.cost_usd"] = round(sum(r["data"].get("cost_usd") or 0 for r in responses), 8)
 
     if requests:
         req = requests[-1]["data"]
@@ -107,6 +127,17 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["request.effort"] = (body.get("output_config") or {}).get("effort") or "not set"
         retry = (req.get("headers") or {}).get("x-stainless-retry-count")
         f["request.retry_count"] = int(retry) if str(retry).isdigit() else None
+        tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+        f["request.tool_names"] = ", ".join(str(t.get("name", "?")) for t in tools if isinstance(t, dict)) or "(none)"
+        msgs = body.get("messages")
+        if isinstance(msgs, list):
+            f["request.messages"] = len(msgs)
+            f["request.last_message"] = message_shape(msgs[-1]) if msgs else "(none)"
+        # History only grows: every call resends the previous call's messages, unchanged, then adds to them.
+        lists = [r["data"]["body"]["messages"] for r in requests
+                 if isinstance(r["data"].get("body"), dict) and isinstance(r["data"]["body"].get("messages"), list)]
+        if lists:
+            f["request.history_grows"] = all(cur[:len(prev)] == prev for prev, cur in zip(lists, lists[1:]))
 
     last = results[-1] if results else None
     if last and last["type"] == "llm.response":
@@ -140,6 +171,30 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
                 f["response.text_tokens"] = text_tokens
                 if usage.get("output_tokens") is not None:
                     f["response.hidden_output_tokens"] = usage["output_tokens"] - text_tokens
+
+    if responses:
+        first = responses[0]["data"]
+        f["first.response.usage.input_tokens"] = (first.get("usage") or {}).get("input_tokens")
+        msg = _message(first.get("body"))
+        if msg is not None:
+            content = msg.get("content") or []
+            f["first.response.stop_reason"] = msg.get("stop_reason")
+            f["first.response.blocks"] = ", ".join(str(b.get("type")) for b in content) or "(none)"
+            tool = next((b for b in content if b.get("type") == "tool_use"), None)
+            if tool is not None:
+                f["first.response.tool_name"] = tool.get("name")
+                f["first.response.tool_input"] = json.dumps(tool.get("input"), ensure_ascii=False)
+        first_in, last_in = f["first.response.usage.input_tokens"], f["response.usage.input_tokens"]
+        if first_in and last_in is not None:
+            f["loop.input_growth"] = last_in - first_in
+            f["loop.input_ratio"] = round(last_in / first_in, 3)
+
+    if started and started[0]["data"].get("fixture"):       # only a step with a mock API measures these
+        api = _events(events, "api.request")
+        f["api.requests"] = len(api)
+        if api:
+            a = api[-1]["data"]
+            f["api.last_request"] = f"{a.get('method')} {a.get('path')}{'?' + a['query'] if a.get('query') else ''} → {a.get('status')}"
 
     if prev_events is not None:
         prev_out = run_facts(prev_events)["response.usage.output_tokens"]

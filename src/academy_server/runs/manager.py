@@ -7,6 +7,8 @@ so the order you see is the order things happened:
   console.truncated      the 1 MB console cap was reached; later output is dropped
   llm.request            the relay received a model call (exact body, headers minus the key)
   llm.response / .error  what came back (body or stream, status, headers, timing, usage, cost)
+  api.request            the step's fixture (the mock Meridian API) answered a request from
+                         lesson code: method, path, query, status and the body it sent back
   run.exit               ok | error | timeout | stopped, plus the exit code
 
 The lesson process runs with an allowlisted environment: the server's own variables (and
@@ -27,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .. import fixtures
 from .proctree import ProcessTree
 
 DUMMY_KEY = "sk-academy-dummy-key-the-relay-holds-the-real-one"
@@ -67,6 +70,8 @@ class Run:
     _truncated: bool = field(default=False, repr=False)
     _stop_requested: bool = field(default=False, repr=False)
     _tree: ProcessTree | None = field(default=None, repr=False)
+    _fixture: fixtures.Fixture | None = field(default=None, repr=False)
+    _api_requests: int = field(default=0, repr=False)
 
     def emit(self, type: str, **data: Any) -> dict[str, Any]:
         with self._lock:
@@ -84,6 +89,12 @@ class Run:
         with self._lock:
             self.calls += 1
             return self.calls
+
+    def record_api_request(self, **data: Any) -> None:
+        with self._lock:
+            self._api_requests += 1
+            n = self._api_requests
+        self.emit("api.request", n=n, fixture=self._fixture.name if self._fixture else None, **data)
 
     def add_cost(self, usd: float) -> None:
         with self._lock:
@@ -119,7 +130,7 @@ class RunManager:
 
     # ------------------------------------------------------------------- start
     def start(self, *, step_id: str, module_id: str, entry: str, playground: Path,
-              files: dict[str, str], model: str, timeout_s: int) -> Run:
+              files: dict[str, str], model: str, timeout_s: int, fixture: str | None = None) -> Run:
         run_id = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
         run = Run(id=run_id, token=secrets.token_urlsafe(24), step_id=step_id, module_id=module_id,
                   model=model, entry=entry, playground=playground, timeout_s=timeout_s)
@@ -130,13 +141,16 @@ class RunManager:
             self._runs[run.id] = run
         try:
             self.store.record_run_start(run.id, step_id, module_id, "live", model, files)
+            if fixture:
+                run._fixture = fixtures.start(fixture, on_request=run.record_api_request)
             run._tree = ProcessTree([self.python, "-X", "utf8", "-u", entry], cwd=playground, env=self._env(run))
         except Exception as exc:
             run.emit("run.exit", outcome="error", exit_code=None, error=f"could not start: {exc}")
             self._finish(run, "error", None)
             raise
         run.emit("run.started", step_id=step_id, model=model, entry=entry, timeout_s=timeout_s,
-                 pid=run._tree.proc.pid, job_object=run._tree.uses_job_object)
+                 pid=run._tree.proc.pid, job_object=run._tree.uses_job_object,
+                 fixture={"name": run._fixture.name, "url": run._fixture.url} if run._fixture else None)
         threading.Thread(target=self._supervise, args=(run,), daemon=True, name=f"run-{run.id}").start()
         return run
 
@@ -145,6 +159,8 @@ class RunManager:
         env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1",
                    ANTHROPIC_BASE_URL=f"{self.relay_base}/relay/{run.token}",
                    ANTHROPIC_API_KEY=DUMMY_KEY, LAB_MODEL=run.model)
+        if run._fixture is not None:
+            env.update(run._fixture.env)     # the fixture's URL and this run's token for it
         return env
 
     # --------------------------------------------------------------- lifecycle
@@ -184,6 +200,8 @@ class RunManager:
 
     def _finish(self, run: Run, outcome: str, code: int | None) -> None:
         run.outcome, run.exit_code = outcome, code
+        if run._fixture is not None:
+            run._fixture.stop()          # nothing the run started outlives it
         try:
             self.store.save_run_events(run.id, run.events)
             self.store.record_run_end(run.id, outcome, run.cost_usd)

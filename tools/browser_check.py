@@ -4,7 +4,9 @@
     .venv/Scripts/python -X utf8 tools/browser_check.py m02.lab02.s01 --keep   # keep the temp dir
 
 - A fake gateway stands in for Claude (a one-sentence text answer; a thinking block when effort is
-  high; count_tokens counts words), so the check costs nothing and makes no live calls.
+  high; count_tokens counts words), so the check costs nothing and makes no live calls. With tools in
+  the request it asks for the first tool, answers its tool_result with text, and returns the real
+  API's 400 when a tool_use has no tool_result after it. A step's mock API (s02 on) is the real one.
 - The lab runs with its own temporary data dir and playground: your progress and playground/ are
   untouched.
 - For each step it checks the page rendered (title, code highlights, your-run values), answers every
@@ -12,9 +14,10 @@
 - Then it starts the lesson over (every tick gone, no run reopened, history and spaced review kept),
   and walks the flash cards (flip, "Didn't know" and "Knew it", tag filter, all cards, the card's
   link back from spaced review).
+- On a step with the timeline, messages or mock API panels, it checks each one drew the first run.
 - It reports any JavaScript error. Exit code 1 if anything failed.
 
-A lesson whose code needs a different reply (tool calls, from s02 on) extends fake_reply() below.
+A lesson whose code needs a different reply extends fake_reply() below.
 """
 from __future__ import annotations
 
@@ -40,22 +43,56 @@ sys.path.insert(0, str(ROOT / "src"))
 EDGE_PATHS = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
               r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"]
 ANSWER = "An agent loop is the repeating cycle in which an AI model observes its context, acts, and repeats."
+TOOL_ANSWER = "Procurement asked for 12% off list on OPP-1042, which is for account ACC-017."
 
 
 # ------------------------------------------------------------- fake gateway
-def fake_reply(body: dict) -> dict:
-    """The Message the fake gateway returns for a /v1/messages request body."""
+def _blocks(message: dict) -> list:
+    return message["content"] if isinstance(message.get("content"), list) else []
+
+
+def unanswered_tool_use(messages: list) -> tuple[int, list[str]] | None:
+    """(index, ids) of the first assistant message whose tool_use blocks have no tool_result in the next message."""
+    for i, m in enumerate(messages):
+        ids = [b["id"] for b in _blocks(m) if m.get("role") == "assistant" and b.get("type") == "tool_use"]
+        if ids:
+            nxt = messages[i + 1] if i + 1 < len(messages) else {}
+            got = {b.get("tool_use_id") for b in _blocks(nxt) if b.get("type") == "tool_result"}
+            missing = [x for x in ids if x not in got]
+            if missing:
+                return i, missing
+    return None
+
+
+def fake_reply(body: dict) -> tuple[int, dict]:
+    """(status, body) the fake gateway returns for a /v1/messages request body."""
+    messages, tools = body.get("messages") or [], body.get("tools") or []
+    bad = unanswered_tool_use(messages)
+    if bad:   # the real API's check, wrapped the way the gateway wraps errors
+        inner = {"type": "error", "error": {"type": "invalid_request_error", "message":
+                 f"messages.{bad[0]}: `tool_use` ids were found without `tool_result` blocks immediately after: "
+                 f"{', '.join(bad[1])}. Each `tool_use` block must have a corresponding `tool_result` block "
+                 "in the next message."}}
+        return 400, {"error": {"message": json.dumps(inner), "type": "None", "param": "None", "code": "400"}}
     effort = (body.get("output_config") or {}).get("effort")
-    content = [{"type": "text", "text": ANSWER}]
+    answered = any(b.get("type") == "tool_result" for b in _blocks(messages[-1] if messages else {}))
+    size = len(json.dumps(messages)) + len(json.dumps(tools))
+    usage = {"input_tokens": size // 4 if tools else 22, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+    if tools and not answered:   # ask for the first tool, with OPP-1042 for every required field
+        schema = tools[0].get("input_schema") or {}
+        content = [{"type": "tool_use", "id": f"toolu_fake{len(messages):02d}", "name": tools[0]["name"],
+                    "input": {k: "OPP-1042" for k in schema.get("required", [])}}]
+        return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
+                     "content": content, "stop_reason": "tool_use", "stop_sequence": None,
+                     "usage": {**usage, "output_tokens": 60}}
+    content = [{"type": "text", "text": TOOL_ANSWER if tools else ANSWER}]
     out = min(25, body.get("max_tokens") or 25)
     stop = "max_tokens" if out < 25 else "end_turn"
     if effort == "high":
         content.insert(0, {"type": "thinking", "thinking": "", "signature": "sig"})
         out = min(40, body.get("max_tokens") or 40)
-    return {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"), "content": content,
-            "stop_reason": stop, "stop_sequence": None,
-            "usage": {"input_tokens": 22, "output_tokens": out, "cache_creation_input_tokens": 0,
-                      "cache_read_input_tokens": 0}}
+    return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"), "content": content,
+                 "stop_reason": stop, "stop_sequence": None, "usage": {**usage, "output_tokens": out}}
 
 
 def gateway(request):
@@ -63,7 +100,9 @@ def gateway(request):
     body = json.loads(request.content or b"{}")
     if request.url.path.endswith("/count_tokens"):
         return httpx.Response(200, json={"input_tokens": 8 + len(body["messages"][0]["content"].split())})
-    msg = fake_reply(body)
+    status, msg = fake_reply(body)
+    if status >= 400:
+        return httpx.Response(status, json=msg)
     cost = (msg["usage"]["input_tokens"] * 4 + msg["usage"]["output_tokens"] * 20) / 1e6
     return httpx.Response(200, json=msg, headers={"x-litellm-response-cost-original": repr(cost)})
 
@@ -259,9 +298,11 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
                                                        headers={"x-academy-token": token})) as r:
         steps = json.loads(r.read())["steps"]
     print(f"  {len(steps)} guide steps")
+    panels = api_get(base, token, f"/api/steps/{step_id}")["panels"]
     b.js("document.getElementById('run').click()")
     b.wait("document.getElementById('status').textContent.startsWith('ok')", "the first run", timeout=90)
     b.wait(f"!{STEP_TEXT}.includes('No run yet')", "your run's values")
+    check_panels(b, panels, check)
 
     for i, g in enumerate(steps):
         print(f"  step {i + 1}: {g['title']}")
@@ -314,6 +355,29 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
     errors = b.errors()
     check(f"no JavaScript errors{': ' + '; '.join(errors) if errors else ''}", not errors)
     return fails
+
+
+def check_panels(b: Browser, panels: list[str], check) -> None:
+    """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
+    for name in ("timeline", "messages", "fixture"):
+        shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
+        check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
+    if "timeline" in panels:
+        b.wait("document.querySelectorAll('#timeline .trace-row').length > 0", "the timeline")
+        rows = b.js("[...document.querySelectorAll('#timeline .trace-label')].map(l => l.textContent)")
+        print(f"    timeline: {' | '.join(rows)}")
+        check("timeline: calls, the tool run between them, and its API request",
+              len(rows) >= 4 and any("result sent" in r for r in rows))
+    if "messages" in panels:
+        b.wait("document.querySelectorAll('#messages-view .msg').length > 0", "the messages view")
+        check("messages: the last call's list, with what it added marked",
+              b.js("document.querySelectorAll('#messages-view .msg.is-added').length") > 0
+              and b.js("document.querySelectorAll('#messages-tabs .tab').length") > 1)
+        b.js("document.querySelector('#messages-tabs .tab').click()")
+        check("messages: call 1's tab shows call 1's list",
+              b.js("document.getElementById('messages-view').textContent.includes('Call 1 sent 1 message')"))
+    if "fixture" in panels:
+        check("mock API log lists the tool's request", b.js("document.querySelectorAll('#api-log tbody tr').length") > 0)
 
 
 def api_get(base: str, token: str, path: str):
