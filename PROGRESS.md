@@ -79,13 +79,18 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-09 (1st) | s01 stage 2, built twice; s01 content from measured runs | $16 | about $0.02 (measurements) |
 | 2026-11-09 (2nd) | `/today` review, s01 g1 content fix, tutor (stage 3) built and measured | $4.87 | $0.010 learner + $0.033 tutor measurement |
 | 2026-11-11 | `/today` review; learner tools Start over and flash cards built and browser-checked | $7.09 | $0.00 (browser checks use a fake gateway) |
-| 2026-11-11 (2nd) | `/today` review; s02 "The manual loop" outlined, measured, built and browser-checked | not given | $0.00 learner + about $0.032 measurement (5 runs; `count_tokens` is free) |
+| 2026-11-11 (2nd) | `/today` review; s02 "The manual loop" outlined, measured, built and browser-checked | $10.07 | $0.00 learner + about $0.032 measurement (5 runs; `count_tokens` is free) |
 
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87. Re-estimate Module 02 after s03, from the s02 and s03 rows.
 - **Where the 2026-11-11 cost went:**
   - 97% of input came from the cache (12.4M tokens read, 323K written), over 79 requests;
   - one cache miss after an idle past the 1-hour TTL re-cached 37.7K tokens, and the context compaction forced one rebuild;
   - `/wrap` was about 6% of usage and `/today` about 4%.
+- **Where the 2026-11-11 (2nd) cost went** ($10.07 over 113 requests, 99% of input from the cache, no cache misses):
+  - cache reads, 25.1M tokens: about $5.02 (half);
+  - output, 126.2K tokens (the lesson, the code, the tests): about $2.52;
+  - cache writes, 314.6K tokens at the 1-hour price: about $2.52;
+  - reading `lab.html` whole (about 24K tokens) put it in every later turn's context; read large files in parts.
 
 ## Decisions log
 - 2026-11-06:
