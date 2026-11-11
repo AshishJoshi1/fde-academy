@@ -1,0 +1,190 @@
+# Flash cards: what building FDE Academy taught. Schema: Deck in src/academy_server/content/schema.py.
+# Every fact comes from a record (the card's source), never from memory. /wrap proposes new cards
+# from each session; only the ones Ashish approves are added here.
+id: build
+title: "Building FDE Academy"
+summary: |
+  What building this lab taught: how the work is organised, where the cost goes, and why the app is
+  built the way it is. A card you didn't know comes back in spaced review and in `/today`.
+tags:
+  workflow: Workflow
+  cost: Cost
+  security: Security
+  gateway: Gateway
+  engineering: Engineering
+
+cards:
+  # ----------------------------------------------------------------- workflow
+  - id: one-lesson-per-session
+    tag: workflow
+    front: |
+      Why does each lesson get its own Claude Code session?
+    back: |
+      Claude Code is a client of the same **stateless** API you study in s01: every turn resends the
+      whole conversation so far. A long session pays for all of its earlier text again on every
+      message (mostly as cache reads, but still), so each turn costs more than the last.
+
+      A fresh session per lesson keeps every turn small. `/wrap` and PROGRESS.md carry what matters
+      into the next one.
+    source: "CLAUDE.md, How we work (one lesson per session)"
+
+  - id: outline-first
+    tag: workflow
+    front: |
+      Why is a lesson's outline approved before any content or feature is built?
+    back: |
+      Rework is the expensive part. Agreeing on the guide-step titles (one line each, plus any
+      experiment) takes minutes; building the wrong lesson costs a session.
+
+      It also keeps the rule "no feature without a lesson that needs it": a feature only appears
+      in an outline when a step uses it.
+    source: "docs/PLAN.md, How a lesson is made (step 0)"
+
+  - id: state-lives-in-files
+    tag: workflow
+    front: |
+      A new Claude Code session remembers nothing of the last one. What carries the state across?
+    back: |
+      Files, not the conversation:
+
+      - PROGRESS.md: the exact stopping point and the next first action;
+      - the learner database export, `progress/learner-progress.json`;
+      - git.
+
+      `/wrap` writes them at the end of a session; `/today` and the SessionStart hook read them at
+      the start. It's the s01 lesson again: the model keeps no state, so your code (here, your
+      files) keeps the history.
+    source: ".claude/commands/wrap.md, .claude/commands/today.md"
+
+  # --------------------------------------------------------------------- cost
+  - id: cache-share
+    tag: cost
+    front: |
+      In the second session of 2026-11-09, where did 97% of Claude Code's input tokens come from?
+    back: |
+      From the **prompt cache**. Every turn resends the whole conversation, but the unchanged prefix
+      is read from the cache at a fraction of the input price: on Opus 5.5 a cache read costs $0.20
+      per million tokens against $4 for plain input (0.05×).
+
+      Caching is what makes a long, stateless conversation affordable.
+    source: "PROGRESS.md, Cost log; pricing.yaml"
+
+  - id: big-skill
+    tag: cost
+    front: |
+      What share of one session's usage did loading the `/claude-api` skill take, and why so much?
+    back: |
+      About **32%**. A skill's text is added to the conversation, and from then on every turn
+      resends it with everything else.
+
+      Load a large reference only when the work needs it.
+    source: "PROGRESS.md, Cost log (2026-11-09, second session)"
+
+  - id: idle-gap
+    tag: cost
+    front: |
+      What happens to the cost when a Claude Code session sits idle for over an hour?
+    back: |
+      The prompt cache expires. The next turn misses, and the whole conversation is written to the
+      cache again: one such miss re-cached **26.9K tokens**.
+
+      A cache write costs more than plain input (1.25× for the 5-minute TTL, 2× for the 1-hour TTL),
+      while a read costs far less. A long pause is a good moment to `/wrap` and start fresh.
+    source: "PROGRESS.md, Cost log; pricing.yaml"
+
+  - id: tutor-prefix
+    tag: cost
+    front: |
+      The tutor's first question on a step cost about $0.028, and a follow-up about $0.005. What made
+      the difference?
+    back: |
+      The **cached lesson prefix**. The rules and the authored lesson (about 10.4K tokens) come first
+      in every request. The first question writes them to the cache; a follow-up reads them at the
+      cache-read price instead of full input.
+
+      That's why the layers go most stable first (rules, lesson, then the thread): the cached prefix
+      stays identical from call to call.
+    source: "docs/PLAN.md, Architecture: Tutor (measured live on 2026-11-09)"
+
+  - id: tutor-model
+    tag: cost
+    front: |
+      Why does the tutor run on Sonnet 5.5 at effort `low`, while lesson code defaults to Opus 5.5?
+    back: |
+      A tutor answers many short questions, so price and speed matter more than depth. Sonnet 5.5
+      costs half of Opus 5.5 ($2 and $10 against $4 and $20 per million input and output tokens). At
+      effort `low` it returned no thinking blocks and answered in about 2.6–5 s.
+
+      Lesson code defaults to Opus 5.5, the model the lessons measure.
+    source: "docs/PLAN.md, Architecture: Tutor; pricing.yaml; PROGRESS.md (tutor measured live)"
+
+  # ----------------------------------------------------------------- security
+  - id: dummy-key
+    tag: security
+    front: |
+      Why does lesson code get a dummy API key and the relay's URL, not the real key?
+    back: |
+      The lesson process runs code you edit, so it's the least trusted part of the app. The relay
+      (`/relay/{run_token}/v1/*`) holds the real key and forwards each call to the gateway, so the key
+      never enters lesson code, its environment or its output.
+
+      The same relay records every call's exact request, response, usage and timing for the lab.
+    source: "docs/PLAN.md, Architecture: Thin relay; CLAUDE.md"
+
+  - id: no-user-wide-env
+    tag: security
+    front: |
+      Why are `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` never set as user-wide environment variables?
+    back: |
+      **Claude Code reads the same names.** Set user-wide, they would switch Claude Code's own login
+      to the lab's gateway key.
+
+      They live only in `%LOCALAPPDATA%\fde-academy\anthropic.env`. `run_live.py` hands them to the
+      lesson process, and the server uses them for the relay and the tutor.
+    source: "CLAUDE.md, Gateway (credentials)"
+
+  # ------------------------------------------------------------------ gateway
+  - id: trace-call-id
+    tag: gateway
+    front: |
+      A gateway call misbehaves. Which response header do you quote to trace it, and why not `request-id`?
+    back: |
+      **`x-litellm-call-id`.** Calls go through the Bounteous LiteLLM proxy, which doesn't pass
+      Anthropic's `request-id` header back (the SDK logs `request_id: None`).
+
+      On an error, the gateway's envelope still carries Anthropic's `request_id`, inside its message
+      string.
+    source: "CLAUDE.md, Gateway (tracing, errors)"
+
+  # -------------------------------------------------------------- engineering
+  - id: live-only
+    tag: engineering
+    front: |
+      Why do lessons make only live calls, with no recorded or replayed responses?
+    back: |
+      The point is to see what the model actually does: thinking that comes and goes, token counts
+      that vary, real errors from the real gateway. A recording would teach one frozen answer.
+
+      Live runs cost cents, the gateway enforces the key's $50 budget, and any past run can still be
+      reopened for free from the store.
+    source: "docs/PLAN.md, Principles (live calls only)"
+
+  - id: utf8
+    tag: engineering
+    front: |
+      Why is Python always run with `-X utf8` here?
+    back: |
+      Under Windows' default cp1252 encoding, the Meridian seed data ("Łódź") crashes Python.
+      `-X utf8` makes UTF-8 the default for files and the console.
+    source: "CLAUDE.md, Repo conventions"
+
+  - id: stdlib-only
+    tag: engineering
+    front: |
+      Why must `labctl.py`, `paths.py` and the store use only the standard library?
+    back: |
+      The SessionStart hook and `/today` run them with a **bare system Python**, outside the
+      project's venv. One third-party import there and the session start breaks.
+
+      The one part that needs packages, `labctl content validate`, says so and asks for the venv.
+    source: "CLAUDE.md, Repo conventions"

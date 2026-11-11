@@ -1,7 +1,7 @@
 """Server-rendered HTML pages, all styled by /static/academy.css.
 
 The home page, the styled 401 page (served before any session exists), the /design
-style guide, and the lab page where a step is run.
+style guide, the lab page where a step is run, and the flash cards.
 
 Every dynamic value goes through html.escape. Lesson markdown is rendered with raw HTML
 disabled, so step.md can't inject markup either.
@@ -71,7 +71,7 @@ def shell(title: str, body: str, *, theme: str | None = None, active: str | None
     theme_attr = f' data-theme="{theme}"' if theme in THEMES else ""
     links = ""
     if nav:
-        items = [("home", "/", "Home"), ("design", "/design", "Design system")]
+        items = [("home", "/", "Home"), ("cards", "/cards", "Flash cards"), ("design", "/design", "Design system")]
         current = ' aria-current="page"'
         links = '<nav class="nav" aria-label="Main">' + "".join(
             f'<a href="{href}"{current if key == active else ""}>{label}</a>'
@@ -192,26 +192,94 @@ def home_page(tree: Any, store: Any, *, theme: str | None = None) -> str:
     <div class="stack-lg">{''.join(modules) or '<p class="muted">No modules yet.</p>'}</div>
     {errors}
   </div>
-</section>"""
+  {START_OVER_ALL if tree.steps else ""}
+</section>
+<script>{_START_OVER_JS}</script>"""
     return shell("FDE Academy", body, theme=theme, active="home")
+
+
+# "Start over": the lab page has one for its lesson, the home page one for every lesson. Both show
+# what's cleared and what's kept before anything happens. Same markup and script on both pages.
+START_OVER_KEEPS = ("Kept: your quiz history (spaced review still brings back your misses), your spend, "
+                    "and your run history (every past run can still be reopened).")
+
+
+def start_over_panel(scope: str, endpoint: str, button: str) -> str:
+    return f"""
+  <details class="start-over" data-endpoint="{esc(endpoint)}">
+    <summary class="btn btn-sm btn-ghost btn-danger">{esc(button)}</summary>
+    <div class="callout callout-warning stack" style="margin-top:var(--sp-2)">
+      <div class="stack" style="gap:var(--sp-2)">
+        <p class="small" style="margin:0"><b>Start {esc(scope)} over?</b> Your check and quiz answers, experiment
+        predictions and explanations, latest run and tutor threads start empty, and every step loses its tick.
+        Nothing is deleted.</p>
+        <p class="small secondary" style="margin:0">{esc(START_OVER_KEEPS)}</p>
+        <label class="small row" style="gap:var(--sp-2)"><input type="checkbox" class="start-over-code">
+          Also put my code back to the starter</label>
+        <div class="row"><button class="btn btn-sm btn-danger start-over-go" type="button">Start over</button>
+          <span class="small muted start-over-msg"></span></div>
+      </div>
+    </div>
+  </details>"""
+
+
+START_OVER_ALL = f"""
+  <div class="card card-pad stack">
+    <p class="eyebrow">Start over</p>
+    <p class="small secondary" style="margin:0">Do every lesson fresh, as if for the first time.</p>
+    {start_over_panel("every lesson", "/api/start-over", "Start over all lessons")}
+  </div>"""
+
+# Clears the lab's remembered guide step, so a lesson opens on step 1 afterwards.
+_START_OVER_JS = """(function(){
+  document.querySelectorAll('details.start-over').forEach(function(box){
+    var go=box.querySelector('.start-over-go'),msg=box.querySelector('.start-over-msg');
+    go.addEventListener('click',function(){
+      go.disabled=true;msg.textContent='Starting over…';
+      fetch(box.dataset.endpoint,{method:'POST',headers:{'content-type':'application/json'},
+            body:JSON.stringify({code:box.querySelector('.start-over-code').checked})})
+        .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));return j;});})
+        .then(function(j){
+          try{j.steps.forEach(function(id){localStorage.removeItem('academy-guide:'+id);});}catch(e){}
+          if(box.dataset.endpoint!=='/api/start-over')history.replaceState(null,'',location.pathname+'#g1');
+          location.reload();
+        })
+        .catch(function(e){go.disabled=false;msg.textContent='Could not start over: '+e.message;});
+    });
+  });
+})();"""
+
+
+REVIEW_SHOWN = 6   # per kind: quiz items, flash cards, wrong predictions
 
 
 def review_card(tree: Any, store: Any) -> str:
     """Spaced review: quiz items still wrong, then wrong predictions, oldest first."""
     still = store.mistakes()["still_wrong"]
+    cards = [m for m in still if m["item_id"].startswith("cards:")]    # flash cards get their own share
+    quiz = [m for m in still if not m["item_id"].startswith("cards:")]
     surprises = store.surprises()
     items = []
-    for m in still[:6]:
+    for m in quiz[:REVIEW_SHOWN] + cards[:REVIEW_SHOWN]:
         step = m["step_id"] if m["step_id"] in tree.steps else None
-        parts = m["item_id"].split(":")      # <step>:<quiz id> or <step>:<guide step>:<check id>
+        parts = m["item_id"].split(":")      # <step>:<quiz id>, <step>:<guide step>:<check id>, cards:<deck>:<card>
         anchor = parts[1] if len(parts) == 3 else "quiz"
-        link = (f'<a class="btn btn-sm" href="/lab/{esc(step)}#{esc(anchor)}">Retry in the lab</a>' if step
-                else '<span class="small muted">asked in chat; re-asked by /today</span>')
+        card = parts[0] == "cards" and len(parts) == 3
+        if card:
+            link = f'<a class="btn btn-sm" href="/cards#{esc(parts[2])}">Review the flash card</a>'
+        elif step:
+            link = f'<a class="btn btn-sm" href="/lab/{esc(step)}#{esc(anchor)}">Retry in the lab</a>'
+        else:
+            link = '<span class="small muted">asked in chat; re-asked by /today</span>'
+        kind = '<span class="pill pill-warning">Flash card</span>' if card else '<span class="pill pill-critical">Quiz</span>'
+        question = m["question"] or m["item_id"]
+        if card:
+            question = question.replace("`", "")     # card fronts are markdown; this list is plain text
         items.append(f"""
           <li class="row" style="justify-content:space-between;gap:var(--sp-3)">
-            <span><span class="pill pill-critical">Quiz</span> {esc(m['question'] or m['item_id'])}
+            <span>{kind} {esc(question)}
             <span class="small muted">· missed {m['misses']} of {m['tries']}</span></span>{link}</li>""")
-    for sp in surprises[:6]:
+    for sp in surprises[:REVIEW_SHOWN]:
         step = sp["step_id"] if sp["step_id"] in tree.steps else None
         exp = tree.steps[step].spec.experiment(sp["experiment_id"]) if step else None
         title = f"{sp['experiment_id'].upper()} {exp.title}" if exp else sp["experiment_id"].upper()
@@ -222,14 +290,18 @@ def review_card(tree: Any, store: Any) -> str:
             <span><span class="pill pill-accent">{esc(title)}</span> {esc(sp['prompt'] or sp['item_id'])}
             <span class="small muted">· the run measured {esc(sp['actual_display'] or '?')}</span>{explained}</span>
             {link}</li>""")
-    body = (f'<ul class="stack" style="list-style:none;margin:0;padding:0">{"".join(items)}</ul>' if items
-            else '<p class="small muted" style="margin:0">Nothing to review: no missed quiz items or wrong predictions.</p>')
+    hidden = sum(max(0, len(group) - REVIEW_SHOWN) for group in (quiz, cards, surprises))
+    more = (f'<p class="small muted" style="margin:0">…and {hidden:,} more, oldest first. <code>/today</code> '
+            f're-asks up to 3 each session.</p>' if hidden else "")
+    body = (f'<ul class="stack" style="list-style:none;margin:0;padding:0">{"".join(items)}</ul>{more}' if items
+            else '<p class="small muted" style="margin:0">Nothing to review: no missed quiz items, flash cards or '
+                 'wrong predictions.</p>')
     return f"""
   <div class="card card-pad stack">
     <p class="eyebrow">Spaced review</p>
     <h2 style="margin:0">What to look at again</h2>
-    <p class="small secondary" style="margin:0">Quiz items you got wrong, and predictions the run proved wrong
-    (from each card's latest attempt). Right answers on a retry clear them.</p>
+    <p class="small secondary" style="margin:0">Quiz items you got wrong, flash cards you didn't know, and
+    predictions the run proved wrong (from each experiment's latest attempt). Right answers on a retry clear them.</p>
     {body}
   </div>"""
 
@@ -289,10 +361,19 @@ def lab_page(step: Any, code_path: Path, *, gateway: bool, theme: str | None = N
                        "{{title}}": esc(step.spec.title), "{{code_path}}": esc(code_path),
                        "{{lesson_html}}": markdown(lesson) if lesson.strip() else "<p>No lesson text.</p>",
                        "{{gateway_note}}": note,
+                       "{{start_over}}": start_over_panel("this lesson", f"/api/steps/{step.full_id}/start-over",
+                                                          "Start this lesson over"),
+                       "{{start_over_js}}": _START_OVER_JS,
                        "{{model_options}}": "".join(f"<option>{esc(m)}</option>" for m in LAB_MODELS),
                        "{{model_notes_json}}": json.dumps(LAB_MODELS)}.items():
         body = body.replace(key, value)
     return shell(f"{step.spec.title} · FDE Academy", body, theme=theme)
+
+
+def cards_page(*, theme: str | None = None) -> str:
+    """Flash cards: what building FDE Academy taught. The cards load from /api/cards."""
+    body = (HERE / "cards.html").read_text(encoding="utf-8")
+    return shell("Flash cards · FDE Academy", body, theme=theme, active="cards")
 
 
 def design_page(*, theme: str | None = None) -> str:

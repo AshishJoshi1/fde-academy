@@ -168,4 +168,16 @@ MIGRATIONS: list[str] = [
     ALTER TABLE tutor_turns ADD COLUMN ms INTEGER;          -- assistant: wall time of the call
     CREATE INDEX tutor_by_thread ON tutor_turns (step_id, guide_id, id);
     """,
+    # 5: "Start over". A marker per lesson step; nothing is deleted. The lab shows only answers,
+    # experiment attempts, runs and tutor turns from after the latest marker. Spaced review, quiz
+    # history, spend and run history keep everything.
+    """
+    CREATE TABLE step_restarts (
+        id         INTEGER PRIMARY KEY,
+        step_id    TEXT NOT NULL,
+        at         TEXT NOT NULL,
+        code_reset INTEGER NOT NULL DEFAULT 0        -- 1: the code went back to the starter too
+    );
+    CREATE INDEX step_restarts_by_step ON step_restarts (step_id, at);
+    """,
 ]

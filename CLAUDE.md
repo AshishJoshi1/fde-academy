@@ -5,7 +5,8 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
 - Full design: `docs/PLAN.md`. Build state and the exact stopping point: `PROGRESS.md`.
 - Remote: https://github.com/AshishJoshi1/fde-academy (private), branch `main`.
 - **How we work:** the app is built lesson by lesson (`docs/PLAN.md`, "How a lesson is made").
-  - Each lesson is its content, plus the app features it needs, plus Ashish doing it in the UI. No feature without a lesson that needs it.
+  - Each lesson is its content plus the app features it needs. No feature without a lesson that needs it, except learner tools Ashish asks for (Start over, flash cards).
+  - **Building runs ahead of learning:** the next lesson's build doesn't wait for Ashish to finish the previous one. He does the lessons in the UI at his own pace; a step that misleads him gets fixed when he reaches it.
   - **Outline first:** before building a lesson, propose its guide-step titles (one line each, plus any experiment) and get Ashish's OK. No content or features before that.
   - **One lesson per session:** a session builds one lesson (or one build stage), then ends with `/wrap`. The next lesson starts in a fresh session, because every turn resends the whole conversation.
   - Lessons teach before they ask: guided steps (teach, highlight the code, do, your run, check), then experiments (`docs/PLAN.md`, "The experience").
@@ -13,6 +14,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - Live calls only: no cassettes, replay or recording.
   - Simple features first: server-rendered pages and vanilla JavaScript.
   - Until a lesson's UI exists, Ashish runs its code with `tools/run_live.py`.
+  - **Flash cards:** `content/cards/build.yaml` holds what building the lab taught, each fact with its source (`/cards` in the app). `/wrap` proposes 1–3 new cards from the session; only the ones Ashish approves are added.
 
 ## Session protocol (do this every session)
 - **Start:** run `/today`, or at minimum read `PROGRESS.md` and run `python -X utf8 tools/session_status.py`. Continue from "Next first action". Never start new work before checking for unwrapped changes.
@@ -32,12 +34,12 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
     - `pricing.py`, `credentials.py` and `playground.py`.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
   - `src/labkit` (empty) is for in-process hooks, added when a lesson needs them (s05 approvals).
-  - `content/` holds the lessons.
+  - `content/` holds the lessons, and the flash-card decks in `content/cards/`.
   - `tools/` holds `labctl`, `session_status.py` and `run_live.py`.
   - `playground/<step-id>/` (tracked in git) holds Ashish's code for each step. He edits it in the lab page's simple editor or in VS Code. A save from the page refuses to overwrite a file changed on disk (409) unless he confirms.
 - Run the app with `python run.py`. Run tests with `.venv/Scripts/python -X utf8 -m pytest`, and validate lessons with `.venv/Scripts/python -X utf8 tools/labctl.py content validate`.
 - Run a lesson step from the browser: `python run.py`, then open `/lab/<step-id>`. It shows the console and every model call's exact request and response.
-- Browser-check a lesson: `.venv/Scripts/python -X utf8 tools/browser_check.py <step-id>`. It walks every guide step in headless Edge (Run, checks, experiments, quiz) against a fake gateway, with its own temporary data and playground: no API spend, and your progress is untouched. It reports JavaScript errors and saves a screenshot per step. Run it before handing a lesson to Ashish.
+- Browser-check a lesson: `.venv/Scripts/python -X utf8 tools/browser_check.py <step-id>`. It walks every guide step in headless Edge (Run, checks, experiments, quiz), then Start over and the flash cards, against a fake gateway, with its own temporary data and playground: no API spend, and your progress is untouched. It reports JavaScript errors and saves a screenshot per step. Run it before handing a lesson to Ashish.
 - Run a lesson step from the command line: `.venv/Scripts/python -X utf8 tools/run_live.py <step-id>` (`--reset`, `--model`).
   - The first run copies the starter into `playground/`, and later runs never overwrite edits.
   - Prefix `ANTHROPIC_LOG=debug` to log each request body and retry decision. It never logs the key.

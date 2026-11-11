@@ -9,7 +9,9 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .schema import Chapter, Module, Step
+from .schema import Chapter, Deck, Module, Step
+
+CARDS_DIR = "cards"   # content/cards/<deck>.yaml
 
 
 @dataclass
@@ -65,6 +67,7 @@ class ContentTree:
     root: Path
     modules: list[LoadedModule] = field(default_factory=list)
     steps: dict[str, LoadedStep] = field(default_factory=dict)
+    decks: dict[str, Deck] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
     def ordered_step_ids(self) -> list[str]:
@@ -130,7 +133,24 @@ def load_content(root: Path) -> ContentTree:
         if m.id in seen:
             tree.errors.append(f"duplicate module id {m.id!r} in {seen[m.id]} and {m.dir.name}")
         seen[m.id] = m.dir.name
+    _load_decks(tree)
     return tree
+
+
+def _load_decks(tree: ContentTree) -> None:
+    cdir = tree.root / CARDS_DIR
+    if not cdir.is_dir():
+        return
+    for dfile in sorted(cdir.glob("*.yaml")):
+        try:
+            deck = Deck.model_validate(_yaml(dfile))
+        except (ValidationError, yaml.YAMLError, OSError) as exc:
+            tree.errors.append(_fmt(dfile, tree.root, exc))
+            continue
+        if deck.id in tree.decks:
+            tree.errors.append(f"{dfile.relative_to(tree.root)}: duplicate deck id {deck.id!r}")
+            continue
+        tree.decks[deck.id] = deck
 
 
 def _load_step(tree: ContentTree, module_id: str, chapter_id: str, sdir: Path) -> LoadedStep | None:

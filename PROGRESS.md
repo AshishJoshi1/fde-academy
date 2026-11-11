@@ -4,48 +4,44 @@ This file is the single source of truth for where the build and the teaching sta
 
 ## Current position
 - **How we work:** the learning lab is built lesson by lesson (`docs/PLAN.md`):
+  - **building runs ahead of learning:** the next build doesn't wait for Ashish to finish a lesson. He does the lessons in the UI at his own pace, and a step that misleads him gets fixed when he reaches it;
   - **outline first:** guide-step titles approved by Ashish before any build;
   - **one lesson (or build stage) per session;**
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
-  - every `/wrap` logs the session's `/cost` figure in the "Cost log" below.
+  - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02, `m02.lab02.s01` "One call", a guided lesson of 9 steps (g1–g9) with experiments E2–E5 and the quiz in g9.
-  - **Step 1 done** with one live run. Check g1.c1 right; **g1.c2 still wrong** after a spaced-review retry (he picked "only the new user message"; the API is stateless, so call 2 resends the whole conversation). It comes back in review.
-  - g1 now shows call 2's `messages` list as code, because the concept was missed twice with two different answers.
-  - He has asked the tutor once, on g6 (E3's hidden tokens). It withheld E3's prediction p3, since his predictions aren't committed, and gave hint 1 grounded in his run (`output=79`).
-  - Steps 2–9, the experiments and the quiz are not done yet. The tutor hands-on H1–H3 is not done yet.
-- **Building:** s01 is complete: runner and relay, guided steps, experiments, quiz, run history, spaced review, and the tutor.
-  - **Tutor:** `src/academy_server/tutor.py`, `POST /api/steps/{id}/tutor/{guide_id}`, the default rules in `tutor_rules.md`, Ashish's copy in `playground/tutor/rules.md`, and migration 4 (tutor threads). The design and measured costs are in `docs/PLAN.md`, "Tutor".
-  - **Checks:** 127 tests pass (10 new in `tests/test_tutor.py`). `tools/browser_check.py m02.lab02.s01` passes on all 9 steps, including the tutor on each.
-- **Next first action:** Ashish completes s01 in the UI. This is a teaching session; no new features.
-  1. Run `python run.py` and open `/lab/m02.lab02.s01`. Do steps 2–9: each step's checks, experiments E2–E5 through to their explanations, then the quiz.
-  2. Do the tutor hands-on (`docs/PLAN.md`, build stage 3):
-     - **H1:** predict the request layers and where the cache breakpoints sit, then check with "Show request".
-     - **H2:** predict the cache write and read for turns 1 and 2, then edit `rules.md` and explain the re-write.
-     - **H3:** try to get an open check's answer out of it, and tighten `rules.md` if it gives one.
-  3. Fix any content that misled him.
-  - **Done when:** all 9 steps show done in the guide nav, H1–H3 are discussed, and the 1-hour cache TTL is confirmed (`ephemeral_1h_input_tokens` > 0 in "Show request" on a first question after the cache has expired).
-- **Then:** the s02 "The manual loop" outline (guide-step titles for Ashish's OK), in a fresh session.
+  - **Started over** on 2026-11-11, with the code reset. The lab shows step 1 with no ticks; run history, quiz history and spaced review are kept.
+  - **Spaced review:** g1.c2 (statelessness) is fixed after retry. **g3.c1 is still wrong:** he picked `end_turn`, but `tool_use` is the one that means "run the tools, then call again". It comes back in review.
+  - **Flash cards:** 1 of 14 reviewed (`cache-share`, known).
+  - Not done yet: steps 2–9, experiments E2–E5, the quiz, and the tutor hands-on H1–H3 (`docs/PLAN.md`, build stage 3).
+- **Building:** s01 is complete: runner and relay, guided steps, experiments, quiz, run history, spaced review, and the tutor (`src/academy_server/tutor.py`; design and measured costs in `docs/PLAN.md`, "Tutor").
+  - **Learner tools** (`docs/PLAN.md`, "Learner tools"):
+    - **Start over:** one lesson (the lab page) or all lessons (the home page), with an optional playground code reset. It writes a marker per step in `step_restarts` (migration 5) and deletes nothing; lab reads take `since` and show only what came after the marker.
+    - **Flash cards:** `/cards`, with the deck in `content/cards/build.yaml` (14 cards, 5 tags). A review is stored as a quiz attempt (`cards:<deck>:<card>`, module `cards`), so "Didn't know" comes back in spaced review. The home page gives quiz items, flash cards and wrong predictions up to 6 slots each.
+  - **Checks:** 144 tests pass. `tools/browser_check.py m02.lab02.s01` passes on all 9 steps, then Start over and the flash cards.
+- **Next first action:** in a fresh session, propose the s02 "The manual loop" outline for Ashish's OK: guide-step titles, one line each, plus its experiment (drop a `tool_result` and see the 400). The source is `docs/PLAN.md`, Module 02 outline, row 1.
+  - After his OK, build the s02 content and the features it needs: the Meridian mock API (vendored `meridian_api.py`) as the tools' backend, a per-turn messages view, and a timeline of all calls.
+  - **Done when:** `tools/browser_check.py m02.lab02.s02` passes, then `/wrap`. Ashish doing s01 is not a gate.
 
 ## Last session
-- **Date:** 2026-11-09 (second session)
+- **Date:** 2026-11-11
 - **Done:**
-  - **Spaced review:** g1.c2 was asked again and was wrong again (recorded with `labctl`). s01 g1 now shows call 2's `messages` as code.
-  - **Tutor (s01 build stage 3), built as the approved outline:**
-    - `claude-sonnet-5-5` at effort `low`, called by the server with the Anthropic SDK through the gateway.
-    - **Request layers:** the rules (`system[0]`), then the authored lesson (`system[1]`, 1-hour cache), then one thread per guide step. Each question carries a `<lab_context>` block (open checks, current code, trimmed latest run), sent only when it changed, with a 5-minute breakpoint on the newest question.
-    - The UI shows the cost, time and cache tokens per answer, plus "Show request" with the exact body.
-    - The browser check fakes the tutor with an `httpx2` transport, because SDK 2.6.0 runs on `httpx2`.
-  - **Measured live** (throwaway home, $0.033):
-    - the lesson prefix is 10.4K tokens;
-    - question 1 cost $0.028 with a 5-minute cache write and took 4.2 s;
-    - question 2 cost $0.005 (10.4K cache read) and took 2.6 s;
-    - effort `low` returned no thinking blocks;
-    - it refused to reveal open check answers.
-  - **Ashish's first question** (on g6): $0.0084, 5.1 s. It read 9.8K tokens from the cache and wrote 1.5K.
-  - **Cost tooling:** `/wrap` now asks for `/cost` and logs it. Module 02 estimate given: about $200–370 for Claude Code plus $30–100 for the gateway, projects included.
-  - **Docs:** `docs/PLAN.md` (tutor design, costs, H1–H3); `CLAUDE.md` layout (`tutor.py`); the home page no longer says "the tutor comes next".
+  - **Spaced review:** g1.c2 answered right ("the whole conversation so far plus the new message"), recorded with `labctl`.
+  - **Start over**, built as the approved outline: "Start this lesson over" on the lab page and "Start over all lessons" on the home page.
+    - It keeps quiz, spend and run history, and the code reset is optional.
+    - Routes: `POST /api/steps/{id}/start-over` and `POST /api/start-over`. Migration 5 adds `step_restarts`.
+  - **Flash cards:**
+    - `Deck` and `FlashCard` in `content/schema.py`, loaded from `content/cards/`;
+    - `GET /api/cards`, `POST /api/cards/{deck}/{card}/review`;
+    - the `/cards` page (Study and All cards, a tag filter, a tally) and a top-bar link;
+    - `labctl content validate` counts the decks.
+  - **Fix found by the browser check:** the home page's spaced review showed only its first items, so older quiz misses could push a missed flash card off. Each kind now gets its own slots, plus an "…and N more" line.
+  - **Docs:**
+    - CLAUDE.md, "How we work": building runs ahead, the learner-tools exception, flash cards.
+    - `docs/PLAN.md`: "Learner tools", and the new "Done when".
+    - `/wrap` step 2 proposes flash cards, and `/today` includes them in spaced review.
 - **Open questions:**
-  - **1-hour TTL:** does the gateway pass `ttl: "1h"` through? Ashish's first question read the prefix from the measurement's 5-minute cache, so it is still unverified.
+  - **1-hour TTL:** does the gateway pass `ttl: "1h"` through? Still unverified. It can be measured for cents: ask a first question after the cache has expired, and look for `ephemeral_1h_input_tokens` > 0 in "Show request".
   - **Module 02 projects:** set aside. The choice between the Claude Agent SDK and LangGraph for them is undecided and gets discussed after the 17 lessons.
   - **Module 02 outline:** still proposed in `docs/PLAN.md`. Each lesson's steps get approved when that lesson starts.
   - **B1–B5:** the programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk.
@@ -55,12 +51,13 @@ This file is the single source of truth for where the build and the teaching sta
 
 ## Build: lesson by lesson (details in `docs/PLAN.md`)
 - [x] Foundation: continuity, `run.py`, server shell and security gates, store and migrations, content loader, `labctl`, design system, `tools/run_live.py`
+- [x] Learner tools: Start over, flash cards (`docs/PLAN.md`, "Learner tools")
 - s01 One call
   - [x] 1. Runner and thin relay, plus the lab page
   - [x] 2. Guided steps, experiments, quiz, run history, spaced review, browser check
   - [x] 3. Tutor (Sonnet 5.5, one thread per guide step, cached lesson prefix, "Show request")
   - [x] s01 content: guided steps g1–g9 with experiments E2–E5 and quiz q1–q3
-  - [ ] Ashish completes s01 in the UI
+  - [ ] Ashish does s01 in the UI (at his own pace; not a gate for the next build)
 - [ ] Lessons 1–17 of the Module 02 outline (`docs/PLAN.md`, proposed). Lab 02 first:
   - [ ] s02 Manual loop
   - [ ] s03 Parallel tool calls
@@ -71,9 +68,11 @@ This file is the single source of truth for where the build and the teaching sta
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
 
 ## Curriculum progress
+Lesson ids follow the curriculum's module order, not the build order: Lab 01 (the context budget) belongs to Module 01 Foundations, which is built after Module 02.
+
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor) | s01 step 1 of 9; tutor tried once | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -86,12 +85,13 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 |---|---|---|---|
 | 2026-11-09 (1st) | s01 stage 2, built twice; s01 content from measured runs | $16 | about $0.02 (measurements) |
 | 2026-11-09 (2nd) | `/today` review, s01 g1 content fix, tutor (stage 3) built and measured | $4.87 | $0.010 learner + $0.033 tutor measurement |
+| 2026-11-11 | `/today` review; learner tools Start over and flash cards built and browser-checked | $7.09 | $0.00 (browser checks use a fake gateway) |
 
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87. Re-estimate Module 02 after s02 and s03.
-- **Where the 2nd session's cost went:**
-  - loading the `/claude-api` skill was about 32% of usage;
-  - one cache miss after an idle of over an hour re-cached 26.9K tokens;
-  - 97% of input came from the cache.
+- **Where the 2026-11-11 cost went:**
+  - 97% of input came from the cache (12.4M tokens read, 323K written), over 79 requests;
+  - one cache miss after an idle past the 1-hour TTL re-cached 37.7K tokens, and the context compaction forced one rebuild;
+  - `/wrap` was about 6% of usage and `/today` about 4%.
 
 ## Decisions log
 - 2026-11-06:
@@ -131,3 +131,8 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
     - No server-side refusal fallback: calls go through LiteLLM, and a refusal returns a message and stores nothing.
   - **Projects:** the Module 02 projects are set aside. The choice between the Claude Agent SDK and LangGraph for them is made later.
   - **Cost:** every `/wrap` logs `/cost` in the Cost log. Module 02 is re-estimated from those numbers after s02 and s03.
+- 2026-11-11:
+  - **Building runs ahead of learning:** building modules and labs comes first; Ashish finishes the course at his own pace, and finishing a lesson is no longer a gate for the next build.
+  - **Learner tools** Ashish asks for are the one exception to "no feature without a lesson": Start over and flash cards.
+  - **Start over** keeps the quiz, spend and run history; only the lab's view starts fresh (markers, nothing deleted). The code reset is a checkbox.
+  - **Flash cards** hold what building the lab taught, each fact with its source. `/wrap` proposes 1–3 per session, and only the ones Ashish picks are added. A review counts as a quiz attempt, so a miss comes back in spaced review.

@@ -751,3 +751,20 @@ pre.diff-view { white-space: pre; font-size: 12.5px; max-height: 420px; padding:
   .topbar, .toolbar, .btn { display: none; }
   body { background: #FFFFFF; }
 }
+
+/* ------------------------------------------------------------ start over
+   A <details> whose summary is the button; the panel under it says what's cleared and kept. */
+.start-over > summary { list-style: none; }
+.start-over > summary::-webkit-details-marker { display: none; }
+.start-over[open] > summary { background: var(--critical-wash); }
+/* In a header row (the lab page): the button stays top right, and the panel opens under it. */
+.start-over-head { align-items: flex-start; }
+.start-over-head > .breadcrumb { padding-top: 5px; }
+.start-over-head > .start-over { max-width: 40rem; text-align: right; }
+.start-over-head > .start-over > .callout { text-align: left; }
+
+/* ------------------------------------------------------------ flash cards (/cards) */
+.fc-front > p:only-child, .fc-back > p:first-child { margin-top: 0; }
+.fc-front > p:only-child, .fc-back > :last-child { margin-bottom: 0; }
+.fc-item > summary { list-style: none; }
+.fc-item > summary::-webkit-details-marker { display: none; }

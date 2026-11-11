@@ -131,7 +131,8 @@ def cmd_content_validate(args) -> int:
               file=sys.stderr)
         return 2
     tree = load_content(paths.content_dir())
-    print(f"{len(tree.modules)} module(s), {len(tree.steps)} step(s)")
+    cards = sum(len(d.cards) for d in tree.decks.values())
+    print(f"{len(tree.modules)} module(s), {len(tree.steps)} step(s), {len(tree.decks)} deck(s) of flash cards ({cards} cards)")
     for e in tree.errors:
         print(f"  ERROR {e}")
     return 1 if tree.errors else 0

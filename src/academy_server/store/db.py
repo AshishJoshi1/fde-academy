@@ -10,6 +10,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -22,12 +23,12 @@ EXPORT_FORMAT = "fde-academy-progress"
 # Insert order respects foreign keys (runs before check_results); delete in reverse.
 EXPORT_TABLES = [
     "step_progress", "code_snapshots", "runs", "run_events", "check_results",
-    "experiment_attempts", "predictions", "quiz_attempts", "spend", "tutor_turns", "position",
+    "experiment_attempts", "predictions", "quiz_attempts", "spend", "tutor_turns", "position", "step_restarts",
 ]
 _ORDER_BY = {
     "step_progress": "step_id", "code_snapshots": "id", "runs": "started_at, run_id", "run_events": "run_id, seq",
     "check_results": "run_id, check_id", "experiment_attempts": "id", "predictions": "attempt_id, item_id",
-    "quiz_attempts": "id", "spend": "id", "tutor_turns": "id", "position": "id",
+    "quiz_attempts": "id", "spend": "id", "tutor_turns": "id", "position": "id", "step_restarts": "id",
 }
 DRAFTS_KEPT = 20          # per (step, file). Run snapshots are all kept: any run can be reopened.
 
@@ -137,6 +138,29 @@ class Store:
             c.execute("UPDATE step_progress SET status = 'completed', completed_at = ?, code_hash = ? "
                       "WHERE step_id = ?", (utcnow(), code_hash(files), step_id))
 
+    # ------------------------------------------------------------ start over
+    def start_over(self, steps: Iterable[tuple[str, str]], *, code_reset: bool = False) -> str:
+        """Mark (step_id, module_id) steps as started over. Deletes nothing: reads that take
+        `since` show only what came after the marker. Returns the marker's time."""
+        with self.tx() as c:
+            at = utcnow()
+            for step_id, module_id in steps:
+                c.execute("INSERT INTO step_restarts (step_id, at, code_reset) VALUES (?, ?, ?)",
+                          (step_id, at, int(code_reset)))
+                self._touch_step(c, step_id, module_id)
+                c.execute("UPDATE step_progress SET status = 'in_progress', completed_at = NULL, code_hash = NULL "
+                          "WHERE step_id = ?", (step_id,))
+            # Timestamps have millisecond precision. Hold the lock until the clock moves on, so
+            # everything written later is strictly after the marker, and everything earlier isn't.
+            while utcnow() <= at:
+                time.sleep(0.0005)
+        return at
+
+    def started_over_at(self, step_id: str) -> str | None:
+        """The latest "Start over" of a step, or None if it was never started over."""
+        rows = self._query("SELECT MAX(at) AS at FROM step_restarts WHERE step_id = ?", (step_id,))
+        return rows[0]["at"]
+
     # ---------------------------------------------------------------- drafts
     def save_draft(self, step_id: str, module_id: str, filename: str, code: str) -> bool:
         """Autosave. Returns True when a new snapshot was written (identical code is skipped)."""
@@ -214,12 +238,14 @@ class Store:
         rows = self._query("SELECT * FROM runs WHERE run_id = ?", (run_id,))
         return rows[0] if rows else None
 
-    def runs_for_step(self, step_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    def runs_for_step(self, step_id: str, limit: int = 20, since: str | None = None) -> list[dict[str, Any]]:
+        """Newest first. With since, only runs started after it."""
         return self._query(
             """SELECT r.run_id, r.model, r.outcome, r.cost_usd, r.started_at, r.ended_at,
                       a.experiment_id, a.attempt
                FROM runs r LEFT JOIN experiment_attempts a ON a.run_id = r.run_id
-               WHERE r.step_id = ? ORDER BY r.started_at DESC, r.run_id DESC LIMIT ?""", (step_id, limit))
+               WHERE r.step_id = ? AND (? IS NULL OR r.started_at > ?)
+               ORDER BY r.started_at DESC, r.run_id DESC LIMIT ?""", (step_id, since, since, limit))
 
     def run_code(self, run_id: str) -> dict[str, str]:
         """The files exactly as that run ran them."""
@@ -246,10 +272,11 @@ class Store:
                  u.get("cache_creation_input_tokens", 0), u.get("cache_read_input_tokens", 0), cost_usd))
 
     # ----------------------------------------------------------------- tutor
-    def tutor_thread(self, step_id: str, guide_id: str) -> list[dict[str, Any]]:
-        """One guide step's tutor turns, oldest first, with their JSON columns parsed."""
-        rows = self._query("SELECT * FROM tutor_turns WHERE step_id = ? AND guide_id = ? ORDER BY id",
-                           (step_id, guide_id))
+    def tutor_thread(self, step_id: str, guide_id: str, since: str | None = None) -> list[dict[str, Any]]:
+        """One guide step's tutor turns, oldest first, with their JSON columns parsed. With since,
+        only turns after it (a started-over step begins a new thread)."""
+        rows = self._query("SELECT * FROM tutor_turns WHERE step_id = ? AND guide_id = ? "
+                           "AND (? IS NULL OR created_at > ?) ORDER BY id", (step_id, guide_id, since, since))
         for r in rows:
             for col in ("sent_json", "request_json", "usage_json"):
                 raw = r.pop(col)
@@ -303,21 +330,24 @@ class Store:
             a["predictions"] = preds
         return attempts
 
-    def attempts(self, step_id: str, experiment_id: str) -> list[dict[str, Any]]:
-        """Every attempt at one experiment, oldest first, each with its predictions."""
-        return self._attempt_rows("step_id = ? AND experiment_id = ?", (step_id, experiment_id))
+    def attempts(self, step_id: str, experiment_id: str, since: str | None = None) -> list[dict[str, Any]]:
+        """Every attempt at one experiment, oldest first, each with its predictions. With since,
+        only attempts committed after it."""
+        return self._attempt_rows("step_id = ? AND experiment_id = ? AND (? IS NULL OR committed_at > ?)",
+                                  (step_id, experiment_id, since, since))
 
     def attempt(self, attempt_id: int) -> dict[str, Any] | None:
         rows = self._attempt_rows("id = ?", (attempt_id,))
         return rows[0] if rows else None
 
     def commit_predictions(self, step_id: str, module_id: str, experiment_id: str,
-                           items: list[dict[str, Any]]) -> dict[str, Any]:
-        """Lock in a new attempt's predictions. Refused while the latest attempt is still ungraded."""
+                           items: list[dict[str, Any]], since: str | None = None) -> dict[str, Any]:
+        """Lock in a new attempt's predictions. Refused while the latest attempt is still ungraded,
+        unless that attempt is from before the step was started over (since)."""
         with self.tx() as c:
-            last = c.execute("SELECT attempt, graded_at FROM experiment_attempts WHERE step_id = ? AND "
-                             "experiment_id = ? ORDER BY attempt DESC LIMIT 1", (step_id, experiment_id)).fetchone()
-            if last is not None and last["graded_at"] is None:
+            last = c.execute("SELECT attempt, graded_at, committed_at FROM experiment_attempts WHERE step_id = ? "
+                             "AND experiment_id = ? ORDER BY attempt DESC LIMIT 1", (step_id, experiment_id)).fetchone()
+            if last is not None and last["graded_at"] is None and (since is None or last["committed_at"] > since):
                 raise ValueError("predictions for this experiment are already committed; run it first")
             cur = c.execute("INSERT INTO experiment_attempts (step_id, module_id, experiment_id, attempt, committed_at) "
                             "VALUES (?, ?, ?, ?, ?)",
@@ -378,13 +408,21 @@ class Store:
             r["answer"] = json.loads(r.pop("answer_json"))
         return rows
 
-    def quiz_latest(self, step_id: str) -> dict[str, dict[str, Any]]:
-        """The latest attempt at each quiz item of a step, by item id, with how many tries."""
+    def quiz_latest(self, step_id: str, since: str | None = None) -> dict[str, dict[str, Any]]:
+        """The latest attempt at each quiz item of a step, by item id, with how many tries. With
+        since, only attempts after it count."""
+        return self._latest_attempts("step_id = ? AND (? IS NULL OR created_at > ?)", (step_id, since, since))
+
+    def latest_with_prefix(self, prefix: str) -> dict[str, dict[str, Any]]:
+        """The latest attempt at each item whose id starts with prefix (e.g. a flash-card deck)."""
+        return self._latest_attempts("substr(item_id, 1, length(?)) = ?", (prefix, prefix))
+
+    def _latest_attempts(self, where: str, params: Iterable[Any]) -> dict[str, dict[str, Any]]:
         rows = self._query(
-            """SELECT item_id, answer_json, correct_json, correct, created_at, tries FROM (
-                 SELECT *, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY id DESC) AS rn,
-                        COUNT(*) OVER (PARTITION BY item_id) AS tries
-                 FROM quiz_attempts WHERE step_id = ?) WHERE rn = 1""", (step_id,))
+            f"""SELECT item_id, answer_json, correct_json, correct, created_at, tries FROM (
+                  SELECT *, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY id DESC) AS rn,
+                         COUNT(*) OVER (PARTITION BY item_id) AS tries
+                  FROM quiz_attempts WHERE {where}) WHERE rn = 1""", tuple(params))
         return {r["item_id"]: {"answer": json.loads(r["answer_json"]),
                                "correct_answer": json.loads(r["correct_json"]) if r["correct_json"] else None,
                                "correct": bool(r["correct"]), "tries": r["tries"], "at": r["created_at"]}

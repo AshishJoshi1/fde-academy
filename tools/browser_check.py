@@ -9,7 +9,10 @@
   untouched.
 - For each step it checks the page rendered (title, code highlights, your-run values), answers every
   check, plays any experiment through to its explanation, answers the quiz, and saves a screenshot.
-  It reports any JavaScript error. Exit code 1 if anything failed.
+- Then it starts the lesson over (every tick gone, no run reopened, history and spaced review kept),
+  and walks the flash cards (flip, "Didn't know" and "Knew it", tag filter, all cards, the card's
+  link back from spaced review).
+- It reports any JavaScript error. Exit code 1 if anything failed.
 
 A lesson whose code needs a different reply (tool calls, from s02 on) extends fake_reply() below.
 """
@@ -313,6 +316,102 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
     return fails
 
 
+def api_get(base: str, token: str, path: str):
+    with urllib.request.urlopen(urllib.request.Request(f"{base}{path}", headers={"x-academy-token": token})) as r:
+        return json.loads(r.read())
+
+
+def reload_after(b: Browser, action: str, what: str) -> None:
+    """Run an action that reloads the page, and wait for the new page to load."""
+    b.js("window.__checkMark = 1")
+    b.js(action)
+    b.wait("!window.__checkMark && document.readyState === 'complete'", what)
+
+
+def walk_start_over(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str]:
+    fails: list[str] = []
+
+    def check(label: str, ok: bool) -> None:
+        print(f"    [{'ok' if ok else 'FAIL'}] {label}")
+        if not ok:
+            fails.append(label)
+
+    print("  start over")
+    misses = len(api_get(base, token, "/api/mistakes")["still_wrong"])
+    runs = len(api_get(base, token, f"/api/steps/{step_id}/runs")["runs"])
+    check("some steps ticked before", b.js("document.querySelectorAll('#guide-nav .icon-check').length") > 0)
+    b.js("document.querySelector('details.start-over > summary').click()")
+    check("the panel says what's kept", b.js("document.querySelector('details.start-over').open && "
+                                             "document.querySelector('details.start-over').textContent.includes('Kept:')"))
+    reload_after(b, "document.querySelector('details.start-over .start-over-go').click()", "the lab to reload")
+    b.wait("!!document.querySelector('#guide-step h2') && document.querySelectorAll('#history option').length > 1",
+           "the lesson and run history to load")
+    check("every tick gone", b.js("document.querySelectorAll('#guide-nav .icon-check').length") == 0)
+    check("opens on step 1", b.js(f"{STEP_TEXT}.includes('Step 1 of')"))
+    check("no run reopened", b.js("document.getElementById('status').textContent") == "no run yet")
+    check(f"run history kept ({runs} runs)", b.js("document.querySelectorAll('#history option').length") == runs + 1)
+    check(f"spaced review kept ({misses} misses)", len(api_get(base, token, "/api/mistakes")["still_wrong"]) == misses)
+    shot = b.call("Page.captureScreenshot", format="png")["data"]
+    (out / f"{step_id}-start-over.png").write_bytes(base64.b64decode(shot))
+    return fails
+
+
+CARD_TEXT = "document.getElementById('study').textContent"
+CLICK_CARD = "[...document.querySelectorAll('#study button')].find(b => b.textContent === {!r}).click()"
+
+
+def walk_cards(b: Browser, base: str, token: str, out: Path) -> list[str]:
+    fails: list[str] = []
+
+    def check(label: str, ok: bool) -> None:
+        print(f"    [{'ok' if ok else 'FAIL'}] {label}")
+        if not ok:
+            fails.append(label)
+
+    [deck] = api_get(base, token, "/api/cards")["decks"]
+    n, first = len(deck["cards"]), deck["cards"][0]["id"]
+    print(f"  flash cards: {n} cards")
+    b.call("Page.navigate", url=f"{base}/cards")
+    b.wait("!!document.querySelector('.fc-card')", "the first card")
+    check("Flash cards is the current page in the top bar",
+          b.js("document.querySelector('.nav a[aria-current=page]').textContent") == "Flash cards")
+    check(f"card 1 of {n}", b.js(f"{CARD_TEXT}.includes('Card 1 of {n}')"))
+    b.js(CLICK_CARD.format("Show the answer"))
+    b.wait("!!document.querySelector('.fc-back')", "the answer")
+    check("answer and source shown", b.js("document.querySelector('.fc-back').textContent.length > 40 && "
+                                          f"{CARD_TEXT}.includes('Source:')"))
+    shot = b.call("Page.captureScreenshot", format="png")["data"]
+    (out / "cards-study.png").write_bytes(base64.b64decode(shot))
+    b.js(CLICK_CARD.format("Didn't know"))
+    b.wait(f"{CARD_TEXT}.includes('Card 2 of {n}')", "card 2")
+    b.js(CLICK_CARD.format("Show the answer"))
+    b.wait("!!document.querySelector('.fc-back')", "card 2's answer")
+    b.js(CLICK_CARD.format("Knew it"))
+    b.wait(f"{CARD_TEXT}.includes('Card 3 of {n}')", "card 3")
+    check("tally counts both reviews",
+          b.js("document.getElementById('tally').textContent") == f"1 known · 1 to review · {n - 2} new")
+    cost = sum(1 for c in deck["cards"] if c["tag"] == "cost")
+    b.js("document.querySelector('#tags .tab[data-tag=cost]').click()")
+    b.wait(f"{CARD_TEXT}.includes('Card 1 of {cost}')", "the cost cards")
+    check(f"tag filter: {cost} cost cards", True)
+    b.js("document.querySelector('#tags .tab[data-tag=all]').click()")
+    b.js("document.querySelector('#modes .tab[data-mode=list]').click()")
+    b.wait("document.getElementById('study').hidden", "the card list")
+    check(f"all {n} cards listed", b.js("document.querySelectorAll('#list .fc-item').length") == n)
+    b.js("document.querySelector('#list .fc-item').open = true")
+    shot = b.call("Page.captureScreenshot", format="png")["data"]
+    (out / "cards-list.png").write_bytes(base64.b64decode(shot))
+
+    b.call("Page.navigate", url=f"{base}/")
+    b.wait(f"!!document.querySelector('a[href=\"/cards#{first}\"]')", "the card in spaced review")
+    check("the missed card is in spaced review on the home page", True)
+    b.js(f"document.querySelector('a[href=\"/cards#{first}\"]').click()")
+    b.wait(f"!!document.getElementById('fc-{first}')", "the missed card to open first")
+    check("its link opens that card, marked as missed",
+          b.js(f"document.getElementById('fc-{first}').textContent.includes(\"Didn't know last time\")"))
+    return fails
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="browser_check", description=__doc__.split("\n\n")[0])
     ap.add_argument("step_id", help="e.g. m02.lab02.s01")
@@ -329,6 +428,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"browser check · {args.step_id} · fake gateway · {base}")
     try:
         fails = walk(browser, base, token, args.step_id, shots)
+        seen = len(browser.errors())          # walk() reported these already
+        fails += walk_start_over(browser, base, token, args.step_id, shots)
+        fails += walk_cards(browser, base, token, shots)
+        errors = browser.errors()[seen:]
+        if errors:
+            fails.append(f"JavaScript errors after the lesson walk: {'; '.join(errors)}")
+            print(f"    [FAIL] JavaScript errors: {'; '.join(errors)}")
     except (TimeoutError, RuntimeError) as exc:
         fails = [str(exc)]
         print(f"  STOPPED: {exc}")

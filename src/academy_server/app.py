@@ -33,6 +33,8 @@ from .store import Store
 MAX_FILE_CHARS = 200_000
 DEFAULT_MODEL = "claude-opus-5-5"
 MODEL_ID = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,63}$")
+CARD_PREFIX = "cards:"     # flash-card reviews are quiz attempts with item ids cards:<deck>:<card>
+CARD_MODULE = "cards"      # ...and this module id, so /quiz m02 and module filters leave them out
 
 
 @dataclass
@@ -71,6 +73,14 @@ class QuizIn(BaseModel):
 
 class TutorIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+
+
+class StartOverIn(BaseModel):
+    code: bool = False   # also put the code back to the starter
+
+
+class CardReviewIn(BaseModel):
+    knew: bool
 
 
 class CountIn(BaseModel):
@@ -168,6 +178,10 @@ def create_app(settings: AppSettings) -> FastAPI:
             raise HTTPException(404, f"step {step.full_id} has no experiment {experiment_id!r}")
         return exp
 
+    def since(step: LoadedStep) -> str | None:
+        """When the step was last started over: the lab shows only what came after it."""
+        return store.started_over_at(step.full_id)
+
     def files_view(step: LoadedStep, dest: Path, files: dict[str, str]) -> dict[str, Any]:
         return {"dir": str(dest), "entry": step.spec.entry,
                 "files": {name: {"code": code, "hash": file_hash(code)} for name, code in files.items()}}
@@ -230,6 +244,27 @@ def create_app(settings: AppSettings) -> FastAPI:
         step = get_step(step_id)
         return files_view(step, *step_files(step, reset=True))
 
+    def start_over(steps: list[LoadedStep], code: bool) -> dict[str, Any]:
+        at = store.start_over([(s.full_id, s.module_id) for s in steps], code_reset=code)
+        reset = []
+        if code:
+            for s in steps:
+                if (settings.playground_root / s.full_id).is_dir():   # never create a copy that wasn't there
+                    step_files(s, reset=True)
+                    reset.append(s.full_id)
+        return {"started_over_at": at, "steps": [s.full_id for s in steps], "code_reset": reset}
+
+    @app.post("/api/steps/{step_id}/start-over")
+    def start_step_over(step_id: str, body: StartOverIn | None = None) -> dict[str, Any]:
+        """Do the lesson fresh: its answers, experiments, latest run and tutor threads start empty.
+        Nothing is deleted; spaced review, quiz history, spend and run history keep everything."""
+        return start_over([get_step(step_id)], bool(body and body.code))
+
+    @app.post("/api/start-over")
+    def start_all_over(body: StartOverIn | None = None) -> dict[str, Any]:
+        """The same for every lesson."""
+        return start_over(list(content().steps.values()), bool(body and body.code))
+
     @app.get("/api/steps/{step_id}/solution")
     def solution(step_id: str) -> dict[str, Any]:
         step = get_step(step_id)
@@ -249,7 +284,7 @@ def create_app(settings: AppSettings) -> FastAPI:
         attempt = None
         if body and body.experiment:
             exp = get_experiment(step, body.experiment)
-            attempts = store.attempts(step.full_id, exp.id)
+            attempts = store.attempts(step.full_id, exp.id, since(step))
             attempt = attempts[-1] if attempts else None
             if attempt is None or attempt["run_id"] or attempt["graded_at"]:
                 raise HTTPException(409, f"commit your predictions for {exp.id} first: Run stays locked until then")
@@ -302,7 +337,10 @@ def create_app(settings: AppSettings) -> FastAPI:
 
     @app.get("/api/steps/{step_id}/runs")
     def step_runs(step_id: str) -> dict[str, Any]:
-        return {"runs": store.runs_for_step(get_step(step_id).full_id)}
+        """Every run, for the history menu. The lab reopens the latest only if it's from after
+        the step was last started over."""
+        step = get_step(step_id)
+        return {"runs": store.runs_for_step(step.full_id), "started_over_at": since(step)}
 
     @app.post("/api/runs/{run_id}/stop")
     def stop_run(run_id: str) -> dict[str, Any]:
@@ -401,7 +439,7 @@ def create_app(settings: AppSettings) -> FastAPI:
         return store.attempt(attempt["id"])
 
     async def card_state(step: LoadedStep, exp: Experiment) -> dict[str, Any]:
-        attempts = store.attempts(step.full_id, exp.id)
+        attempts = store.attempts(step.full_id, exp.id, since(step))
         latest = attempts[-1] if attempts else None
         if latest and latest["run_id"] and not latest["graded_at"]:
             latest = attempts[-1] = await grade_attempt(exp, latest)
@@ -431,7 +469,7 @@ def create_app(settings: AppSettings) -> FastAPI:
                 raise HTTPException(400, str(exc))
             items.append({"item_id": p.id, "type": p.type, "prompt": p.prompt, "answer": answer})
         try:
-            store.commit_predictions(step.full_id, step.module_id, exp.id, items)
+            store.commit_predictions(step.full_id, step.module_id, exp.id, items, since=since(step))
         except ValueError as exc:
             raise HTTPException(409, str(exc))
         return await card_state(step, exp)
@@ -441,7 +479,7 @@ def create_app(settings: AppSettings) -> FastAPI:
         """Compare: grade the predictions against the run they're attached to (idempotent)."""
         step = get_step(step_id)
         exp = get_experiment(step, experiment_id)
-        attempts = store.attempts(step.full_id, exp.id)
+        attempts = store.attempts(step.full_id, exp.id, since(step))
         if not attempts or not attempts[-1]["run_id"]:
             raise HTTPException(409, f"nothing to grade yet: commit predictions for {exp.id}, then run")
         return await card_state(step, exp)
@@ -451,14 +489,14 @@ def create_app(settings: AppSettings) -> FastAPI:
         """Your own why first; the card's explanation comes back with it."""
         step = get_step(step_id)
         exp = get_experiment(step, experiment_id)
-        attempts = store.attempts(step.full_id, exp.id)
+        attempts = store.attempts(step.full_id, exp.id, since(step))
         if not attempts or not store.save_explanation(attempts[-1]["id"], body.text.strip()):
             raise HTTPException(409, f"run {exp.id} and compare first, then explain")
         return await card_state(step, exp)
 
     # ----------------------------------------------------------------- guide
     def latest_finished_run(step: LoadedStep) -> tuple[str | None, list[dict[str, Any]]]:
-        for r in store.runs_for_step(step.full_id, limit=5):
+        for r in store.runs_for_step(step.full_id, limit=5, since=since(step)):
             status, events = run_events_for(r["run_id"])
             if status == "finished":
                 return r["run_id"], events
@@ -486,7 +524,7 @@ def create_app(settings: AppSettings) -> FastAPI:
         run_id, events = latest_finished_run(step)
         wanted = {k for g in step.spec.guide for k in g.show}
         facts = await facts_of(run_id, events, bool(wanted & TOKEN_FACTS)) if run_id else {}
-        latest = store.quiz_latest(step.full_id)
+        latest = store.quiz_latest(step.full_id, since(step))
         out = []
         for g in step.spec.guide:
             answers = {}
@@ -540,7 +578,7 @@ def create_app(settings: AppSettings) -> FastAPI:
     @app.get("/api/steps/{step_id}/quiz")
     def quiz(step_id: str) -> dict[str, Any]:
         step = get_step(step_id)
-        latest = store.quiz_latest(step.full_id)
+        latest = store.quiz_latest(step.full_id, since(step))
         items = []
         for q in step.spec.quiz:
             last = latest.get(quiz_item_id(step, q.id))
@@ -583,7 +621,7 @@ def create_app(settings: AppSettings) -> FastAPI:
     def tutor_thread(step_id: str, guide_id: str) -> dict[str, Any]:
         step = get_step(step_id)
         guide_of(step, guide_id)
-        return {"turns": [tutor_view(t) for t in store.tutor_thread(step.full_id, guide_id)],
+        return {"turns": [tutor_view(t) for t in store.tutor_thread(step.full_id, guide_id, since(step))],
                 "model": tutor.MODEL, "effort": tutor.EFFORT, "gateway": settings.upstream is not None,
                 "rules": str(tutor.rules_path(settings.playground_root))}
 
@@ -598,15 +636,17 @@ def create_app(settings: AppSettings) -> FastAPI:
         question = body.text.strip()
         if not question:
             raise HTTPException(400, "ask a question first")
-        thread = store.tutor_thread(step.full_id, g.id)
+        fresh = since(step)
+        thread = store.tutor_thread(step.full_id, g.id, fresh)
         _dest, files = step_files(step)
         run_id, events = latest_finished_run(step)
         rec = store.run_record(run_id) if run_id else None
         changed = (store.run_code(run_id) != files) if run_id else None
-        attempts = store.attempts(step.full_id, g.experiment) if g.experiment else None
+        attempts = store.attempts(step.full_id, g.experiment, fresh) if g.experiment else None
         context = tutor.context_text(
             step, g, files, changed, tutor.run_text(run_id, events, rec.get("cost_usd") if rec else None),
-            tutor.open_items(g, step.full_id, store.quiz_latest(step.full_id), [q.id for q in step.spec.quiz], attempts))
+            tutor.open_items(g, step.full_id, store.quiz_latest(step.full_id, fresh), [q.id for q in step.spec.quiz],
+                             attempts))
         sent = tutor.user_content(None if context == tutor.last_context(thread) else context, question)
         request = tutor.build_request(tutor.load_rules(settings.playground_root), tutor.lesson_text(step), thread, sent)
 
@@ -659,6 +699,48 @@ def create_app(settings: AppSettings) -> FastAPI:
         store.open_step(step.full_id, step.module_id, step.spec.entry)
         return pages.lab_page(step, settings.playground_root / step.full_id / step.spec.entry,
                               gateway=settings.upstream is not None, theme=pages.theme_or_none(theme))
+
+    # ------------------------------------------------------------ flash cards
+    def get_deck(deck_id: str) -> Any:
+        deck = content().decks.get(deck_id)
+        if deck is None:
+            raise HTTPException(404, f"unknown deck {deck_id!r}")
+        return deck
+
+    def card_item_id(deck_id: str, card_id: str) -> str:
+        return f"{CARD_PREFIX}{deck_id}:{card_id}"
+
+    @app.get("/api/cards")
+    def cards() -> dict[str, Any]:
+        """Every deck, every card with its answer (cards are for recall, not a test), and your last review."""
+        out = []
+        for deck in content().decks.values():
+            latest = store.latest_with_prefix(card_item_id(deck.id, ""))
+            out.append({"id": deck.id, "title": deck.title, "summary_html": pages.markdown(deck.summary),
+                        "tags": deck.tags,
+                        "cards": [{"id": c.id, "tag": c.tag, "front_html": pages.markdown(c.front),
+                                   "back_html": pages.markdown(c.back), "source": c.source,
+                                   "last": latest.get(card_item_id(deck.id, c.id))} for c in deck.cards]})
+        return {"decks": out}
+
+    @app.post("/api/cards/{deck_id}/{card_id}/review")
+    def review_card(deck_id: str, card_id: str, body: CardReviewIn) -> dict[str, Any]:
+        """Knew it, or didn't. Recorded like a quiz answer (self-graded), so a miss comes back in
+        spaced review and in /today until you know it."""
+        deck = get_deck(deck_id)
+        card = deck.card(card_id)
+        if card is None:
+            raise HTTPException(404, f"deck {deck_id!r} has no card {card_id!r}")
+        item = card_item_id(deck.id, card.id)
+        store.record_quiz_attempt(item_id=item, module_id=CARD_MODULE, type="flashcard",
+                                  answer="knew it" if body.knew else "didn't know", correct=body.knew,
+                                  concepts=[card.tag], question=card.front, correct_answer=card.back,
+                                  feedback=f"source: {card.source}", graded_by="self", source="app")
+        return {"item_id": item, "last": store.latest_with_prefix(item).get(item)}
+
+    @app.get("/cards", include_in_schema=False, response_class=HTMLResponse)
+    def cards_page(theme: str | None = None) -> str:
+        return pages.cards_page(theme=pages.theme_or_none(theme))
 
     @app.get("/api/mistakes")
     def mistakes(module: str | None = None) -> dict[str, Any]:

@@ -359,3 +359,36 @@ class Step(Strict):
 
     def quiz_item(self, item_id: str) -> Any:
         return next((q for q in self.quiz if q.id == item_id), None)
+
+
+# ------------------------------------------------------------------ flash cards
+# content/cards/<deck>.yaml: one deck per file. A card's "Didn't know" is recorded like a quiz miss
+# (item id cards:<deck>:<card>), so it comes back in spaced review and in /today.
+class FlashCard(Strict):
+    id: ID
+    tag: ID
+    front: str = Field(min_length=1, description="the question, markdown")
+    back: str = Field(min_length=1, description="the answer with its why, markdown")
+    source: str = Field(min_length=1, description="where the fact is recorded: a file, a section or a log")
+
+
+class Deck(Strict):
+    id: ID
+    title: str
+    summary: str = ""
+    tags: dict[str, str] = Field(min_length=1, description="tag id -> label, in display order")
+    cards: list[FlashCard] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _ids_and_tags(self) -> "Deck":
+        ids = [c.id for c in self.cards]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"duplicate card ids {dupes}")
+        unknown = sorted({c.tag for c in self.cards if c.tag not in self.tags})
+        if unknown:
+            raise ValueError(f"cards use tags {unknown} that aren't in tags {sorted(self.tags)}")
+        return self
+
+    def card(self, card_id: str) -> FlashCard | None:
+        return next((c for c in self.cards if c.id == card_id), None)

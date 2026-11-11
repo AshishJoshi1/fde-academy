@@ -12,10 +12,10 @@ A local lab app for one learner (Ashish) to learn GenAI and agent engineering in
 - **Each lesson ends with a quiz.**
 - **Each module ends with a guided project** that connects the dots: a full app built step by step in the same format (see "Module projects").
 - **A Claude tutor on every step** answers "why?" with questions and hints, using the learner's code and run.
-- The app grows one lesson at a time and has no feature a lesson doesn't need.
+- The app grows one lesson at a time and has no feature a lesson doesn't need, apart from learner tools Ashish asks for ("Learner tools").
 
 ## Principles
-- **Depth over polish.** A feature is built only when a lesson needs it.
+- **Depth over polish.** A feature is built only when a lesson needs it, or when Ashish asks for it as a learner tool.
 - **Simple features first.** Plain server-rendered pages with a little vanilla JavaScript, and a simple code editor on the lab page (or VS Code). A React and Monaco workbench comes later, and only if a lesson needs in-editor line highlighting.
 - **Live calls only.** No cassettes, replay or recording. A run costs cents, and the gateway enforces the key's $50 budget (CLAUDE.md, "Gateway").
 - **Teach before you ask.** No question comes before the idea it tests. Lesson text is never hidden, and Run is never locked.
@@ -30,9 +30,9 @@ For each lesson:
 0. **Outline, approved first:** the guide-step titles (one line each, plus any experiment), agreed with Ashish before any content or feature work.
 1. **Content** in `content/`: `step.md` (a short intro), starter, solution, the `guide:` steps, any `experiments:`, the quiz and tutor notes. Teaching text is written from measured runs, never from memory.
 2. **App features** the lesson needs that don't exist yet, with tests.
-3. **Ashish does the lesson in the UI.** Misses are recorded. A step that misled gets fixed in the content.
+3. **Ashish does the lesson in the UI, at his own pace.** Misses are recorded. A step that misled gets fixed in the content when he reaches it.
 
-**Done when** the content validates, the tests pass, `tools/browser_check.py <step-id>` passes, and Ashish has completed the lesson in the UI.
+**Done when** the content validates, the tests pass and `tools/browser_check.py <step-id>` passes. Building runs ahead of learning: the next lesson doesn't wait for Ashish to finish this one.
 
 **One lesson per session:** a session builds one lesson (or one build stage) and ends with `/wrap`; the next starts fresh.
 
@@ -56,6 +56,20 @@ For each lesson:
   - **Reopen** any past run for free: the code snapshot, every call, the console.
   - **Redo** an experiment: earlier predictions stay hidden until you commit new ones, then show beside them.
   - **Reset** to the starter whenever you want.
+  - **Start over** a lesson, or every lesson, to do it fresh ("Learner tools").
+
+## Learner tools
+Features Ashish asked for that aren't tied to one lesson.
+- **Start over** (the lab page's "Start this lesson over"; the home page's "Start over all lessons"):
+  - A marker per lesson step (`step_restarts`, migration 5). Nothing is deleted.
+  - The lab shows only what came after the marker: check and quiz answers, experiment attempts, the latest run's values, tutor threads. Every step loses its tick.
+  - Spaced review, quiz history, spend and run history keep everything, so a miss from before still comes back until it's answered right.
+  - An option puts the code back to the starter too (only for lessons that have a playground copy).
+- **Flash cards** (`/cards`, the top bar's "Flash cards"):
+  - Decks in `content/cards/<deck>.yaml` (schema `Deck`); `build.yaml` holds what building the lab taught. Every card names its `source`.
+  - Study one card at a time (flip, then "Knew it" or "Didn't know"), filter by tag, or read them all.
+  - A review is a self-graded quiz attempt (`cards:<deck>:<card>`, module `cards`), so a "Didn't know" comes back in spaced review and in `/today`, and `/quiz m02` leaves it out.
+  - `/wrap` proposes 1–3 new cards from each session; only the approved ones are added.
 
 ## Module projects: connect the dots
 After a module's lessons, its project is built as one more guided lesson, in the same format:
@@ -100,7 +114,7 @@ After a module's lessons, its project is built as one more guided lesson, in the
 ## Where things live
 | Path | Holds | In git |
 |---|---|---|
-| `content/` | Lesson source: text, starter, solution, experiments, quiz | Yes |
+| `content/` | Lesson source: text, starter, solution, experiments, quiz. Flash-card decks in `content/cards/` | Yes |
 | `playground/<step-id>/` | Your code. Edited in the lab's editor or VS Code; the lab page and `run_live.py` run it | Yes |
 | `%LOCALAPPDATA%\fde-academy\academy.db` | Runs, run events, code snapshots, predictions, quiz attempts, spend | No. Exported to `progress/learner-progress.json` at `/wrap` |
 | `%LOCALAPPDATA%\fde-academy\anthropic.env` | Gateway credentials | Never |

@@ -3,7 +3,7 @@
      Placeholders are filled (and HTML-escaped) by pages.lab_page(). Dynamic values are set with
      textContent; the only innerHTML is lesson markdown the server rendered with raw HTML disabled. -->
 <section class="container page-head" style="padding-bottom:var(--sp-3)">
-  <div class="breadcrumb"><span>{{step_id}}</span></div>
+  <div class="row start-over-head"><div class="breadcrumb"><span>{{step_id}}</span></div><span class="spacer"></span>{{start_over}}</div>
   <h1>{{title}}</h1>
   <div class="prose lede">{{lesson_html}}</div>
   {{gateway_note}}
@@ -203,6 +203,7 @@
   $("model").addEventListener("change", showModelNote);
   showModelNote();
   var es = null, current = null, calls = {}, total = 0, done = false, live = false, running = false, lastBody = null;
+  var startedOver = null;   // when this lesson was last started over: older runs stay in the menu only
 
   function pill(cls, text) { $("status").className = "pill " + cls; $("status").textContent = text; }
   function line(text, cls) {
@@ -375,6 +376,7 @@
   }
   function loadHistory() {
     return fetch("/api/steps/" + encodeURIComponent(STEP) + "/runs").then(function (r) { return r.json(); }).then(function (j) {
+      startedOver = j.started_over_at;
       var sel = $("history");
       sel.textContent = "";
       var head = document.createElement("option");
@@ -396,8 +398,11 @@
   $("stop").addEventListener("click", function () {
     if (current) fetch("/api/runs/" + encodeURIComponent(current) + "/stop", {method: "POST"});
   });
-  // Reopen your latest run of this step (free: it's replayed from the store, not re-run).
-  loadHistory().then(function (runs) { if (runs.length) watch(runs[0].run_id, false); });
+  // Reopen your latest run of this step (free: it's replayed from the store, not re-run), unless
+  // you started the lesson over after it.
+  loadHistory().then(function (runs) {
+    if (runs.length && (!startedOver || runs[0].started_at > startedOver)) watch(runs[0].run_id, false);
+  });
   window.labRun = {run: startRun, watch: watch, answerText: answerText, loadDiff: loadDiff,
                    isRunning: function () { return running; }, model: function () { return $("model").value; }};
 })();
@@ -1093,4 +1098,9 @@
   document.addEventListener("lab:run-exit", function () { refresh(); });
   load();
 })();
+</script>
+
+<script>
+// Start this lesson over (the same panel and script as the home page's "Start over all lessons").
+{{start_over_js}}
 </script>
