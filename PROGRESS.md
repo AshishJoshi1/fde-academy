@@ -12,7 +12,7 @@ This file is the single source of truth for where the build and the teaching sta
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s01` "One call" (9 steps, g1–g9, experiments E2–E5, the quiz in g9), started over on 2026-11-11; steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done yet.
   - **s02 "The manual loop"** (9 steps, opening with "Meet Meridian") and **s03 "Parallel tool calls"** are built and ready at `/lab/m02.lab02.s02` and `/lab/m02.lab02.s03`.
   - **Spaced review:** nothing still wrong. g3.c1 (s01: `tool_use` means "run the tools, then call again") was answered right on 2026-11-12, so it's fixed after retry.
-  - **Flash cards:** 20 in the deck (3 added on 2026-11-12), 1 reviewed (`cache-share`, known).
+  - **Flash cards:** 21 in the deck (4 added on 2026-11-12), 1 reviewed (`cache-share`, known).
 - **Building:** s01, s02 and s03 are complete.
   - **s03** (`content/m02-agent-loop/lab02-agent-loop/s03-parallel-tools/`): 6 guided steps (three lookups in one turn, match each result by id, all results in one user message, fewer round trips with E1 "turn parallel calls off", a lookup fails with E2 "an ID that doesn't exist", quiz q1–q3), written from measured runs (`docs/PLAN.md`, "s03 'Parallel tool calls': the end result").
   - **New in the app for s03:**
@@ -37,8 +37,9 @@ This file is the single source of truth for where the build and the teaching sta
   - **Measured live** with a scratch script against the gateway (learner data untouched): 6 runs (parallel twice, parallel off, results split, results reversed, OPP-1099), about $0.10. Then one `tools/run_live.py m02.lab02.s03` run of the real starter: 3 `tool_use` blocks, one results message, the right answer (OPP-1046, 22%).
   - **Built:** the s03 content, s02's g1, `/meridian`, the timeline and messages changes, the new facts, the fake gateways and the tests.
   - **Docs:** `docs/PLAN.md` (Architecture: the Meridian data page and the one message check; the s02 table; the s03 end result; the Lab 02 roadmap), CLAUDE.md layout (`/meridian`).
-  - **Flash cards:** `parallel-saves-calls`, `cache-miss-big-context` and `split-tool-results` added.
+  - **Flash cards:** `parallel-saves-calls`, `cache-miss-big-context`, `split-tool-results` and `glossary-sync-test` added.
   - **Module 02 re-estimated** from the cost log (below).
+  - **Glossary** (after the wrap, a learner tool Ashish asked for): `/glossary` in the top bar explains every command (Claude Code's `/today`, `/wrap`, `/quiz`, `/cost`, `/clear`, `!`; the app's pages; `labctl`; the lesson tools), from `content/glossary.yaml`. 162 tests pass; the browser check opens it.
 - **Open questions:**
   - **1-hour TTL:** does the gateway pass `ttl: "1h"` through? Still unverified. It can be measured for cents: ask a first question after the cache has expired, and look for `ephemeral_1h_input_tokens` > 0 in "Show request".
   - **Module 02 projects:** set aside. The choice between the Claude Agent SDK and LangGraph for them is undecided and gets discussed after the 17 lessons.
@@ -50,7 +51,7 @@ This file is the single source of truth for where the build and the teaching sta
 
 ## Build: lesson by lesson (details in `docs/PLAN.md`)
 - [x] Foundation: continuity, `run.py`, server shell and security gates, store and migrations, content loader, `labctl`, design system, `tools/run_live.py`
-- [x] Learner tools: Start over, flash cards (`docs/PLAN.md`, "Learner tools")
+- [x] Learner tools: Start over, flash cards, glossary (`docs/PLAN.md`, "Learner tools")
 - s01 One call
   - [x] 1. Runner and thin relay, plus the lab page
   - [x] 2. Guided steps, experiments, quiz, run history, spaced review, browser check
@@ -86,7 +87,7 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-09 (2nd) | `/today` review, s01 g1 content fix, tutor (stage 3) built and measured | $4.87 | $0.010 learner + $0.033 tutor measurement |
 | 2026-11-11 | `/today` review; learner tools Start over and flash cards built and browser-checked | $7.09 | $0.00 (browser checks use a fake gateway) |
 | 2026-11-11 (2nd) | `/today` review; s02 "The manual loop" outlined, measured, built and browser-checked | $10.07 | $0.00 learner + about $0.032 measurement (5 runs; `count_tokens` is free) |
-| 2026-11-12 | `/today` review; the 2026-11-11 Start-over fix committed; s03 "Parallel tool calls" outlined, measured, built and browser-checked; s02 "Meet Meridian"; the Meridian data page | $12.02 | $0.00 learner + about $0.12 measurement (6 runs, plus one live run of the starter) |
+| 2026-11-12 | `/today` review; the 2026-11-11 Start-over fix committed; s03 "Parallel tool calls" outlined, measured, built and browser-checked; s02 "Meet Meridian"; the Meridian data page; then the glossary (after the first wrap) | $14.99 ($12.02 at the first wrap, $2.97 for the glossary) | $0.00 learner + about $0.12 measurement (6 runs, plus one live run of the starter) |
 
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.
 - **Module 02 re-estimate** (from the s02 and s03 rows): a lesson session costs about $10–12 in Claude Code ($10.07 for s02; $12.02 for s03, which also built s02's new step and the Meridian page). 15 lessons are left (s04–s06, then lessons 6–17), so about $150–180, plus the two guided projects. Gateway measurement stays under $0.15 a lesson.
@@ -99,12 +100,12 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
   - output, 126.2K tokens (the lesson, the code, the tests): about $2.52;
   - cache writes, 314.6K tokens at the 1-hour price: about $2.52;
   - reading `lab.html` whole (about 24K tokens) put it in every later turn's context; read large files in parts.
-- **Where the 2026-11-12 cost went** ($12.02 over 106 requests, 97% of input from the cache):
-  - cache writes, 665.8K tokens at the 1-hour price: about $5.33 (44%). One cache miss re-cached 260K tokens (about $2.08); `/cost` reported it as likely server-side, with the prompt unchanged;
-  - cache reads, 21.9M tokens: about $4.38;
-  - output, 115.6K tokens: about $2.31;
-  - the context averaged about 207K tokens per request (21.9M ÷ 106): the `/claude-api` skill text, whole-file reads and the long build stayed in every later turn;
-  - `/wrap` was about 10% of usage and `/today` about 4%.
+- **Where the 2026-11-12 cost went** ($14.99 over 131 requests, 98% of input from the cache):
+  - cache reads, 30.8M tokens: about $6.16 (41%);
+  - cache writes, 721.8K tokens at the 1-hour price: about $5.77 (39%). One cache miss re-cached 260K tokens (about $2.08); `/cost` reported it as likely server-side, with the prompt unchanged;
+  - output, 151.9K tokens: about $3.04;
+  - the context averaged about 235K tokens per request (30.8M ÷ 131): the `/claude-api` skill text, whole-file reads and the long build stayed in every later turn;
+  - building the glossary after the first wrap, in the same session, cost $2.97, because every turn carried the whole day's context. Two `/wrap`s made `/wrap` about 14% of usage; `/today` was about 3%.
 
 ## Decisions log
 - 2026-11-06:
@@ -158,3 +159,4 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
   - **s03 outline** approved, with "split the results" kept only if it returned a 400. Measured, the API accepts split results (it joins consecutive user messages), so it was cut: s03 has 6 steps, E1 (parallel calls off) and E2 (an ID that doesn't exist).
   - **Lessons introduce the scenario before using its IDs:** s02 opens with "Meet Meridian", and the Meridian data page (`/meridian`) shows every record the mock API serves, linked from the top bar and the Mock API panel.
   - **The one message check is the lab's**, because the API won't flag split results: on the timeline, in the messages view, and as the run fact `loop.results_in_one_message`.
+  - **Glossary** is a learner tool (Ashish asked for it): `content/glossary.yaml` at `/glossary`, every entry naming the file that defines it, and a test that fails when a slash command, `labctl` subcommand or tool has no entry.

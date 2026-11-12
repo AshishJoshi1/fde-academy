@@ -148,7 +148,7 @@ cards:
     back: |
       A miss writes the whole conversation to the cache again, at the cache-write price ($8 per million
       tokens on Opus 5.5 with the 1-hour TTL). On 2026-11-12 one miss re-cached 260K tokens: about
-      $2.08 of the $12.02 session.
+      $2.08 of the session's $14.99.
 
       A fresh session per lesson keeps the context small, and so any miss.
     source: "PROGRESS.md, Cost log (2026-11-12)"
@@ -260,3 +260,14 @@ cards:
 
       The API won't flag it, so only a check in your code catches it (the lab's "one message" check).
     source: "docs/PLAN.md, \"s03 'Parallel tool calls': the end result\" (measured 2026-11-12)"
+
+  - id: glossary-sync-test
+    tag: engineering
+    front: |
+      How does the glossary stay in sync with the commands it lists?
+    back: |
+      A test walks `.claude/commands/*.md`, labctl's argparse subcommands and `tools/*.py`, and fails
+      when any of them has no glossary entry.
+
+      A reference page about things defined elsewhere drifts unless a test ties it to its sources.
+    source: "tests/test_content.py, test_the_glossary_covers_every_slash_command_and_labctl_command; docs/PLAN.md, Learner tools"

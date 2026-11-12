@@ -1,0 +1,181 @@
+# The glossary (/glossary): the commands that run the course and the lab. Schema: Glossary in
+# src/academy_server/content/schema.py. Every entry names the file that defines it; when a command
+# changes there, change its entry here too. tests/test_content.py checks that every slash command in
+# .claude/commands/ and every labctl subcommand has an entry.
+title: "Glossary"
+summary: |
+  The commands that run FDE Academy: the ones you type in Claude Code, the app's pages, `labctl`, and
+  the lesson tools. Each entry says what it does, when to use it, and the file that defines it.
+
+sections:
+  - id: claude-code
+    title: "In Claude Code"
+    summary: |
+      Typed at the Claude Code prompt. `/today`, `/wrap` and `/quiz` are this project's own commands, in
+      `.claude/commands/`. `/cost` and `/clear` are built into Claude Code.
+    entries:
+      - term: "/today"
+        what: |
+          Starts a session. It reads `PROGRESS.md` and runs `session_status.py` and `labctl status`.
+          If an earlier day left uncommitted or unpushed work, it says so and offers to wrap that
+          first. Then it re-asks up to 3 still-wrong quiz items or flash cards (spaced review) and
+          records your answers, states where you are and today's goal, and starts the recorded
+          "Next first action".
+        when: "First thing in every session."
+        source: ".claude/commands/today.md"
+      - term: "/wrap"
+        what: |
+          Ends a session. It rewrites `PROGRESS.md` (current position, the next first action, what was
+          done, decisions, and a Cost log row from your `/cost` figure), proposes 1–3 flash cards for
+          you to pick, exports your learner progress to `progress/learner-progress.json`, and commits
+          and pushes every tracked repo. It ends with a 3-line recap.
+        when: "Last thing in every session. Paste the `/cost` output with it."
+        source: ".claude/commands/wrap.md"
+      - term: "/quiz <module>"
+        what: |
+          The end-of-module quiz on the whole module, e.g. `/quiz m02`: 10–15 questions (multiple
+          choice, reading a trace, estimating a cost, fixing a bug, describing the loop), graded, then
+          a table of every miss and the pattern behind them. Every answer is recorded with
+          `labctl quiz record`, so misses come back in spaced review.
+        when: "At the end of each module."
+        source: ".claude/commands/quiz.md; CLAUDE.md, Session protocol"
+      - term: "/cost"
+        what: |
+          Built into Claude Code: the session's total cost and token usage, by model and by cache
+          reads and writes.
+        when: "Before `/wrap`: `/wrap` logs the total in PROGRESS.md's Cost log, and can't read it itself."
+        source: ".claude/commands/wrap.md, step 1; PROGRESS.md, Cost log"
+      - term: "/clear"
+        what: |
+          Built into Claude Code: starts a fresh conversation. Every turn resends the whole
+          conversation, so a long session costs more with each turn.
+        when: "After `/wrap`, before the next lesson's build: one lesson per session."
+        source: "CLAUDE.md, How we work (one lesson per session)"
+      - term: "! <command>"
+        what: |
+          Runs a shell command from the Claude Code prompt, and its output lands in the conversation.
+          It runs in bash, so use bash syntax, not PowerShell.
+        when: "When a step needs you, e.g. `! git push` if a push needs your login."
+        source: "CLAUDE.md, Repo conventions; .claude/commands/wrap.md, step 4"
+      - term: "SessionStart hook"
+        what: |
+          Automatic: when a Claude Code session starts, it runs `tools/session_status.py`, so the
+          current position and any uncommitted work show before you type anything.
+        when: "Nothing to type: it runs on its own."
+        source: ".claude/settings.json"
+
+  - id: app
+    title: "The app"
+    summary: "Start it with `python run.py`. The pages below are on the URL it opens."
+    entries:
+      - term: "python run.py"
+        what: |
+          Sets up and starts the app: creates `.venv` if needed, installs, builds the web assets if
+          they're stale, starts the server and opens the browser. Extra arguments go to the server,
+          e.g. `python run.py --no-browser`.
+        when: "To use the lab."
+        source: "run.py"
+      - term: "/lab/<step-id>"
+        what: |
+          A lesson step's lab, e.g. `/lab/m02.lab02.s03`: the guided steps, the editor, Run with its
+          console and every model call, the step's panels, the experiments, the quiz and the tutor.
+        when: "To do a lesson. The home page links every step."
+        source: "CLAUDE.md, Repo conventions"
+      - term: "/cards"
+        what: |
+          Flash cards: what building the lab taught, each fact with its source. "Didn't know" counts as
+          a quiz miss, so the card comes back in spaced review.
+        when: "Whenever you want a short review."
+        source: "docs/PLAN.md, Learner tools"
+      - term: "/meridian"
+        what: |
+          Meridian data: every opportunity, account and rate-card row the lessons' mock API serves, so
+          you can look up an ID and check a model's answer.
+        when: "When a lesson names an OPP-, ACC- or R- ID."
+        source: "docs/PLAN.md, Architecture (Fixtures)"
+      - term: "/glossary"
+        what: "This page."
+        when: "When you meet a command you don't know."
+        source: "content/glossary.yaml"
+      - term: "/design"
+        what: "The design system's reference page: every style the app's pages use."
+        when: "When building a page."
+        source: "CLAUDE.md, Repo conventions (web/)"
+
+  - id: labctl
+    title: "labctl: your learner state"
+    summary: |
+      `python -X utf8 tools/labctl.py <command>`. Standard library only (except `content validate`), so
+      `/today` and the SessionStart hook can run it before the venv exists.
+    entries:
+      - term: "labctl status"
+        what: "Where you are, quiz misses, spend. `--brief` for one line, `--json` for scripts."
+        when: "To see your progress from the command line; `/today` runs it."
+        source: "src/academy_server/labctl.py (labctl --help)"
+      - term: "labctl mistakes"
+        what: |
+          What you got wrong: still wrong, fixed after retry, and failing checks. `--module m02` for one
+          module, `--json` for scripts.
+        when: "Before a review or a module quiz."
+        source: "src/academy_server/labctl.py (labctl --help)"
+      - term: "labctl export"
+        what: |
+          Writes your learner state (progress, runs, quiz answers, spend) to JSON, by default
+          `progress/learner-progress.json`, which is in git. `--to PATH` writes elsewhere.
+        when: "`/wrap` runs it, so your progress is backed up with every push."
+        source: "src/academy_server/labctl.py (labctl --help); .claude/commands/wrap.md, step 3"
+      - term: "labctl import"
+        what: "`--from PATH [--yes]`: replaces your learner state with an export."
+        when: "To restore your progress, e.g. on a new machine."
+        source: "src/academy_server/labctl.py (labctl --help)"
+      - term: "labctl quiz record"
+        what: |
+          Records a quiz answer given in chat: `--module`, `--question`, `--answer`, `--correct-answer`,
+          `--right` or `--wrong`, and `--item` (a stable ID, so a retry counts as fixed).
+        when: "`/quiz` and `/today` run it for you."
+        source: "src/academy_server/labctl.py (labctl quiz record -h)"
+      - term: "labctl content validate"
+        what: |
+          Loads `content/` (lessons, flash cards, this glossary) and lists every error. Needs the venv:
+          `.venv/Scripts/python -X utf8 tools/labctl.py content validate`.
+        when: "After editing any file under `content/`."
+        source: "src/academy_server/labctl.py; CLAUDE.md, Repo conventions"
+      - term: "labctl open"
+        what: "Re-opens the running app in the browser."
+        when: "When you closed the tab and the server is still running."
+        source: "src/academy_server/labctl.py (labctl --help)"
+      - term: "labctl where"
+        what: "Prints where things live: the repo, your data folder, the database and the export file."
+        when: "To find your data."
+        source: "src/academy_server/labctl.py (labctl --help)"
+
+  - id: tools
+    title: "Lesson and build tools"
+    summary: "Run with the venv's Python: `.venv/Scripts/python -X utf8 <tool>`. Always pass `-X utf8`."
+    entries:
+      - term: "tools/run_live.py <step-id>"
+        what: |
+          Runs a step's code live against Claude from the command line, starting the step's mock API if
+          it has one. The first run copies the starter into `playground/<step-id>/`, and later runs keep
+          your edits. `--reset` starts again from the starter, `--model` picks the model, and the prefix
+          `ANTHROPIC_LOG=debug` logs each request (never the key).
+        when: "To run a step outside the lab page. Live calls cost money."
+        source: "tools/run_live.py"
+      - term: "tools/browser_check.py <step-id>"
+        what: |
+          Walks every guide step of a lesson in headless Edge against a fake gateway, with its own
+          temporary data: Run, checks, experiments, quiz, tutor, Start over, flash cards. No API spend,
+          and your progress is untouched. It reports JavaScript errors and saves a screenshot per step;
+          `--keep` keeps the temporary folder.
+        when: "Before a lesson is handed over."
+        source: "tools/browser_check.py; CLAUDE.md, Repo conventions"
+      - term: "tools/session_status.py"
+        what: |
+          Prints the "where are we" summary: the position in PROGRESS.md, uncommitted work in the
+          tracked repos, and your quiz misses and spend. Standard library only.
+        when: "The SessionStart hook and `/today` run it."
+        source: "tools/session_status.py"
+      - term: "pytest"
+        what: "`.venv/Scripts/python -X utf8 -m pytest` runs the tests."
+        when: "After changing the app's code."
+        source: "CLAUDE.md, Repo conventions"

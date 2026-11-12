@@ -70,6 +70,9 @@ Features Ashish asked for that aren't tied to one lesson.
   - Study one card at a time (flip, then "Knew it" or "Didn't know"), filter by tag, or read them all.
   - A review is a self-graded quiz attempt (`cards:<deck>:<card>`, module `cards`), so a "Didn't know" comes back in spaced review and in `/today`, and `/quiz m02` leaves it out.
   - `/wrap` proposes 1–3 new cards from each session; only the approved ones are added.
+- **Glossary** (`/glossary`, the top bar's "Glossary"):
+  - `content/glossary.yaml` (schema `Glossary`): the commands that run the course and the lab, in sections (Claude Code, the app, `labctl`, the lesson tools). Each entry says what it does, when to use it, and the file that defines it.
+  - A test fails when a slash command in `.claude/commands/`, a `labctl` subcommand or a tool in `tools/` has no entry.
 
 ## Module projects: connect the dots
 After a module's lessons, its project is built as one more guided lesson, in the same format:

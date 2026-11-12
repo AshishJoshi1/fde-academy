@@ -14,7 +14,7 @@
   check, plays any experiment through to its explanation, answers the quiz, and saves a screenshot.
 - Then it starts the lesson over (every tick gone, no run reopened, history and spaced review kept),
   and walks the flash cards (flip, "Didn't know" and "Knew it", tag filter, all cards, the card's
-  link back from spaced review), and opens the Meridian data page.
+  link back from spaced review), and opens the Meridian data and glossary pages.
 - On a step with the timeline, messages or mock API panels, it checks each one drew the first run,
   with the "one message" check on the tool results.
 - It reports any JavaScript error. Exit code 1 if anything failed.
@@ -421,6 +421,19 @@ def walk_meridian(b: Browser, base: str, out: Path) -> list[str]:
         "document.getElementById('OPP-1042').closest('tr').textContent.includes('Müller Logistik GmbH')"))
     shot = b.call("Page.captureScreenshot", format="png")["data"]
     (out / "meridian.png").write_bytes(base64.b64decode(shot))
+
+    from academy_server.content.loader import load_content
+    glossary = load_content(ROOT / "content").glossary
+    print("  Glossary page")
+    b.call("Page.navigate", url=f"{base}/glossary")
+    b.wait("document.title.startsWith('Glossary')", "the glossary page")
+    check("it's the current page in the top bar",
+          b.js("document.querySelector('.nav a[aria-current=page]').textContent") == "Glossary")
+    n = sum(len(s.entries) for s in glossary.sections)
+    check(f"every entry listed ({n})", b.js("document.querySelectorAll('article.card tbody tr').length") == n)
+    check("/today and /wrap explained", b.js("!!document.getElementById('today') && !!document.getElementById('wrap')"))
+    shot = b.call("Page.captureScreenshot", format="png")["data"]
+    (out / "glossary.png").write_bytes(base64.b64decode(shot))
     return fails
 
 

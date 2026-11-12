@@ -1,8 +1,8 @@
 """Server-rendered HTML pages, all styled by /static/academy.css.
 
 The home page, the styled 401 page (served before any session exists), the /design
-style guide, the lab page where a step is run, the flash cards, and /meridian: the data
-the mock Meridian API serves.
+style guide, the lab page where a step is run, the flash cards, /meridian (the data the
+mock Meridian API serves) and /glossary (the commands, from content/glossary.yaml).
 
 Every dynamic value goes through html.escape. Lesson markdown is rendered with raw HTML
 disabled, so step.md can't inject markup either.
@@ -73,7 +73,7 @@ def shell(title: str, body: str, *, theme: str | None = None, active: str | None
     links = ""
     if nav:
         items = [("home", "/", "Home"), ("cards", "/cards", "Flash cards"), ("meridian", "/meridian", "Meridian data"),
-                 ("design", "/design", "Design system")]
+                 ("glossary", "/glossary", "Glossary"), ("design", "/design", "Design system")]
         current = ' aria-current="page"'
         links = '<nav class="nav" aria-label="Main">' + "".join(
             f'<a href="{href}"{current if key == active else ""}>{label}</a>'
@@ -464,6 +464,41 @@ def meridian_page(seed: dict[str, Any], *, theme: str | None = None) -> str:
                                    nums=(2,))}</div></article>
 </section>"""
     return shell("Meridian data · FDE Academy", body, theme=theme, active="meridian")
+
+
+# ----------------------------------------------------------------- glossary
+def _slug(term: str) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in term.lower()).strip("-") or "term"
+
+
+def glossary_page(glossary: Any, *, theme: str | None = None) -> str:
+    """The commands that run the course and the lab, from content/glossary.yaml: what each does, when to
+    use it, and the file that defines it."""
+    if glossary is None:
+        body = """<section class="container page-head"><h1>Glossary</h1>
+  <p class="lede">No glossary yet: <code>content/glossary.yaml</code> is missing or didn't load.</p></section>"""
+        return shell("Glossary · FDE Academy", body, theme=theme, active="glossary")
+    toc = " ".join(f'<a class="btn btn-sm" href="#{esc(s.id)}">{esc(s.title)}</a>' for s in glossary.sections)
+    cards = []
+    for s in glossary.sections:
+        rows = [[f'<code id="{esc(_slug(e.term))}">{esc(e.term)}</code>',
+                 markdown(e.what) + f'<p class="small muted" style="margin:0">Defined in {esc(e.source)}</p>',
+                 markdown(e.when) if e.when else ""] for e in s.entries]
+        summary = f'<div class="secondary">{markdown(s.summary)}</div>' if s.summary else ""
+        cards.append(f"""
+  <article class="card" id="{esc(s.id)}"><div class="card-head"><h2 class="card-title">{esc(s.title)}</h2>
+    <span class="spacer"></span><span class="small muted">{len(s.entries)} entries</span></div>
+    <div class="card-body stack">{summary}{_table(["Command", "What it does", "When"], rows)}</div></article>""")
+    body = f"""
+<section class="container page-head">
+  <p class="eyebrow">Reference</p>
+  <h1>{esc(glossary.title)}</h1>
+  <div class="lede">{markdown(glossary.summary)}</div>
+  <div class="row" style="margin-top:var(--sp-3)">{toc}</div>
+</section>
+<section class="container stack-lg" style="padding-bottom:var(--sp-7)">{''.join(cards)}
+</section>"""
+    return shell("Glossary · FDE Academy", body, theme=theme, active="glossary")
 
 
 def design_page(*, theme: str | None = None) -> str:

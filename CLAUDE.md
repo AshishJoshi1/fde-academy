@@ -35,7 +35,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
     - `pricing.py`, `credentials.py` and `playground.py`.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
   - `src/labkit` (empty) is for in-process hooks, added when a lesson needs them (s05 approvals).
-  - `content/` holds the lessons, and the flash-card decks in `content/cards/`.
+  - `content/` holds the lessons, the flash-card decks in `content/cards/`, and the glossary of commands (`content/glossary.yaml`, shown at `/glossary`; a test checks every slash command, `labctl` subcommand and tool has an entry).
   - `tools/` holds `labctl`, `session_status.py` and `run_live.py`.
   - `playground/<step-id>/` (tracked in git) holds Ashish's code for each step. He edits it in the lab page's simple editor or in VS Code. A save from the page refuses to overwrite a file changed on disk (409) unless he confirms.
 - Run the app with `python run.py`. Run tests with `.venv/Scripts/python -X utf8 -m pytest`, and validate lessons with `.venv/Scripts/python -X utf8 tools/labctl.py content validate`.

@@ -80,3 +80,31 @@ def test_saved_code_survives_server_restart(make_client):
 def test_placeholder_home_page(make_client):
     r = make_client().get("/")
     assert r.status_code == 200 and "FDE Academy" in r.text and "m02.lab02.s01" in r.text
+
+
+def _leaf_commands(parser, prefix: str = "") -> list[str]:
+    """Every runnable labctl command, e.g. 'status', 'quiz record', 'content validate'."""
+    import argparse
+    subs = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+    if not subs:
+        return [prefix.strip()]
+    return [c for name, p in subs[0].choices.items() for c in _leaf_commands(p, f"{prefix}{name} ")]
+
+
+def test_the_glossary_covers_every_slash_command_and_labctl_command(make_client):
+    from academy_server.labctl import build_parser
+    glossary = load_content(REPO / "content").glossary
+    terms = {e.term.split(" <")[0] for s in glossary.sections for e in s.entries}
+    for cmd in sorted((REPO / ".claude" / "commands").glob("*.md")):
+        assert f"/{cmd.stem}" in terms, f"/{cmd.stem} has no glossary entry"
+    for leaf in _leaf_commands(build_parser()):
+        assert f"labctl {leaf}" in terms, f"labctl {leaf} has no glossary entry"
+    for tool in sorted((REPO / "tools").glob("*.py")):
+        if tool.stem != "labctl":                              # labctl's commands are listed one by one
+            assert any(t.startswith(f"tools/{tool.name}") for t in terms), f"tools/{tool.name} has no glossary entry"
+
+    page = make_client().get("/glossary")
+    assert page.status_code == 200
+    assert '<a href="/glossary" aria-current="page">Glossary</a>' in page.text      # in the top bar, current
+    assert '<code id="today">/today</code>' in page.text and "Defined in .claude/commands/wrap.md" in page.text
+    assert "&lt;step-id&gt;" in page.text and "<step-id>" not in page.text          # every term escaped

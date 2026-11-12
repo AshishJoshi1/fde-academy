@@ -748,6 +748,10 @@ def create_app(settings: AppSettings) -> FastAPI:
         from .fixtures import load_seed   # the seed the mock API serves, read fresh each time
         return pages.meridian_page(load_seed(), theme=pages.theme_or_none(theme))
 
+    @app.get("/glossary", include_in_schema=False, response_class=HTMLResponse)
+    def glossary_page(theme: str | None = None) -> str:
+        return pages.glossary_page(content().glossary, theme=pages.theme_or_none(theme))
+
     @app.get("/api/mistakes")
     def mistakes(module: str | None = None) -> dict[str, Any]:
         return store.mistakes(module)

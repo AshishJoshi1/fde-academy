@@ -9,9 +9,10 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from .schema import Chapter, Deck, Module, Step
+from .schema import Chapter, Deck, Glossary, Module, Step
 
 CARDS_DIR = "cards"   # content/cards/<deck>.yaml
+GLOSSARY_FILE = "glossary.yaml"   # content/glossary.yaml: the commands (/glossary)
 
 
 @dataclass
@@ -68,6 +69,7 @@ class ContentTree:
     modules: list[LoadedModule] = field(default_factory=list)
     steps: dict[str, LoadedStep] = field(default_factory=dict)
     decks: dict[str, Deck] = field(default_factory=dict)
+    glossary: Glossary | None = None
     errors: list[str] = field(default_factory=list)
 
     def ordered_step_ids(self) -> list[str]:
@@ -134,6 +136,7 @@ def load_content(root: Path) -> ContentTree:
             tree.errors.append(f"duplicate module id {m.id!r} in {seen[m.id]} and {m.dir.name}")
         seen[m.id] = m.dir.name
     _load_decks(tree)
+    _load_glossary(tree)
     return tree
 
 
@@ -177,3 +180,13 @@ def _load_step(tree: ContentTree, module_id: str, chapter_id: str, sdir: Path) -
                       spec=spec, dir=sdir, body_md=body)
     tree.steps[full_id] = step
     return step
+
+
+def _load_glossary(tree: ContentTree) -> None:
+    gfile = tree.root / GLOSSARY_FILE
+    if not gfile.is_file():
+        return
+    try:
+        tree.glossary = Glossary.model_validate(_yaml(gfile))
+    except (ValidationError, yaml.YAMLError, OSError) as exc:
+        tree.errors.append(_fmt(gfile, tree.root, exc))

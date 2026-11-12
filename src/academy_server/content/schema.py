@@ -414,3 +414,35 @@ class Deck(Strict):
 
     def card(self, card_id: str) -> FlashCard | None:
         return next((c for c in self.cards if c.id == card_id), None)
+
+
+# --------------------------------------------------------------------- glossary
+# content/glossary.yaml: the commands that run the course and the lab (/glossary), each with the file
+# that defines it, so an entry can be checked against its source.
+class GlossaryEntry(Strict):
+    term: str = Field(min_length=1, description="the command as typed, e.g. /today or labctl status")
+    what: str = Field(min_length=1, description="markdown: what it does")
+    when: str = Field(default="", description="markdown: when to use it")
+    source: str = Field(min_length=1, description="where it's defined: a file or a section")
+
+
+class GlossarySection(Strict):
+    id: ID
+    title: str
+    summary: str = Field(default="", description="markdown")
+    entries: list[GlossaryEntry] = Field(min_length=1)
+
+
+class Glossary(Strict):
+    title: str
+    summary: str = Field(default="", description="markdown")
+    sections: list[GlossarySection] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique(self) -> "Glossary":
+        for what, keys in (("section ids", [s.id for s in self.sections]),
+                           ("terms", [e.term for s in self.sections for e in s.entries])):
+            dupes = sorted({k for k in keys if keys.count(k) > 1})
+            if dupes:
+                raise ValueError(f"duplicate {what} {dupes}")
+        return self
