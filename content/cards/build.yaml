@@ -308,3 +308,28 @@ cards:
 
       A reference page about things defined elsewhere drifts unless a test ties it to its sources.
     source: "tests/test_content.py, test_the_glossary_covers_every_slash_command_and_labctl_command; docs/PLAN.md, Learner tools"
+
+  - id: prompt-rule-vs-gate
+    tag: engineering
+    front: |
+      A system prompt says "never change CRM records" and the model obeyed in every measured run,
+      even when the user claimed admin authority. Why add a gate in the loop anyway?
+    back: |
+      The rule is an instruction the model chooses to follow, and the loop runs whatever tool the
+      model asks for. A check before the tool runs (`block.name in POLICY["blocked_tools"]`) makes
+      "no write" independent of the model, the wording and the conversation.
+
+      Runs that came out well don't prove the next one will.
+    source: "docs/PLAN.md, \"s04 'Gate and block': the end result\" (measured 2026-11-12)"
+
+  - id: gate-lists-names
+    tag: engineering
+    front: |
+      Your policy blocks `get_opportunity` and a run still makes 0 writes. Is the write protected?
+    back: |
+      No. The gate guards exactly the tool names in `work/policy.json`. Here the model declined to
+      write without reading the record: its caution, not the gate. `update_opportunity` wasn't
+      listed, so the loop would have run it.
+
+      A policy is a list you must get right: name the write tools.
+    source: "docs/PLAN.md, \"s04 'Gate and block': the end result\" (measured 2026-11-12)"

@@ -379,7 +379,7 @@ def check_panels(b: Browser, panels: list[str], check) -> None:
         check("timeline: calls, the tool run between them, and its API request",
               len(rows) >= 4 and any("result sent" in r for r in rows))
         check("timeline: each tool row shows its input and id", any(
-            "get_opportunity" in r and "OPP-1042 · id …" in r for r in rows))
+            "get_opportunity" in r and re.search(r"OPP-\d+ · id …", r) for r in rows))
         check("timeline: the one message check passes",
               b.js("document.getElementById('timeline').textContent.includes('went back in one user message')"))
     if "messages" in panels:

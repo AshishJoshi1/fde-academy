@@ -167,6 +167,7 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             results_sent = [b for m in msgs for b in _blocks(m) if b.get("type") == "tool_result"]
             f["loop.tool_results"] = len(results_sent)
             f["loop.error_results"] = sum(1 for b in results_sent if b.get("is_error"))
+            f["loop.blocked_results"] = sum(1 for b in results_sent if b.get("is_error") and str(b.get("content", "")).startswith("BLOCKED"))
             f["loop.results_in_one_message"] = results_in_one_message(msgs)
         # History only grows: every call resends the previous call's messages, unchanged, then adds to them.
         lists = [r["data"]["body"]["messages"] for r in requests
@@ -229,6 +230,7 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
     if started and started[0]["data"].get("fixture"):       # only a step with a mock API measures these
         api = _events(events, "api.request")
         f["api.requests"] = len(api)
+        f["api.writes"] = sum(1 for a in api if a["data"].get("method") != "GET")
         if api:
             a = api[-1]["data"]
             f["api.last_request"] = f"{a.get('method')} {a.get('path')}{'?' + a['query'] if a.get('query') else ''} → {a.get('status')}"

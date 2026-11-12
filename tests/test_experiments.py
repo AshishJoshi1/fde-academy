@@ -546,3 +546,19 @@ def test_guide_checks_grade_against_your_run_and_are_recorded(lab):
     assert wrong == {f"{STEP}:g2:c1"}
     step = client.get(url).json()["steps"]
     assert step[1]["answers"]["c1"]["correct"] is False and step[0]["answers"]["c1"]["correct"] is True
+
+
+def test_write_and_blocked_facts():
+    events = loop_events()
+    assert run_facts(events)["api.writes"] == 0 and run_facts(events)["loop.blocked_results"] == 0
+    events.append({"seq": 99, "t_ms": 999, "type": "api.request",
+                   "data": {"n": 2, "method": "PATCH", "path": "/opportunities/OPP-1046", "query": None,
+                            "status": 200, "body": {}}})
+    assert run_facts(events)["api.writes"] == 1
+    blocked = {"type": "tool_result", "tool_use_id": "toolu_2", "is_error": True,
+               "content": "BLOCKED: update_opportunity is not allowed by policy. Nothing was changed."}
+    other = {"type": "tool_result", "tool_use_id": "toolu_3", "is_error": True, "content": "LookupError: no opportunity"}
+    for e in events:
+        if e["type"] == "llm.request" and e["data"]["call"] == 2:
+            e["data"]["body"]["messages"].append({"role": "user", "content": [blocked, other]})
+    assert run_facts(events)["loop.blocked_results"] == 1 and run_facts(events)["loop.error_results"] == 2

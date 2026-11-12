@@ -334,7 +334,9 @@
   function renderApi() {
     var box = $("api-log"), m = model();
     box.textContent = "";
-    $("api-count").textContent = m.api.length ? m.api.length + " request" + (m.api.length === 1 ? "" : "s") : "";
+    var writes = m.api.filter(function (a) { return a.d.method !== "GET"; }).length;
+    $("api-count").textContent = m.api.length ? m.api.length + " request" + (m.api.length === 1 ? "" : "s") +
+      (writes ? ", " + writes + " write" + (writes === 1 ? "" : "s") : ", 0 writes") : "";
     if (!m.api.length) {
       box.append(el("p", "small muted", m.ended ? "No requests: your code never called the mock API in this run."
                                               : "Every request your tool code makes to the mock Meridian API, as the API saw it."));
@@ -347,6 +349,7 @@
       var d = a.d, tr = el("tr"), st = el("td");
       st.append(pill(d.status < 400 ? "pill-good" : "pill-critical", String(d.status)));
       var req = el("td"); req.append(el("code", null, d.method + " " + d.path + (d.query ? "?" + d.query : "")));
+      if (d.method !== "GET") { req.append(" ", pill("pill-critical", "write attempt")); tr.className = "api-write"; }
       tr.append(el("td", "num", String(d.n)), el("td", "num", (a.t / 1000).toFixed(2) + " s"), req, st,
                 el("td", "num", json(d.body).length + " chars"));
       tb.append(tr);
