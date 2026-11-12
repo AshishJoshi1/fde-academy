@@ -80,6 +80,11 @@ time.sleep(120)
     "parallel": (S03_STARTER, 120),                             # the real s03 code, as it starts
     "sequential": (S03_STARTER.replace(S03_PARALLEL_OFF, S03_PARALLEL_OFF.replace("# ", "", 1)), 120),   # E1's change
     "missing": (S03_STARTER.replace("OPP-1046", "OPP-1099"), 120),                                      # E2's change
+    "ask": ("""
+import labkit
+ok, reason = labkit.approve("update_opportunity", {"opportunity_id": "OPP-1046"}, timeout_s=int(open("limit.txt").read()))
+print("result:", ok, reason, flush=True)
+""", 60),
     "orphan": ("""
 import pathlib, subprocess, sys
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
@@ -420,3 +425,63 @@ def test_a_run_started_for_an_experiment_grades_its_predictions(server):
     assert server.client.post("/api/steps/mt.lt.call/runs", json={"experiment": "e1"}).status_code == 409
     [run] = server.client.get("/api/steps/mt.lt.call/runs").json()["runs"]
     assert run["experiment_id"] == "e1" and run["attempt"] == 1
+
+
+def start_ask(server, limit: int) -> str:
+    """Run the 'ask' step: lesson code calling labkit.approve with a time limit of `limit` seconds."""
+    dest = server.play / "mt.lt.ask"
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "limit.txt").write_text(str(limit), encoding="utf-8")
+    r = server.client.post("/api/steps/mt.lt.ask/runs", json={})
+    assert r.status_code == 201, r.text
+    return r.json()["run_id"]
+
+
+def wait_for_event(server, run_id: str, type_: str, timeout: float = 30) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for e in server.client.get(f"/api/runs/{run_id}").json()["events"]:
+            if e["type"] == type_:
+                return e
+        time.sleep(0.1)
+    raise AssertionError(f"no {type_} event in {timeout}s")
+
+
+@pytest.mark.parametrize("approved", [True, False])
+def test_approval_pauses_the_run_until_the_page_answers(server, approved):
+    run_id = start_ask(server, 30)
+    asked = wait_for_event(server, run_id, "approval.requested")["data"]
+    assert asked["tool"] == "update_opportunity" and asked["input"] == {"opportunity_id": "OPP-1046"}
+    assert server.client.get(f"/api/runs/{run_id}").json()["run"]["status"] == "running"   # paused, not finished
+    r = server.client.post(f"/api/runs/{run_id}/approvals/{asked['id']}", json={"approved": approved})
+    assert r.status_code == 200
+    again = server.client.post(f"/api/runs/{run_id}/approvals/{asked['id']}", json={"approved": not approved})
+    assert again.status_code == 409                                  # one answer per ask
+    view = wait_finished(server, run_id)
+    assert view["run"]["outcome"] == "ok", console(view)
+    assert f"result: {approved}" in " ".join(console(view))
+    facts = run_facts(view["events"])
+    assert (facts["approval.asked"], facts["approval.approved"], facts["approval.denied"]) == (1, int(approved), int(not approved))
+
+
+def test_no_answer_is_a_denial(server):
+    view = wait_finished(server, start_ask(server, 1))
+    assert "result: False no answer in 1 s" in " ".join(console(view)), console(view)
+    answered = first(view, "approval.answered")
+    assert answered["outcome"] == "timeout"
+    assert run_facts(view["events"])["approval.denied"] == 1
+
+
+def test_stopping_a_paused_run_ends_its_approval_before_run_exit(server):
+    run_id = start_ask(server, 60)
+    wait_for_event(server, run_id, "approval.requested")
+    assert server.client.post(f"/api/runs/{run_id}/stop").status_code == 200
+    view = wait_finished(server, run_id)
+    types = [e["type"] for e in view["events"] if e["type"].startswith("approval.") or e["type"] == "run.exit"]
+    assert types == ["approval.requested", "approval.answered", "run.exit"]
+    assert first(view, "approval.answered")["outcome"] == "run ended"
+
+
+def test_approval_endpoint_serves_only_the_active_runs_token(server):
+    r = httpx.post(f"http://127.0.0.1:{server.port}/approvals/not-a-token", json={"tool": "x"}, trust_env=False)
+    assert r.status_code == 401                                      # no learner token needed, but a run token is

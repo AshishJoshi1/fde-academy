@@ -36,6 +36,7 @@ def child_env(creds: dict[str, str], model: str | None) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_") or k in KEEP}
     env.update({k: creds[k] for k in REQUIRED})
     env["PYTHONUTF8"] = "1"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent / "src")   # `import labkit` (its approve() asks on the console)
     if model:
         env["LAB_MODEL"] = model
     return env

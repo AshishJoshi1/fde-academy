@@ -104,6 +104,16 @@ class FileIn(BaseModel):
     base_hash: str | None = None   # the version the editor loaded; None means overwrite whatever is on disk
 
 
+class ApprovalAsk(BaseModel):
+    tool: str = Field(max_length=200)
+    input: Any = None
+    timeout_s: int = Field(default=60, ge=1, le=300)
+
+
+class ApprovalAnswer(BaseModel):
+    approved: bool
+
+
 def file_hash(text: str) -> str:
     """Version tag for optimistic saving: changes whenever the file's text changes."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
@@ -146,7 +156,7 @@ def create_app(settings: AppSettings) -> FastAPI:
     app.add_middleware(LocalOnlyMiddleware, config=SecurityConfig(
         token=settings.token, port=settings.port,
         extra_hosts=settings.extra_hosts, extra_origins=settings.extra_origins,
-        open_prefixes=("/relay/",)))   # the relay checks its own per-run token
+        open_prefixes=("/relay/", "/approvals/")))   # the relay and approvals check their own per-run token
     app.state.store = store
     app.state.manager = manager
     pricing = Pricing.load(settings.pricing_path)
@@ -342,6 +352,21 @@ def create_app(settings: AppSettings) -> FastAPI:
         the step was last started over."""
         step = get_step(step_id)
         return {"runs": store.runs_for_step(step.full_id), "started_over_at": since(step)}
+
+    @app.post("/approvals/{token}", include_in_schema=False)
+    def ask_approval(token: str, body: ApprovalAsk) -> dict[str, Any]:
+        """labkit.approve() in lesson code lands here and waits for the learner's click."""
+        run = manager.by_token(token)
+        if run is None:
+            raise HTTPException(401, "unknown or finished run")
+        return run.request_approval(body.tool, body.input, body.timeout_s)
+
+    @app.post("/api/runs/{run_id}/approvals/{approval_id}")
+    def answer_approval(run_id: str, approval_id: str, body: ApprovalAnswer) -> dict[str, Any]:
+        run = manager.get(run_id)
+        if run is None or not run.answer_approval(approval_id, body.approved):
+            raise HTTPException(409, "that approval isn't waiting for an answer")
+        return {"answered": True}
 
     @app.post("/api/runs/{run_id}/stop")
     def stop_run(run_id: str) -> dict[str, Any]:

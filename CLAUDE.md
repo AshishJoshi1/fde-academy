@@ -42,7 +42,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
     - `pricing.py`, `credentials.py` and `playground.py`.
   - `pages/lab_js/` holds the lab page's JavaScript (editor, panels, run, lesson steps), served at `/static/lab-js/`; `pages/lab.html` keeps only the markup and a `window.LAB` config.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
-  - `src/labkit` (empty) is for in-process hooks, added when a lesson needs them (s05 approvals).
+  - `src/labkit` is for in-process hooks, stdlib-only: `approve()` (s05) pauses the run until you click Approve or Deny in the lab page. The lesson process gets `PYTHONPATH=src` and `LAB_APPROVAL_URL`.
   - `content/` holds the lessons, the flash-card decks in `content/cards/`, and the glossary of commands (`content/glossary.yaml`, shown at `/glossary`; a test checks every slash command, `labctl` subcommand and tool has an entry).
   - `tools/` holds `labctl`, `session_status.py` and `run_live.py`.
   - `playground/<step-id>/` (tracked in git) holds Ashish's code for each step. He edits it in the lab page's simple editor or in VS Code. A save from the page refuses to overwrite a file changed on disk (409) unless he confirms.
@@ -86,7 +86,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - Check `stop_reason` (`tool_use`, `end_turn`, `max_tokens`, `refusal`, `pause_turn`) before reading content.
 - Token counting: `client.messages.count_tokens`, never tiktoken.
 - Usage fields: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`.
-- Tool runner: `@beta_tool` + `client.beta.messages.tool_runner(...)`. Approval gates go inside the tool, or in the `for message in runner:` body with `runner.set_messages_params()`.
+- Tool runner: `@beta_tool` + `client.beta.messages.tool_runner(..., thread=False)`: SDK 2.6.0 defaults to server-held threads (beta header, only new messages), which the gateway rejects on call 2 with a 400. Its HTTP layer is `httpx2`. Approval gates go inside the tool, or in the `for message in runner:` body with `runner.set_messages_params()`.
 - Projects in `C:\Users\AshishKumarJoshi\FDE\Projects` mandate the **Claude Agent SDK** (a separate product). Read code.claude.com/docs/en/agent-sdk before writing that code; never guess its API.
 
 ## Gateway (every live call goes through it)

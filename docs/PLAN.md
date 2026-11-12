@@ -260,6 +260,25 @@ A second tool, `update_opportunity` (one `PATCH` to the mock Meridian API, which
 | 7 Gate the wrong tool | A gate protects only the names it lists | | Experiment E2 |
 | 8 Quiz | | | q1 to q3 |
 
+## s05 "Tool runner and approval": the end result
+The s04 job (look up OPP-1046, set it to 15%) written with `@beta_tool` and `client.beta.messages.tool_runner(..., thread=False)`. `ask_first()` inside each tool calls `labkit.approve()` when the tool is in `ASK_FIRST` (empty at the start); a denial raises `ToolError("DENIED: ...")`, which the runner sends back as an `is_error` result. Opus 5.5 at effort `low`, one run each, so the lesson says "measured".
+- **Runner defaults to server-held threads:** this SDK (2.6.0) sends an `anthropic-beta: message-threads-2026-08-12` header and only the new messages after call 1. Through the gateway call 2 returned a 400 ("unexpected `tool_use_id`"). `thread=False` resends the whole history; the runner still tags calls `x-stainless-helper: BetaToolRunner`. The SDK's HTTP layer is `httpx2`, so tests that give it a transport use `httpx2.MockTransport`.
+- **Gate open:** 3 calls, one GET and one PATCH. **Approve:** same. **Deny:** 3 calls, 0 PATCH; the model said the update was denied, OPP-1046 is still 22%, and did not retry. **Ask for both tools (E1):** 2 asks, 3 calls, 1 PATCH.
+- **The pause:** `labkit.approve(tool, input, timeout_s=60)` POSTs to `/approvals/<run token>` (open path, own token), which blocks in `Run.request_approval` until the page answers (`POST /api/runs/<id>/approvals/<aid>`), the time limit passes (a denial) or the run ends (a denial, recorded before `run.exit`). Events: `approval.requested`, `approval.answered`. From a terminal (`tools/run_live.py`) it asks on the console. The lesson process gets `LAB_APPROVAL_URL` and `PYTHONPATH=src`.
+- New facts: `approval.asked`, `approval.approved`, `approval.denied` (denied, timed out or run ended), `loop.denied_results`, `request.helper`, `request.beta`. E2's timeout path is covered by `tests/test_runs.py`, not measured against the model.
+
+| Step | Teaches | Your run shows | Then |
+|---|---|---|---|
+| 1 The loop you wrote, in a few lines | `tool_runner` is the s02 loop, packaged | run.calls, request.helper, api.writes | Checks |
+| 2 What the runner does for you | `@beta_tool` builds the schema; one results message; `thread=False` | request.tool_names, request.beta, loop.results_in_one_message | Checks |
+| 3 Where the runner lets you step in | The loop body runs after the reply, before the tools | run.calls, api.writes | Check |
+| 4 Ask the human: the approval hook | `labkit.approve` inside the tool; `ToolError` on denial | approval.asked, approval.approved | Checks |
+| 5 Approve: the write goes through | The gap before the PATCH is you | approval.approved, api.writes | Check |
+| 6 Deny: the model gets a reason | `DENIED` as an `is_error` result | approval.denied, loop.denied_results, api.writes | Checks |
+| 7 Ask about every tool | Approval cost and fatigue | | Experiment E1 |
+| 8 Walk away | No answer is a denial | | Experiment E2 |
+| 9 Quiz | | | q1 to q3 |
+
 ## Lab 02 roadmap: what each step adds to the app
 | Step | New in the app |
 |---|---|
@@ -267,7 +286,7 @@ A second tool, `update_opportunity` (one `PATCH` to the mock Meridian API, which
 | s02 Manual loop | The Meridian mock API (vendored `meridian_api.py`) as the tools' backend; a messages view of what each turn added; a timeline of all calls |
 | s03 Parallel tool calls | Several tool calls per turn on the timeline, each with its input and id; the one message check (timeline, messages view, `loop.results_in_one_message`); the Meridian data page |
 | s04 Gate and block | A "block tool X" toggle (`work/policy.json`); the mock API's write log proving zero writes; the "Why?" chain from outcome back to the code line, shown as a highlighted snippet |
-| s05 Tool runner and approval | The run pauses for Approve or Deny in the UI |
+| s05 Tool runner and approval | `labkit.approve`: the run pauses for Approve or Deny in a card on the lab page (`/approvals/<token>`, `approval.*` events and facts) |
 | s06 Strict schema | A malformed-call fuzzer and its results |
 
 ## Module 02 outline (proposed: awaiting Ashish's OK)

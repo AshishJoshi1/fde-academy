@@ -10,22 +10,23 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s01` "One call" (9 steps, g1–g9, experiments E2–E5, the quiz in g9), started over on 2026-11-11; steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done yet.
-  - **s02 "The manual loop"**, **s03 "Parallel tool calls"** and **s04 "Gate and block"** (8 steps, E1 and E2, q1–q3) are built and ready at `/lab/m02.lab02.s02`, `.s03` and `.s04`.
-  - **Spaced review:** 2 still wrong, both from s03: g1.c2 (why the model could ask for all three lookups in one response: because none needs another's result) and g2.c1 (result order doesn't matter: results pair by `tool_use_id`). Missed again on 2026-11-12; recorded with `labctl`.
-  - **Flash cards:** 24 in the deck (7 added on 2026-11-12), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s04 are complete. s04 added the facts `api.writes` and `loop.blocked_results`, a "write attempt" pill and writes count in the Mock API panel, and a generalized timeline check in `tools/browser_check.py`. 163 tests pass; `tools/browser_check.py m02.lab02.s04` passes. `docs/PLAN.md` records s04's end result and measured runs.
-- **Next first action:** in a fresh session (`/clear` first), propose the guide-step titles for **s05 "Tool runner and approval"** (`docs/PLAN.md`, Lab 02 roadmap: the run pauses for Approve or Deny in the UI) and get Ashish's OK before building. Done when the outline is approved. Optional: Sonnet 5.5 again (s04 cost $0.99 in Claude Code).
+  - **s02 "The manual loop"**, **s03 "Parallel tool calls"**, **s04 "Gate and block"** and **s05 "Tool runner and approval"** (9 steps, E1 and E2, q1–q3) are built and ready at `/lab/m02.lab02.s02` to `.s05`.
+  - **Spaced review:** none outstanding (g1.c2 and g2.c1 from s03 answered right on 2026-11-12 and recorded).
+  - **Flash cards:** 29 in the deck (3 added on 2026-11-12), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s05 are complete. s05 added `labkit.approve` (the run pauses for Approve or Deny in a card on the lab page; `/approvals/<token>`, `approval.*` events), facts `approval.*`, `loop.denied_results`, `request.helper`, `request.beta`, and an approval walk in `tools/browser_check.py`. All tests pass; `tools/browser_check.py m02.lab02.s05` passes. `docs/PLAN.md` records s05's end result and measured runs.
+- **Next first action:** in a fresh session (`/clear` first), propose the guide-step titles for **s06 "Strict tool schemas"** (`docs/PLAN.md`, Module 02 outline: `strict: true`, `required`, `additionalProperties: false`; malformed-input fuzzer) and get Ashish's OK before building. Done when the outline is approved. Optional: Sonnet 5.5 again (s05 cost $1.87 in Claude Code).
 
 ## Last session
-- **Date:** 2026-11-12 (fourth session of the day, Sonnet 5.5)
+- **Date:** 2026-11-12 (fifth session of the day, Sonnet 5.5)
 - **Done:**
-  - **`/today` review:** two s03 items re-asked, both wrong, recorded.
-  - **s04 "Gate and block" built:** `update_opportunity` write tool, a prompt rule, a gate in the loop reading `work/policy.json`, `BLOCKED` results with `is_error`; 8 guide steps, E1 (push on the prompt rule) and E2 (gate the wrong tool), q1–q3. Measured live (one run each): prompt rule held, even against an "admin" push; the gate gave 0 writes with the model asking; gating only the lookup also gave 0 writes, from the model's caution.
-  - **App:** facts `api.writes` and `loop.blocked_results`; write-attempt pill and writes count in the Mock API panel; `docs/PLAN.md` s04 end result.
+  - **`/today` review:** the two s03 items re-asked, both right, recorded.
+  - **s05 "Tool runner and approval" built:** 9 guide steps, E1 (ask about every tool) and E2 (walk away), q1–q3; `@beta_tool` + `tool_runner(thread=False)` with an approval inside each tool. Measured live (one run each): approve gives 1 PATCH, deny gives 0 PATCH and the model reports it, asking for both tools gives 2 asks. E2's timeout is covered by tests, not measured against the model.
+  - **App:** `labkit.approve`, the approval card and routes, `approval.*` facts, `loop.denied_results`, `request.helper`, `request.beta`; the browser check's fake gateway now asks for the write after the lookup (so s04's write pill should show) and walks Approve and Deny for s05.
+  - **Cards:** 3 added (`runner-thread-false`, `approval-in-the-tool`, `approval-fatigue`).
 - **Open questions:**
-  - **Outline deviation:** E1 and E2 differ from the approved outline (the prompt rule held, so "prompt against gate" can't show a failure; "flip the toggle" would repeat g1). Ashish to say if he wants the outline's version.
-  - **Write pill unseen:** the browser check's fake gateway never writes, so the pill hasn't been seen in a screenshot.
-  - **1-hour TTL**, **browser check flake** and **Module 02 projects:** as before (see `docs/DECISIONS.md` and `docs/PLAN.md`).
+  - **Write pill unseen:** the fake gateway now writes in s04's check, but no s04 screenshot was inspected for the pill.
+  - **Browser check flake:** the s04 check failed once ("Cannot read properties of null") and passed on rerun.
+  - **1-hour TTL** and **Module 02 projects:** as before (see `docs/DECISIONS.md` and `docs/PLAN.md`).
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
@@ -43,7 +44,7 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s02 Manual loop: content g1–g9 (g1 "Meet Meridian") with E1, E2 and q1–q3; the Meridian fixture, timeline, messages and mock API panels
   - [x] s03 Parallel tool calls: content g1–g6 with E1, E2 and q1–q3; several tool calls per turn on the timeline, the one message check, the Meridian data page
   - [x] s04 Gate and block: content g1–g8 with E1, E2 and q1–q3; `api.writes`, `loop.blocked_results`, write-attempt pill
-  - [ ] s05 Tool runner and approval
+  - [x] s05 Tool runner and approval: content g1–g9 with E1, E2 and q1–q3; `labkit.approve`, approval card, `approval.*` facts
   - [ ] s06 Strict schema
   - [ ] Lessons 6–17: 02-A to 02-D
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
@@ -53,7 +54,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02, s03, s04 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 and s03 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s05 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s05 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -73,3 +74,4 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-12 (4th) | `/today` review (2 wrong); s04 "Gate and block" measured, built and browser-checked | $0.99 | 6 live measurement runs (not itemized) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
+| 2026-11-12 (5th) | `/today` review (2 right); s05 "Tool runner and approval" outlined, measured, built and browser-checked; 3 cards | $1.87 | 4 live measurement runs (not itemized) |

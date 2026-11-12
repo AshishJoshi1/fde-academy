@@ -26,6 +26,15 @@
         <span class="small secondary num" id="cost"></span>
       </div>
       <p class="small secondary" id="model-note" style="margin:0"></p>
+      <div class="card card-body stack" id="approval" hidden role="alert">
+        <b>Your code is waiting for you: approve this tool call?</b>
+        <pre class="json-view" id="approval-what"></pre>
+        <div class="row">
+          <button class="btn btn-primary" id="approve" type="button">Approve</button>
+          <button class="btn" id="deny" type="button">Deny</button>
+          <span class="small muted" id="approval-note"></span>
+        </div>
+      </div>
       <div class="pane">
         <div class="pane-head" style="padding-left:var(--sp-2)">
           <div class="tabs" role="tablist" aria-label="Files" id="file-tabs"></div>

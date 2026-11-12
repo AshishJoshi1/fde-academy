@@ -6,6 +6,7 @@
   $("model").addEventListener("change", showModelNote);
   showModelNote();
   var es = null, current = null, calls = {}, total = 0, done = false, live = false, running = false, lastBody = null;
+  var pendingApproval = null;
   var startedOver = null;   // when this lesson was last started over: older runs stay in the menu only
 
   function pill(cls, text) { $("status").className = "pill " + cls; $("status").textContent = text; }
@@ -91,9 +92,28 @@
       case "llm.error":
         c = card(d.call); badge(c, "pill-critical", "no response"); c.card.append(pre(d.error));
         break;
-      case "run.exit": finish(d); break;
+      case "approval.requested":
+        pendingApproval = d.id;
+        $("approval-what").textContent = d.tool + "(" + JSON.stringify(d.input) + ")";
+        $("approval-note").textContent = "No answer in " + d.timeout_s + " s counts as a denial.";
+        $("approval").hidden = false;
+        line("paused: waiting for Approve or Deny on " + d.tool, "meta");
+        break;
+      case "approval.answered":
+        if (pendingApproval === d.id) { pendingApproval = null; $("approval").hidden = true; }
+        line("answer: " + d.outcome + " (" + d.reason + ")", "meta");
+        break;
+      case "run.exit": $("approval").hidden = true; finish(d); break;
     }
   }
+  function answerApproval(approved) {
+    if (!current || !pendingApproval) return;
+    fetch("/api/runs/" + encodeURIComponent(current) + "/approvals/" + pendingApproval, {
+      method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({approved: approved})
+    });
+  }
+  $("approve").addEventListener("click", function () { answerApproval(true); });
+  $("deny").addEventListener("click", function () { answerApproval(false); });
   function finish(d) {
     done = true;
     var map = {ok: ["pill-good", "ok"], error: ["pill-critical", "error"], timeout: ["pill-warning", "timeout"],
@@ -149,7 +169,7 @@
   }
   function watch(id, isLive) {
     if (es) es.close();
-    current = id; calls = {}; total = 0; done = false; live = !!isLive; lastBody = null;
+    current = id; pendingApproval = null; $("approval").hidden = true; calls = {}; total = 0; done = false; live = !!isLive; lastBody = null;
     window.labViews.reset();
     $("calls").textContent = ""; $("calls-count").textContent = ""; $("cost").textContent = "";
     $("run-id").textContent = "run " + id;

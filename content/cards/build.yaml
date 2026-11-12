@@ -333,3 +333,35 @@ cards:
 
       A policy is a list you must get right: name the write tools.
     source: "docs/PLAN.md, \"s04 'Gate and block': the end result\" (measured 2026-11-12)"
+
+  - id: runner-thread-false
+    tag: gateway
+    front: |
+      The SDK's `tool_runner` works on call 1 and fails on call 2 with a 400 ("unexpected `tool_use_id`")
+      through the gateway. What do you change, and why?
+    back: |
+      Pass `thread=False`. SDK 2.6.0's runner defaults to server-held threads: an `anthropic-beta`
+      header, and only the new messages after call 1. The gateway doesn't carry that state.
+      `thread=False` resends the whole history on every call, as your own loop did.
+    source: "docs/PLAN.md, \"s05 'Tool runner and approval': the end result\" (measured 2026-11-12)"
+
+  - id: approval-in-the-tool
+    tag: engineering
+    front: |
+      Where does an approval check go so no write can happen without an answer, and what should
+      "no answer" mean?
+    back: |
+      Inside the function that does the write, before it runs: no path skips the ask. A check in
+      the loop or the prompt can be bypassed by another caller. No answer is a denial: an agent that
+      approves itself when nobody is watching has no gate.
+    source: "content/m02-agent-loop/lab02-agent-loop/s05-tool-runner/step.yaml (g4, E2, q1)"
+
+  - id: approval-fatigue
+    tag: engineering
+    front: |
+      Why not ask a human before every tool call, reads included?
+    back: |
+      A lookup can't change anything, so its card buys no safety, and it costs a click each. People
+      who approve everything stop reading the cards, so the one that matters gets less care.
+      Gate what changes something.
+    source: "content/m02-agent-loop/lab02-agent-loop/s05-tool-runner/step.yaml (E1, measured 2026-11-12)"

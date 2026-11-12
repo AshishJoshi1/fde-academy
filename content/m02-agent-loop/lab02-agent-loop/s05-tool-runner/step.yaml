@@ -1,0 +1,346 @@
+id: s05
+title: "Tool runner and approval"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages, fixture]
+run:
+  fixture: meridian
+  timeout_s: 180
+hints:
+  - "Approve and Deny appear in a card above the editor while the run is paused. No answer in 60 seconds counts as a denial."
+  - "The ask lives in ask_first() (lines 18 to 23). The set on line 15 chooses which tools use it."
+
+guide:
+  - id: g1
+    title: "The loop you wrote, in a few lines"
+    code: [57, "69-73"]
+    teach: |
+      In s02 you wrote the loop: call the model, append its answer, run each tool it asked for,
+      send the results, repeat until `end_turn`. The SDK ships that loop as the **tool runner**.
+
+      **Lines 57 to 67** create it with the same arguments a `messages.create` call takes, plus
+      `tools=[...]` (functions, which g2 explains). **Line 69** is the whole loop on your side:
+      `for ... in runner` makes **one pass per model call**. Between passes the runner runs the
+      tools the model asked for, puts the results in a user message, and calls again.
+      **Line 75** reads the final answer after the last pass.
+
+      This run is the same job as s04: look up OPP-1046, then set its discount to 15%. Nothing
+      asks a human yet (line 15 is an empty set), so the write goes straight through.
+    do: "Press **Run**. Read the Console: one `call N` line per model call, with what the model asked for."
+    show: [run.calls, request.helper, api.requests, api.writes]
+    notice: |
+      Three calls, like your own loop in s04: the lookup, the `update_opportunity` request, the
+      answer. The Mock API log has a `GET` and a `PATCH`, because nothing stood in the way.
+
+      `request.helper` reads `BetaToolRunner`: the SDK tags every call the runner makes, so a
+      request log shows who made it.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the run make?"
+        answer_from: run.calls
+        explanation: "Three: lookup, write request, answer. The runner made them; your code never calls the model after line 57."
+      - id: c2
+        type: mcq
+        prompt: "Which code ran the get_opportunity function when the model asked for it?"
+        options:
+          - "The tool runner, calling your decorated function"
+          - "The model, on Anthropic's servers"
+          - "The gateway"
+          - "Your for loop on line 69"
+        answer: 0
+        explanation: "The model only asks (a tool_use block). The runner runs your function between passes of the loop; line 69's body just reports."
+
+  - id: g2
+    title: "What the runner does for you"
+    code: [26, 41, 61]
+    teach: |
+      **`@beta_tool`** (lines 26 and 41) turns a function into a tool. The runner builds the
+      `input_schema` from the **type hints** (`str`, `float`) and the **docstring** (the
+      description, and each `Args:` line): the JSON you wrote by hand in s02. A hint of `float`
+      is why `requested_discount_pct` is a number in the request.
+
+      The runner also does what you had to get right in s02 and s03: it appends
+      `response.content` whole, runs every `tool_use`, and answers **all of them in one user
+      message**, each with its `tool_use_id`. History only grows.
+
+      **Line 61, `thread=False`**, is a lab detail worth knowing. By default this SDK version asks
+      the server to hold the conversation (a beta, switched on by an `anthropic-beta` header) and
+      sends only the *new* messages on call 2 and later. Through this lab's gateway that failed
+      with a 400 on call 2 ("unexpected `tool_use_id`"). `thread=False` resends the whole history
+      on every call, exactly as your own loop did.
+    do: "Open the **Messages** panel on the last call, and look at the tool definitions in **Call 1's request body**."
+    show: [request.tool_names, request.beta, loop.results_in_one_message, request.history_grows]
+    notice: |
+      The request carries your two tools with schemas you never wrote. The last call's messages
+      list holds everything: the question, each assistant turn, and the results message.
+      `request.beta` says `not set`: with `thread=False` no beta feature is on.
+
+      If you delete line 61 and run, call 2 fails with a 400 (measured). Put it back.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Where did update_opportunity's input_schema come from?"
+        options:
+          - "The type hints and docstring of the decorated function"
+          - "The Meridian API's documentation"
+          - "The model invented it"
+          - "A schema file in the lab"
+        answer: 0
+        explanation: "@beta_tool reads the signature and docstring (lines 41 to 48). The hint on requested_discount_pct is float, so the schema says number."
+      - id: c2
+        type: mcq
+        prompt: "What does thread=False on line 61 change?"
+        options:
+          - "Every call resends the whole message history"
+          - "The model stops using tools"
+          - "Tool calls run in parallel"
+          - "The runner stops after one call"
+        answer: 0
+        explanation: "Without it the runner sends only new messages and relies on the server holding the rest. This gateway doesn't support that, so we resend everything."
+
+  - id: g3
+    title: "Where the runner lets you step in"
+    code: ["69-73"]
+    teach: |
+      The body of `for ... in runner` (**lines 70 to 73**) runs once per model call, **after the
+      reply arrives and before the runner runs the tools**. That is a place to look at what the
+      model is about to do.
+
+      Line 73 prints each request as "asked for ..., not run yet". Look at the order in the
+      Console and the Timeline: the "asked for" line comes first, and the Mock API request only
+      after it. You *could* put a gate here. The lesson puts it **inside the tool** instead (g4),
+      because a check inside the tool guards the write however the tool is called.
+    do: "Press **Run** again. In the **Timeline**, find call 2's request for `update_opportunity` and the `PATCH` after it."
+    show: [run.calls, api.writes, loop.tool_results]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "When does line 73 print, relative to the tool running?"
+        options:
+          - "Before: the runner runs the tools after the pass"
+          - "After: the tool has already run"
+          - "At the same moment"
+          - "Only if the tool fails"
+        answer: 0
+        explanation: "The runner yields the reply, runs your loop body, and only then runs the tools. So 'not run yet' is true."
+
+  - id: g4
+    title: "Ask the human: the approval hook"
+    code: [8, "15-23", "49-50"]
+    teach: |
+      **Line 8** imports `approve` from `labkit`, the lab's small in-process hook. Call
+      `approve(tool, input)` and your code **stops**. In this lab the page shows a card above the
+      editor with the tool name and its input, and two buttons. Your call returns `(True, reason)`
+      or `(False, reason)` once you click, or `(False, ...)` if nobody answers in 60 seconds.
+
+      **Lines 18 to 23** use it: if the tool's name is in `ASK_FIRST` (line 15), ask; on a denial,
+      raise `ToolError("DENIED: ...")`. The runner sends a `ToolError` to the model as a
+      `tool_result` with `is_error: true`, the same shape as s04's `BLOCKED`. **Lines 49 and 50**
+      call it first thing inside `update_opportunity`, so the PATCH can't happen before the answer.
+
+      The model never sees the pause. For the model, the tool simply took a while.
+    do: "Change **line 15** to `ASK_FIRST = {\"update_opportunity\"}`, press **Run**, and click **Approve** when the card appears above the editor."
+    show: [approval.asked, approval.approved, run.calls, api.writes]
+    notice: |
+      The run stopped after call 2 until you clicked: the Console says "paused: waiting for Approve
+      or Deny on update_opportunity", then "answer: approved". One ask, one approval, one PATCH.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many times did your code pause to ask?"
+        answer_from: approval.asked
+        explanation: "One: only update_opportunity is in ASK_FIRST, and the model asked for it once. The lookup ran without asking."
+      - id: c2
+        type: mcq
+        prompt: "Why does the approval call sit inside update_opportunity (lines 49 and 50)?"
+        options:
+          - "So the PATCH can't run before the answer, however the tool is called"
+          - "Because the model needs to see the buttons"
+          - "Because the API requires it"
+          - "It could sit anywhere with the same effect"
+        answer: 0
+        explanation: "The check and the write are in the same function: there is no path to line 51 that skips the ask."
+
+  - id: g5
+    title: "Approve: the write goes through"
+    code: ["49-54"]
+    teach: |
+      Approving is the quiet branch: `approve` returns `True`, `ask_first` returns, and line 51
+      sends the PATCH. The model's answer says the CRM confirmed the change (measured).
+
+      The cost of an approval shows on the **Timeline**: the gap between call 2's reply and the
+      PATCH is *you*. The run waits as long as a person takes, up to the 60-second limit.
+    do: "Press **Run** again. Wait about ten seconds, then click **Approve**. Then read the gap in the **Timeline**."
+    show: [approval.asked, approval.approved, api.writes, run.calls]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many write requests (PATCH) reached the mock API?"
+        answer_from: api.writes
+        explanation: "One: you approved, ask_first returned, and line 51 sent it."
+
+  - id: g6
+    title: "Deny: the model gets a reason"
+    code: ["20-23"]
+    teach: |
+      Denying takes the other branch: `approve` returns `False`, line 23 raises
+      `ToolError("DENIED: denied by the learner. Nothing was changed.")`, and the runner sends that
+      back as an error result for the `tool_use` (line 51 never runs).
+
+      Then the model decides what to say. Measured: it answered in the third call that the update
+      was denied, that OPP-1046 is still at 22%, and what the user could do next. It did not retry.
+    do: "Press **Run** again and click **Deny** this time. Open the **Messages** panel on the last call: find the `DENIED` result."
+    show: [approval.asked, approval.denied, loop.denied_results, api.writes, run.calls]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many write requests reached the mock API after your denial?"
+        answer_from: api.writes
+        explanation: "Zero. The ToolError on line 23 ended update_opportunity before line 51."
+      - id: c2
+        type: mcq
+        prompt: "What does the model receive for the denied tool_use?"
+        options:
+          - "A tool_result with the tool_use_id, is_error: true and 'DENIED: ...'"
+          - "Nothing: the call is dropped"
+          - "A fake success"
+          - "A new system prompt"
+        answer: 0
+        explanation: "Every tool_use needs a result. The ToolError becomes is_error plus its text, so the model can tell you honestly that nothing changed."
+
+  - id: g7
+    title: "Ask about every tool"
+    code: [15, 34, 49]
+    teach: |
+      If a pause protects the write, would a pause on every tool protect more? Try it, and watch
+      what you pay.
+    experiment: e1
+
+  - id: g8
+    title: "Walk away"
+    code: [21, 15]
+    teach: |
+      Real approvals aren't answered at once. What should happen when nobody answers?
+    experiment: e2
+
+  - id: g9
+    title: "Quiz"
+    teach: |
+      Three questions on the whole step. Every answer is saved, and a miss comes back in spaced
+      review on the home page until you get it right.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Ask about every tool"
+    question: "What does it cost to ask a human before the harmless lookups too?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many times will the page ask you?"
+        hint: "Count the tools the model uses in this job."
+        answer_from: approval.asked
+      - id: p2
+        type: numeric
+        prompt: "If you approve every card, how many PATCH requests will the log show?"
+        answer_from: api.writes
+      - id: p3
+        type: text
+        prompt: "The lookups can't change anything. What does asking about them buy you?"
+    change: |
+      Two edits, then Run:
+      1. Line 15: set it to {"get_opportunity", "update_opportunity"}
+      2. Click Approve on each card as it appears.
+    observe:
+      - "Console: the two 'paused' lines"
+      - "Timeline: two gaps, one before the GET and one before the PATCH"
+      - "Mock API · header: the number of writes"
+    explain: |
+      Measured: two asks (the lookup, then the write), three calls, one PATCH: the same outcome as
+      g5, with an extra click. The lookup card protected nothing: a GET only reads, and the write
+      is the only change.
+
+      The cost grows with every tool you add to the set. People who click Approve on every card
+      stop reading them, so a gate that fires on everything gets less careful, not more. Gate what
+      **changes** something. Put line 15 back to {"update_opportunity"}.
+
+  - id: e2
+    title: "Walk away"
+    question: "What happens when nobody answers the approval?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many PATCH requests will the Mock API log show?"
+        answer_from: api.writes
+      - id: p2
+        type: numeric
+        prompt: "How many asks will count as denied?"
+        answer_from: approval.denied
+      - id: p3
+        type: text
+        prompt: "When nobody answers, should the default be approve or deny? Why?"
+    change: |
+      Two edits, then Run, and do not click anything:
+      1. Line 15: set it to {"update_opportunity"}
+      2. Line 21: add a limit, so it reads approve(tool, tool_input, timeout_s=10)
+    observe:
+      - "Console: 'paused', then 'answer: timeout' about ten seconds later"
+      - "The card disappears on its own"
+      - "Mock API · header: the number of writes"
+    explain: |
+      After ten seconds `approve` returned `(False, "no answer in 10 s")`, line 23 raised the
+      `DENIED` error, and line 51 never ran: **0 writes**. The model reports the denial like
+      the one in g6; its exact words vary from run to run.
+
+      The default is **deny**. An agent that approves itself when nobody is watching has no gate at
+      all: the pause exists for the times a person isn't there. `approve` has this default built
+      in, and the run's own time limit (180 seconds here) ends a run that waits too long. Put
+      line 21 back when you're done.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "Where must an approval check sit so that no write can happen without an answer?"
+    options:
+      - "In the system prompt: 'ask before writing'"
+      - "In the code that performs the write, before it runs"
+      - "In the model's tool description only"
+      - "After the tool has run, as a review"
+    answer: 1
+    concepts: [approval-gate, gate-in-code]
+    explanation: "Only a check in the tool's own code, before the PATCH, makes 'no write without an answer' true whatever the model asks. A prompt or description is an instruction; a review after the tool ran is too late."
+  - id: q2
+    type: mcq
+    prompt: "A person denies the approval. What does the model see?"
+    options:
+      - "Nothing: the tool_use is dropped"
+      - "A tool_result for that tool_use_id with is_error: true and a DENIED reason"
+      - "A fake successful result"
+      - "The run restarts with a new question"
+    answer: 1
+    concepts: [approval-gate, tool-errors]
+    explanation: "Every tool_use needs a tool_result. The ToolError becomes an error result, so the model can say honestly that nothing changed."
+  - id: q3
+    type: mcq
+    prompt: "Where does the run actually pause while it waits for Approve or Deny?"
+    options:
+      - "Inside your process: approve() blocks the tool function, so the runner can't continue"
+      - "At the API: the model waits for the human"
+      - "In the gateway, which holds the request"
+      - "In the model, which thinks until you answer"
+    answer: 0
+    concepts: [approval-gate, tool-runner]
+    explanation: "The API only sees complete requests. Between two calls your own code runs the tool; approve() blocks that function, and the runner waits for it. The model never knows."
+tutor_notes: >
+  Common misconceptions: the runner is a different kind of agent (no: it's the s02 loop, packaged);
+  the model waits for the human (no: the pause is in the learner's process, between two model calls;
+  the model sees only a slow tool or an error result); a denied call can be dropped (no: every tool_use
+  needs a tool_result, so the ToolError becomes is_error); asking about every tool is safer (it costs
+  a click each and trains people to approve without reading: E1); no answer should mean yes (deny is the
+  safe default: E2). thread=False: this SDK's tool runner defaults to server-held threads (an
+  anthropic-beta header and only new messages after call 1); the gateway returned a 400 on call 2, so
+  the lesson resends the whole history. If the model's wording differs from the measured one, that's
+  normal: single runs, effort low.

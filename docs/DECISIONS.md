@@ -61,6 +61,10 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - **Decisions log and cost breakdowns live in `docs/DECISIONS.md`**, so `/today` reads only what it needs to resume.
   - **The lab page's JavaScript is static files** (`pages/lab_js/`), with a `window.LAB` config inline, so edits touch small files.
   - **s04 outline** approved as proposed: 5 teaching steps plus the quiz, E1 (prompt against gate) and E2 (flip the toggle).
+- 2026-11-12 (5th session):
+  - **s05 outline** approved with 9 guide steps (the approval split into hook, approve and deny).
+  - **Approval channel:** `labkit.approve()` posts to the server (`/approvals/<run token>`) and blocks until the lab page answers, the limit passes or the run ends; both of the last two deny. The gate sits inside the tool, not in the `for ... in runner` body.
+  - **`thread=False`** on the SDK tool runner: its default (server-held threads) failed through the gateway; recorded in CLAUDE.md.
 
 ## Cost analysis
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.

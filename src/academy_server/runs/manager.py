@@ -9,6 +9,8 @@ so the order you see is the order things happened:
   llm.response / .error  what came back (body or stream, status, headers, timing, usage, cost)
   api.request            the step's fixture (the mock Meridian API) answered a request from
                          lesson code: method, path, query, status and the body it sent back
+  approval.requested     lesson code asked a human (labkit.approve): tool, input, id, time limit
+  approval.answered      approved | denied | timeout | run ended, plus the reason
   run.exit               ok | error | timeout | stopped, plus the exit code
 
 The lesson process runs with an allowlisted environment: the server's own variables (and
@@ -33,6 +35,7 @@ from .. import fixtures
 from .proctree import ProcessTree
 
 DUMMY_KEY = "sk-academy-dummy-key-the-relay-holds-the-real-one"
+LABKIT_PARENT = Path(__file__).resolve().parents[2]   # src/: holds the labkit package
 CONSOLE_CAP_BYTES = 1_000_000
 ENV_ALLOW = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP",
              "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME", "NUMBER_OF_PROCESSORS",
@@ -72,6 +75,7 @@ class Run:
     _tree: ProcessTree | None = field(default=None, repr=False)
     _fixture: fixtures.Fixture | None = field(default=None, repr=False)
     _api_requests: int = field(default=0, repr=False)
+    _approvals: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def emit(self, type: str, **data: Any) -> dict[str, Any]:
         with self._lock:
@@ -95,6 +99,37 @@ class Run:
             self._api_requests += 1
             n = self._api_requests
         self.emit("api.request", n=n, fixture=self._fixture.name if self._fixture else None, **data)
+
+    def request_approval(self, tool: str, tool_input: Any, timeout_s: float) -> dict[str, Any]:
+        """Pause the caller (lesson code, through labkit.approve) until the learner answers in the
+        lab page. No answer in `timeout_s`, or the run ending, is a denial."""
+        with self._lock:
+            aid = f"a{len(self._approvals) + 1}"
+            entry = {"event": threading.Event(), "approved": False, "reason": ""}
+            self._approvals[aid] = entry
+        self.emit("approval.requested", id=aid, tool=tool, input=tool_input, timeout_s=timeout_s)
+        answered = entry["event"].wait(timeout_s)
+        if not answered:
+            self._answer(aid, False, f"no answer in {int(timeout_s)} s", "timeout")
+        return {"approved": entry["approved"], "reason": entry["reason"]}
+
+    def answer_approval(self, aid: str, approved: bool) -> bool:
+        reason = "approved by the learner" if approved else "denied by the learner"
+        return self._answer(aid, approved, reason, "approved" if approved else "denied")
+
+    def _answer(self, aid: str, approved: bool, reason: str, outcome: str) -> bool:
+        with self._lock:
+            entry = self._approvals.get(aid)
+            if entry is None or entry["event"].is_set():
+                return False
+            entry.update(approved=approved, reason=reason)
+            entry["event"].set()
+        self.emit("approval.answered", id=aid, outcome=outcome, reason=reason)
+        return True
+
+    def release_approvals(self) -> None:
+        for aid in list(self._approvals):
+            self._answer(aid, False, "the run ended", "run ended")
 
     def add_cost(self, usd: float) -> None:
         with self._lock:
@@ -158,7 +193,9 @@ class RunManager:
         env = {k: os.environ[k] for k in ENV_ALLOW if k in os.environ}
         env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1",
                    ANTHROPIC_BASE_URL=f"{self.relay_base}/relay/{run.token}",
-                   ANTHROPIC_API_KEY=DUMMY_KEY, LAB_MODEL=run.model)
+                   ANTHROPIC_API_KEY=DUMMY_KEY, LAB_MODEL=run.model,
+                   LAB_APPROVAL_URL=f"{self.relay_base}/approvals/{run.token}",
+                   PYTHONPATH=str(LABKIT_PARENT))     # so lesson code can `import labkit`
         if run._fixture is not None:
             env.update(run._fixture.env)     # the fixture's URL and this run's token for it
         return env
@@ -176,6 +213,7 @@ class RunManager:
         except subprocess.TimeoutExpired:
             timed_out = True
         tree.kill_tree()        # always: nothing the lesson started outlives its run
+        run.release_approvals()  # a pending Approve/Deny can't outlive it either; before run.exit
         code = tree.proc.wait()
         for r in readers:
             r.join(timeout=5)

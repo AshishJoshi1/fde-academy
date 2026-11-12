@@ -94,6 +94,16 @@ def fake_reply(body: dict) -> tuple[int, dict]:
         return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
                      "content": content, "stop_reason": "tool_use", "stop_sequence": None,
                      "usage": {**usage, "output_tokens": 60 * len(todo)}}
+    set_to = re.search(r"set its requested discount to (\d+)%", question if isinstance(question, str) else "")
+    names = [t.get("name") for t in tools]
+    if set_to and "update_opportunity" in names and "update_opportunity" not in {
+            b.get("name") for m in messages if m.get("role") == "assistant" for b in _blocks(m)}:
+        # s04/s05: after the lookup, the model asks for the write (the real model did, in every measured run)
+        content = [{"type": "tool_use", "id": f"toolu_fakewrite{len(messages):02d}", "name": "update_opportunity",
+                    "input": {"opportunity_id": wanted[0], "requested_discount_pct": int(set_to.group(1))}}]
+        return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
+                     "content": content, "stop_reason": "tool_use", "stop_sequence": None,
+                     "usage": {**usage, "output_tokens": 60}}
     answer = TOOL_ANSWER if len(wanted) == 1 else f"Looked up {', '.join(wanted)} (a fake answer)."
     content = [{"type": "text", "text": answer if tools else ANSWER}]
     out = min(25, body.get("max_tokens") or 25)
@@ -437,6 +447,50 @@ def walk_meridian(b: Browser, base: str, out: Path) -> list[str]:
     return fails
 
 
+def walk_approval(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str]:
+    """A step whose code calls labkit.approve: edit it to ask first, then Approve one run and Deny another."""
+    fails: list[str] = []
+
+    def check(label: str, ok: bool) -> None:
+        print(f"    [{'ok' if ok else 'FAIL'}] {label}")
+        if not ok:
+            fails.append(label)
+
+    def writes() -> list[dict]:
+        run_id = b.js("document.getElementById('run-id').textContent").replace("run ", "")
+        events = api_get(base, token, f"/api/runs/{run_id}")["events"]
+        return [e for e in events if e["type"] == "api.request" and e["data"]["method"] != "GET"]
+
+    print("  approval walk")
+    code = api_get(base, token, f"/api/steps/{step_id}/files")["files"]["main.py"]["code"]
+    assert "ASK_FIRST = set()" in code
+    data = json.dumps({"code": code.replace("ASK_FIRST = set()", 'ASK_FIRST = {"update_opportunity"}', 1)}).encode()
+    urllib.request.urlopen(urllib.request.Request(f"{base}/api/steps/{step_id}/files/main.py", data=data, method="PUT",
+                           headers={"x-academy-token": token, "content-type": "application/json"}))
+    b.call("Page.navigate", url=f"{base}/auth?t={token}&next=/lab/{step_id}")
+    b.wait("document.getElementById('run') && !document.getElementById('run').disabled", "the lab page")
+    for answer, button in (("approved", "approve"), ("denied", "deny")):
+        b.js("document.getElementById('run').click()")
+        b.wait("!document.getElementById('approval').hidden", "the Approve/Deny card", timeout=60)
+        check(f"{answer}: the card names the tool and its input",
+              b.js("document.getElementById('approval-what').textContent").startswith("update_opportunity({"))
+        check(f"{answer}: the run is paused while the card shows",
+              b.js("document.getElementById('status').textContent") == "running")
+        if answer == "approved":
+            shot = b.call("Page.captureScreenshot", format="png")["data"]
+            (out / f"{step_id}-approval-card.png").write_bytes(base64.b64decode(shot))
+        b.js(f"document.getElementById('{button}').click()")
+        b.wait("document.getElementById('status').textContent.startsWith('ok')", f"the {answer} run to end", timeout=90)
+        check(f"{answer}: the card went away", b.js("document.getElementById('approval').hidden"))
+        check(f"{answer}: the console says so",
+              b.js(f"document.getElementById('console').textContent.includes('answer: {answer}')"))
+        check(f"{answer}: {'one PATCH' if answer == 'approved' else 'no PATCH'} reached the mock API",
+              len(writes()) == (1 if answer == "approved" else 0))
+    errors = b.errors()
+    check(f"no JavaScript errors{': ' + '; '.join(errors) if errors else ''}", not errors)
+    return fails
+
+
 def api_get(base: str, token: str, path: str):
     with urllib.request.urlopen(urllib.request.Request(f"{base}{path}", headers={"x-academy-token": token})) as r:
         return json.loads(r.read())
@@ -563,6 +617,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         fails = walk(browser, base, token, args.step_id, shots)
         seen = len(browser.errors())          # walk() reported these already
+        if "s05" in args.step_id:
+            fails += walk_approval(browser, base, token, args.step_id, shots)
         fails += walk_start_over(browser, base, token, args.step_id, shots)
         fails += walk_cards(browser, base, token, shots)
         fails += walk_meridian(browser, base, shots)

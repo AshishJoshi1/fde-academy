@@ -156,6 +156,10 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["request.max_tokens"] = body.get("max_tokens")
         f["request.effort"] = (body.get("output_config") or {}).get("effort") or "not set"
         retry = (req.get("headers") or {}).get("x-stainless-retry-count")
+        helper = (req.get("headers") or {}).get("x-stainless-helper")   # the SDK's tool runner tags its calls
+        f["request.helper"] = str(helper) if helper else "not set"
+        beta = (req.get("headers") or {}).get("anthropic-beta")
+        f["request.beta"] = str(beta) if beta else "not set"
         f["request.retry_count"] = int(retry) if str(retry).isdigit() else None
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
         f["request.tool_names"] = ", ".join(str(t.get("name", "?")) for t in tools if isinstance(t, dict)) or "(none)"
@@ -168,6 +172,7 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             f["loop.tool_results"] = len(results_sent)
             f["loop.error_results"] = sum(1 for b in results_sent if b.get("is_error"))
             f["loop.blocked_results"] = sum(1 for b in results_sent if b.get("is_error") and str(b.get("content", "")).startswith("BLOCKED"))
+            f["loop.denied_results"] = sum(1 for b in results_sent if b.get("is_error") and str(b.get("content", "")).startswith("DENIED"))
             f["loop.results_in_one_message"] = results_in_one_message(msgs)
         # History only grows: every call resends the previous call's messages, unchanged, then adds to them.
         lists = [r["data"]["body"]["messages"] for r in requests
@@ -226,6 +231,12 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         if first_in and last_in is not None:
             f["loop.input_growth"] = last_in - first_in
             f["loop.input_ratio"] = round(last_in / first_in, 3)
+
+    asked = _events(events, "approval.requested")
+    answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]
+    f["approval.asked"] = len(asked)
+    f["approval.approved"] = answered.count("approved")
+    f["approval.denied"] = len(answered) - answered.count("approved")   # denied, timed out or run ended
 
     if started and started[0]["data"].get("fixture"):       # only a step with a mock API measures these
         api = _events(events, "api.request")
