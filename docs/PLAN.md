@@ -279,6 +279,12 @@ The s04 job (look up OPP-1046, set it to 15%) written with `@beta_tool` and `cli
 | 8 Walk away | No answer is a denial | | Experiment E2 |
 | 9 Quiz | | | q1 to q3 |
 
+## s06 "Strict tool schemas": the end result
+A fuzzer: 8 messy asks, one model call each (`messages.create`, one tool `update_opportunity` with an `integer` discount, an `enum` reason, `required`, `additionalProperties: false`), judged by `problems()` in the lesson and by the lab (`fuzz.*`). `STRICT` on line 9 adds `strict: true`. Measured (single runs, Opus 5.5 effort low; Haiku 4.5 without effort): **0 of 8 inputs broke the schema with strict off and on, on both models.** The model rounds ("12.5%" became 12 or 13, "7.5%" became 7 or 8, "14.9%" became 15), drops fields the schema has no place for ("stage", "note"), or doesn't call (the "don't remember the number" ask, every run). So the lesson teaches strict as a guarantee, not a fix for a common failure; g7 shows valid-but-wrong values (the `integer` type forced the rounding).
+- **API facts measured through the gateway:** forced `tool_choice` (`any` or `tool`) is a 400 on Opus 5.5 ("not supported for this model"); with `strict: true`, a missing or `true` `additionalProperties` is a 400 ("must be explicitly set to false"), and `minimum`/`maximum` on an integer is a 400; dropping `required` is accepted (the model then answered in text).
+- New facts: `request.strict`, `fuzz.tool_uses`, `fuzz.invalid` (the lab's own `input_problems`: type, required, additionalProperties, enum, checked against the schema of the request that got the call), `fuzz.no_tool`. The browser check's fake gateway answers 400 for a forced tool and for a strict schema without `additionalProperties: false`; its loop-only timeline checks now run only for steps with the fixture panel.
+- Steps: g1 Tool input is model output, g2 A schema that says what you mean, g3 Without strict: what arrives, g4 Validate in your code anyway, g5 Turn on strict, g6 Zero is not a guarantee, g7 What strict does not cover, g8 experiments and quiz; E1 force the tool, E2 loosen the schema with strict on; q1 to q3.
+
 ## Lab 02 roadmap: what each step adds to the app
 | Step | New in the app |
 |---|---|

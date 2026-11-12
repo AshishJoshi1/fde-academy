@@ -562,3 +562,46 @@ def test_write_and_blocked_facts():
         if e["type"] == "llm.request" and e["data"]["call"] == 2:
             e["data"]["body"]["messages"].append({"role": "user", "content": [blocked, other]})
     assert run_facts(events)["loop.blocked_results"] == 1 and run_facts(events)["loop.error_results"] == 2
+
+
+# ---------------------------------------------------------- s06: strict schemas and the fuzzer facts
+TOOL = {"name": "update_opportunity", "strict": True, "input_schema": {
+    "type": "object",
+    "properties": {"opportunity_id": {"type": "string"}, "requested_discount_pct": {"type": "integer"},
+                   "reason": {"type": "string", "enum": ["policy_limit", "customer_request"]}},
+    "required": ["opportunity_id", "requested_discount_pct", "reason"], "additionalProperties": False}}
+
+
+def fuzz_events(tool, replies):
+    """One request/response pair per reply: a tool input (dict) or None for a text answer."""
+    out = [{"seq": 1, "t_ms": 0, "type": "run.started", "data": {"model": "claude-opus-5-5"}}]
+    for n, reply in enumerate(replies, 1):
+        out.append({"seq": 2 * n, "t_ms": n, "type": "llm.request", "data": {
+            "call": n, "body": {"model": "claude-opus-5-5", "tools": [tool],
+                                "messages": [{"role": "user", "content": "ask"}]}, "headers": {}}})
+        content = ([{"type": "tool_use", "id": f"t{n}", "name": "update_opportunity", "input": reply}] if reply is not None
+                   else [{"type": "text", "text": "which number?"}])
+        out.append({"seq": 2 * n + 1, "t_ms": n, "type": "llm.response", "data": {
+            "call": n, "status": 200, "ms": 5, "usage": {"input_tokens": 1, "output_tokens": 1},
+            "body": {"type": "message", "role": "assistant", "content": content,
+                     "stop_reason": "tool_use" if reply is not None else "end_turn"}}})
+    return out
+
+
+def test_fuzz_facts_judge_each_input_against_its_requests_schema():
+    good = {"opportunity_id": "OPP-1046", "requested_discount_pct": 15, "reason": "policy_limit"}
+    replies = [good,
+               {**good, "requested_discount_pct": 7.5},          # not an integer
+               {**good, "reason": "because"},                    # not in the enum
+               {**good, "stage": "Closed Won"},                  # additionalProperties
+               {"opportunity_id": "OPP-1046", "reason": "policy_limit"},   # missing required
+               None]
+    f = run_facts(fuzz_events(TOOL, replies))
+    assert (f["fuzz.tool_uses"], f["fuzz.invalid"], f["fuzz.no_tool"]) == (5, 4, 1)
+    assert f["request.strict"] == "on, every tool"
+
+
+def test_request_strict_is_off_unless_every_tool_says_true():
+    loose = {k: v for k, v in TOOL.items() if k != "strict"}
+    assert run_facts(fuzz_events(loose, [None]))["request.strict"] == "off"
+    assert run_facts(fuzz_events(TOOL, [None]))["fuzz.invalid"] == 0

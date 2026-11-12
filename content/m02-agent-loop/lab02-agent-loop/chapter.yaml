@@ -9,3 +9,4 @@ steps:
   - s03-parallel-tools
   - s04-gate-and-block
   - s05-tool-runner
+  - s06-strict-schema

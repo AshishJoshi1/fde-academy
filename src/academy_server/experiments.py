@@ -108,6 +108,32 @@ def results_in_one_message(messages: list[Any]) -> bool | None:
     return all(verdicts) if verdicts else None
 
 
+_JSON_TYPES = {"string": str, "number": (int, float), "integer": int, "boolean": bool, "object": dict, "array": list}
+
+
+def input_problems(schema: Any, value: Any) -> list[str]:
+    """What is wrong with a tool input judged against its input_schema: types, required,
+    additionalProperties and enum (the parts a strict schema guarantees)."""
+    if not isinstance(schema, dict):
+        return []
+    kind = schema.get("type")
+    py = _JSON_TYPES.get(kind) if isinstance(kind, str) else None
+    if py is not None and (not isinstance(value, py) or (isinstance(value, bool) and kind != "boolean")):
+        return [f"{value!r} is not {kind}"]
+    found: list[str] = []
+    if "enum" in schema and value not in schema["enum"]:
+        found.append(f"{value!r} not in enum")
+    if kind == "object" and isinstance(value, dict):
+        props = schema.get("properties") or {}
+        found += [f"missing {k}" for k in schema.get("required") or [] if k not in value]
+        if schema.get("additionalProperties") is False:
+            found += [f"unexpected {k}" for k in value if k not in props]
+        for k, sub in props.items():
+            if k in value:
+                found += input_problems(sub, value[k])
+    return found
+
+
 def _events(events: list[dict[str, Any]], *types: str) -> list[dict[str, Any]]:
     return [e for e in events if e["type"] in types]
 
@@ -162,6 +188,8 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["request.beta"] = str(beta) if beta else "not set"
         f["request.retry_count"] = int(retry) if str(retry).isdigit() else None
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+        f["request.strict"] = ("on, every tool" if tools and all(isinstance(t, dict) and t.get("strict") is True for t in tools)
+                               else "off")
         f["request.tool_names"] = ", ".join(str(t.get("name", "?")) for t in tools if isinstance(t, dict)) or "(none)"
         msgs = body.get("messages")
         if isinstance(msgs, list):
@@ -231,6 +259,19 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         if first_in and last_in is not None:
             f["loop.input_growth"] = last_in - first_in
             f["loop.input_ratio"] = round(last_in / first_in, 3)
+
+    if requests:      # the tool inputs the model wrote, judged against the schema of the request that got them
+        uses = invalid = no_tool = 0
+        for req, res in zip(requests, results):
+            body = req["data"].get("body") if isinstance(req["data"].get("body"), dict) else {}
+            schemas = {t.get("name"): t.get("input_schema") for t in body.get("tools") or [] if isinstance(t, dict)}
+            msg = _message(res["data"].get("body")) if res["type"] == "llm.response" else None
+            blocks = [b for b in (msg or {}).get("content") or [] if b.get("type") == "tool_use"]
+            if msg is not None and not blocks:
+                no_tool += 1
+            uses += len(blocks)
+            invalid += sum(1 for b in blocks if input_problems(schemas.get(b.get("name")), b.get("input")))
+        f["fuzz.tool_uses"], f["fuzz.invalid"], f["fuzz.no_tool"] = uses, invalid, no_tool
 
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]

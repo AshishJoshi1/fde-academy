@@ -365,3 +365,33 @@ cards:
       who approve everything stop reading the cards, so the one that matters gets less care.
       Gate what changes something.
     source: "content/m02-agent-loop/lab02-agent-loop/s05-tool-runner/step.yaml (E1, measured 2026-11-12)"
+
+  - id: strict-is-a-guarantee
+    tag: engineering
+    front: |
+      With strict off, 0 of 8 tool inputs broke the schema. Is strict unnecessary?
+    back: |
+      No. 0 of 8 describes that sample, not the next thousand calls. Strict makes "the input matches
+      the schema" a property of the request, which matters most for writes. It still doesn't make
+      a valid value right: the model rounded 12.5% to 12 or 13 because the schema said integer.
+    source: "docs/PLAN.md (s06 end result, measured 2026-11-12)"
+
+  - id: strict-schema-limits
+    tag: engineering
+    front: |
+      What does a strict tool schema refuse, and where do those rules go instead?
+    back: |
+      additionalProperties must be written as false (missing or true is a 400), and minimum and
+      maximum on numbers are a 400. Ranges and business rules live in your code, reported back as an
+      is_error result so the model can retry.
+    source: "docs/PLAN.md (s06 end result, API facts measured through the gateway)"
+
+  - id: test-the-premise
+    tag: workflow
+    front: |
+      Why run a cheap live test before writing a lesson's steps?
+    back: |
+      s06's outline assumed strict-off inputs would break. One live run showed 0 of 8 broke on
+      Opus 5.5 and Haiku 4.5, so the lesson was rebuilt around the measured result. Content written
+      first would have taught something false.
+    source: "docs/PLAN.md (s06 end result)"

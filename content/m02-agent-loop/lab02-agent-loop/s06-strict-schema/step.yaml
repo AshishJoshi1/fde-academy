@@ -1,0 +1,385 @@
+id: s06
+title: "Strict tool schemas"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages]
+run:
+  timeout_s: 240
+hints:
+  - "Each ask is one model call, so a run is 8 calls. Opus at effort low needs a few seconds each."
+  - "STRICT is on line 9. The schema is lines 11 to 24. The checker is problems(), lines 40 to 57."
+
+guide:
+  - id: g1
+    title: "Tool input is model output"
+    code: ["61-69", 70, "74-76"]
+    teach: |
+      In s02 to s05 the model asked for a tool and **your code ran it**. The `input` of that
+      `tool_use` block is **text the model wrote**: JSON that usually matches your schema, written
+      by a model that can misread a request, bend it or round it. Your code is the first thing that
+      can notice.
+
+      This step is a small **fuzzer**. **Lines 28 to 37** are eight messy requests (a decimal where
+      the schema wants a whole number, a reason that isn't on the list, an extra field nobody asked
+      the tool for, a missing number). **Line 61** sends each one as its own model call, and
+      **line 70** keeps only the tool call. **Lines 74 to 76** judge that input against the schema
+      with `problems()` (g4). The lab judges every call the same way, independently of your code.
+    do: "Press **Run**. It makes 8 calls. Read the Console: one block per ask, with the tool input and `valid` or `PROBLEMS`."
+    show: [run.calls, fuzz.tool_uses, fuzz.no_tool, fuzz.invalid]
+    notice: |
+      One call per ask: 8. Some asks have **no tool call at all**: the model answered in text
+      (`fuzz.no_tool`), so `uses` is empty and line 71 handles it. The lab's own count,
+      `fuzz.invalid`, should match the "broke the schema" line your code prints.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the run make?"
+        answer_from: run.calls
+        explanation: "One per ask: the loop on line 61 has no tool results to send back, so each ask is a single call."
+      - id: c2
+        type: mcq
+        prompt: "Who writes the input of a tool_use block?"
+        options:
+          - "The model, as text that is meant to match your schema"
+          - "The SDK, from your function's arguments"
+          - "The gateway"
+          - "Your code, before the call"
+        answer: 0
+        explanation: "The model emits the JSON. With the tool runner (s05) or your own loop (s02) your code receives it afterwards and has to decide whether to trust it."
+
+  - id: g2
+    title: "A schema that says what you mean"
+    code: ["11-24"]
+    teach: |
+      The schema (**lines 14 to 23**) is a contract in JSON Schema, and the model reads it as part
+      of the request:
+
+      - **`type`** (lines 17 to 19): `string`, and `integer` for the discount. `integer`, not
+        `number`: a whole percent only. Remember this one, g7 comes back to it.
+      - **`enum`** (line 19): the only reasons the tool accepts.
+      - **`required`** (line 21): the three keys that must be present.
+      - **`additionalProperties: False`** (line 22): no keys beyond the listed ones.
+
+      Without `strict`, all of this is a strong **hint**: the model reads it and nearly always
+      follows it. With `strict` (g5) it becomes a **rule** the decoder enforces.
+    do: "Open the **Timeline**, click Call 1, and find `tools` in the **request body**. Your dict is there, unchanged."
+    show: [request.tool_names, request.strict]
+    notice: |
+      `request.strict` says `off`: line 25 hasn't run. The schema reached the API exactly as you
+      wrote it, which is all the model sees of your tool: the description and this schema.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which line forbids keys that aren't in properties, such as an invented 'stage'?"
+        options:
+          - "Line 22: additionalProperties: False"
+          - "Line 21: required"
+          - "Line 19: enum"
+          - "Line 18: type: integer"
+        answer: 0
+        explanation: "required lists keys that must be present; additionalProperties: False lists none that may be added."
+      - id: c2
+        type: mcq
+        prompt: "Without strict, what does the schema do?"
+        options:
+          - "It guides the model; nothing stops a call that breaks it"
+          - "It makes the API reject every call that breaks it"
+          - "It validates the input before your code sees it"
+          - "It is ignored"
+        answer: 0
+        explanation: "The API doesn't validate tool input against your schema unless strict is on. Checking is up to your code."
+
+  - id: g3
+    title: "Without strict: what arrives"
+    code: ["28-37", "70-76"]
+    teach: |
+      Read the Console again, ask by ask. The expectation is some `PROBLEMS` lines. What was
+      measured (Opus 5.5, effort low, single runs; yours may differ in the details):
+
+      - **0 inputs broke the schema**, not one. The model gave an `integer` where an `integer` was
+        required and picked a reason from the list. Haiku 4.5 was the same: 0 of 8.
+      - **The model didn't bend the schema, it bent the request.** "12.5%" or "seven and a half
+        percent" can't be an integer, so it either rounded or didn't call the tool at all (g7).
+      - "I don't remember the number" got no tool call: the model asked instead of inventing a number.
+
+      That is the common case with a current model and a well-written schema: **a malformed call is
+      rare, not routine**. The question for g5 is what *rare* is worth.
+    do: "Read the Console for asks 1, 3, 4 and 7. For each, what did the model do: call, round or answer in text?"
+    show: [fuzz.invalid, fuzz.no_tool, fuzz.tool_uses]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many of this run's tool inputs broke the schema?"
+        answer_from: fuzz.invalid
+        explanation: "Measured 0 on both models. If your run shows a 1, that's a real malformed call, and exactly what g4 and g5 are about."
+      - id: c2
+        type: mcq
+        prompt: "Ask 4 said 'I don't remember the number'. The schema requires requested_discount_pct. What did the model do (measured)?"
+        options:
+          - "Answered in text instead of calling the tool"
+          - "Called the tool with 0"
+          - "Called the tool without that key"
+          - "Called the tool with a string such as 'unknown'"
+        answer: 0
+        explanation: "Nothing in the schema says 'ask the user', but the model wouldn't make a number up. A missing required key is the failure strict is built to rule out; here the model avoided it by not calling."
+
+  - id: g4
+    title: "Validate in your code anyway"
+    code: ["40-57", "74-76"]
+    teach: |
+      **`problems()`** (lines 40 to 57) is the check your code runs on the model's input before it
+      does anything with it: missing keys, unexpected keys, wrong types, values off the `enum`,
+      and a **range** (**lines 51 and 52**). The range is there because JSON Schema's `minimum` and
+      `maximum` are exactly what a strict schema **cannot** carry (g5 and E2): the API answers
+      400 for them, measured. So a range, like any business rule, lives in your code.
+
+      In an agent loop, a failed check isn't a crash. You return the reasons as a
+      `tool_result` with `is_error: true`, just as the gate did in s04 (`BLOCKED: ...`), so the model
+      can read them and try again. Every `tool_use` still needs its result.
+    do: "Read `problems()` against the schema on lines 14 to 23. Which line of the schema does each check mirror?"
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A tool input fails problems(). What should an agent loop send back?"
+        options:
+          - "A tool_result with is_error: true and the reasons, for that tool_use_id"
+          - "Nothing: drop the tool_use"
+          - "A successful result with the corrected value"
+          - "A new user question"
+        answer: 0
+        explanation: "Same rule as s04: every tool_use gets a result. The error text is what lets the model correct itself."
+      - id: c2
+        type: mcq
+        prompt: "Why does the range check (lines 51 and 52) live in your code and not in the schema?"
+        options:
+          - "A strict schema can't use minimum or maximum: the API refuses them"
+          - "JSON Schema has no way to say a range"
+          - "The model ignores ranges"
+          - "It is faster in Python"
+        answer: 0
+        explanation: "JSON Schema does have minimum and maximum, but strict mode's constrained decoding doesn't support them (a 400, measured in E2). Rules a strict schema can't carry stay in your code."
+
+  - id: g5
+    title: "Turn on strict: true"
+    code: [9, "25-26"]
+    teach: |
+      **Line 9** is the switch, and **lines 25 and 26** add `"strict": True` to the tool
+      definition. With it, the API **constrains the model's decoding** to your schema: a token that
+      would break `required`, a type, the `enum` or `additionalProperties` can't be produced. The
+      input is **guaranteed** to match, whatever the model, the request or the day.
+
+      The price is a stricter schema (measured, each is a 400):
+
+      - **`additionalProperties: false` must be written** on every object (line 22). Leave it out, or
+        say `true`: 400.
+      - **No `minimum` or `maximum`** on numbers: 400 (g4's range check).
+
+      Everything else in this schema is accepted as written.
+    do: "Edit line 9 to `STRICT = True` and press **Run**. Compare `request.strict` and the counts with g1."
+    show: [request.strict, fuzz.invalid, fuzz.no_tool, fuzz.tool_uses]
+    notice: |
+      `request.strict` reads `on, every tool`. `fuzz.invalid` is **still 0**, as it was without
+      strict (measured, both models). The same asks, the same behaviour. Put line 9 back to `False`
+      when you want to compare again.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What did setting STRICT = True change in the request?"
+        options:
+          - "The tool definition gained strict: true, and the API enforces the schema"
+          - "The model got a longer system prompt"
+          - "The request switched to a different model"
+          - "The model was asked to double-check its input"
+        answer: 0
+        explanation: "strict is a field of the tool definition (line 26). It makes the decoder enforce the schema; nothing is added to the prompt."
+      - id: c2
+        type: numeric
+        prompt: "With strict on, how many tool inputs broke the schema?"
+        answer_from: fuzz.invalid
+        explanation: "0, as before. Strict can only keep it at 0."
+
+  - id: g6
+    title: "Zero is not a guarantee"
+    code: [9, "75-78"]
+    teach: |
+      Strict off gave 0 of 8. Strict on gave 0 of 8. So did strict buy nothing? It bought a
+      different kind of fact:
+
+      - Without strict, **0 of 8 describes this sample**. The model followed your schema 8 times
+        out of 8. It says nothing about the next thousand, a different model, a longer schema or
+        a day when the model is a little worse.
+      - With strict, **0 is a property of the request**: no input can break the schema, so a
+        crash in your own code from a missing key or a wrong type can't come from the model.
+
+      That matters most where a malformed call is expensive: a write, a payment, a long
+      unattended run. It matters less for a lookup you re-run when it fails. The cost is the
+      stricter schema of g5. Your own checks (g4) stay either way, because they test things a schema
+      can't say.
+    do: "Run both settings once more, if you like: `STRICT = False`, Run, then `STRICT = True`, Run. Compare the tallies."
+    show: [request.strict, fuzz.invalid, run.cost_usd]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Strict off, 0 of 8 inputs broke the schema. What can you conclude?"
+        options:
+          - "Only that this sample held; it guarantees nothing about the next call"
+          - "That the model can never break the schema"
+          - "That strict is unnecessary for every tool"
+          - "That the schema is perfect"
+        answer: 0
+        explanation: "A passing sample is evidence, not a guarantee. Strict turns 'usually' into 'always' for the parts a schema can express."
+
+  - id: g7
+    title: "What strict does not cover"
+    code: ["28-37", "18"]
+    teach: |
+      Strict guarantees the **shape**. It doesn't promise the **value is what the person meant**.
+      Look at the Console again, ask by ask:
+
+      - **"12.5%", "seven and a half percent", "14.9%"** can't be written as an `integer`
+        (**line 18**). The model rounded (7 or 8, 15) or didn't call. Each input is `valid`, and
+        the **discount written to the CRM is not the one requested**. A schema made it
+        impossible to say 7.5. The fix is in the schema (`number`), not strict.
+      - **"also mark its stage Closed Won"** (ask 5) and **"add a note that Dana signed off"**
+        (ask 6): `additionalProperties: False` means there is nowhere to put either, so
+        the model dropped them. No error, no refusal. Whoever asked may assume it happened.
+      - **A valid ID that is the wrong opportunity**, or a valid `reason` that isn't true, passes
+        every schema check.
+
+      A schema and strict constrain what the model can *say*. Whether it is right, allowed and
+      what was meant is for your code (s04's gates, s05's approval) and for a human.
+    do: "In the Console, compare asks 1, 3 and 7 with the inputs the model wrote. Which discounts differ from what the ask said?"
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Ask 3 said 'seven and a half percent'. The input was valid but held a whole number. Which change makes the schema able to carry 7.5?"
+        options:
+          - "Change the field's type from integer to number"
+          - "Turn strict on"
+          - "Add a second enum"
+          - "Remove required"
+        answer: 0
+        explanation: "The schema, not the model, ruled 7.5 out. strict enforces whatever schema you give it, including a schema that can't express what was asked."
+      - id: c2
+        type: mcq
+        prompt: "Which of these can a strict schema NOT catch?"
+        options:
+          - "A valid OPP id that belongs to the wrong customer"
+          - "A missing required key"
+          - "A reason that isn't in the enum"
+          - "An extra key"
+        answer: 0
+        explanation: "An id is a string; the schema can't know which opportunity was meant. Strict covers shape: keys, types and the enum."
+
+  - id: g8
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments follow, each a **400** you can read in the Console: forcing the tool, and
+      loosening the schema while strict is on. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Force the tool"
+    question: "Forcing the model to call the tool would be the old way to guarantee a call. Does it work on this model?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "What HTTP status will the first call return?"
+        hint: "200 means it worked. Think of the Opus 5.5 rules in the lab notes."
+        answer_from: response.status
+      - id: p2
+        type: numeric
+        prompt: "How many model calls will the run make before it stops?"
+        answer_from: run.calls
+      - id: p3
+        type: text
+        prompt: "If forcing doesn't work, what two things in this step already make a tool call very likely?"
+    change: |
+      Edit, then Run:
+      1. In the `client.messages.create(` call, add a line `tool_choice={"type": "any"},` after
+         `tools=[UPDATE_TOOL],` (line 67).
+    observe:
+      - "Console: a traceback at the first ask: BadRequestError, code 400"
+      - "Timeline: one call, status 400, and the error message"
+    explain: |
+      Measured: **400**, `tool_choice: type "tool" and "any" are not supported for this model`. The run
+      stopped on its first call, so 1 call. Opus 5.5 doesn't allow a forced tool, so use
+      `tool_choice: auto` (the default) and make a call likely by other means: **a system prompt that
+      says to call the tool (line 66)** and, when a malformed call is costly, **`strict: true`**
+      (g5) to make its shape certain *if* the model calls. Strict doesn't force a call: ask 4 still
+      got text. Remove your edit.
+
+  - id: e2
+    title: "Loosen the schema with strict on"
+    question: "What does strict mode refuse to accept in a schema?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "What HTTP status will the first call return?"
+        answer_from: response.status
+      - id: p2
+        type: text
+        prompt: "With strict on, you delete line 22 (additionalProperties). Who complains: the model, the API, or nobody?"
+    change: |
+      Two edits, then Run:
+      1. Line 9: set it to `STRICT = True`
+      2. Delete line 22 (`"additionalProperties": False,`)
+    observe:
+      - "Console: a traceback, BadRequestError with a 400"
+      - "The message names tools.0.custom and 'additionalProperties' must be explicitly set to false"
+    explain: |
+      Measured: **400** from the API before any model ran: `For 'object' type, 'additionalProperties'
+      must be explicitly set to false`. Writing `True` there is a 400 too, and so are `minimum` and
+      `maximum` on an integer. A strict schema is checked when the request arrives, so you find out
+      on the first call, not in production at 3 a.m. Put line 22 back, and line 9 to `False`.
+
+      Dropping `required` was accepted in testing, and the model then answered in text for the same ask:
+      strict constrains the input when the model calls the tool, not whether it calls.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "What does strict: true on a tool guarantee?"
+    options:
+      - "When the model calls the tool, its input matches the schema"
+      - "The model will always call the tool"
+      - "The values are correct and allowed"
+      - "The tool's result is valid"
+    answer: 0
+    concepts: [strict-tools, tool-schemas]
+    explanation: "Strict constrains decoding to the schema: keys, types, enum, no extra keys. It doesn't force a call, and says nothing about whether a valid value is right."
+  - id: q2
+    type: mcq
+    prompt: "You need 'discount between 0 and 100' enforced. With strict on, where does that rule go?"
+    options:
+      - "In your code, before the write: a strict schema can't carry minimum or maximum"
+      - "In the schema as minimum and maximum"
+      - "In the description only"
+      - "Nowhere: strict covers it"
+    answer: 0
+    concepts: [strict-tools, gate-in-code]
+    explanation: "The API refused minimum and maximum on a strict integer (400). Ranges and business rules are checked in your code, then reported as an is_error result."
+  - id: q3
+    type: mcq
+    prompt: "Which request is a 400 on Opus 5.5 (measured)?"
+    options:
+      - "tool_choice of type any or tool"
+      - "tool_choice of type auto"
+      - "strict: true with additionalProperties: false"
+      - "A tool whose description is one sentence"
+    answer: 0
+    concepts: [tool-choice, strict-tools]
+    explanation: "Forced tool_choice isn't supported on Opus 5.5. Use auto, a clear system prompt and strict for the shape."
+tutor_notes: >
+  The lesson is built on a measured null result: with strict off, Opus 5.5 and Haiku 4.5 broke the schema
+  0 of 8 times (an integer field, asks like 12.5% and a third off, an unlisted reason, an extra field).
+  They rounded, refused or dropped the extra field instead. Don't tell the learner strict fixes a common
+  failure; it turns 'usually' into 'always' for what a schema can express, and costs a stricter schema
+  (additionalProperties false is required, minimum and maximum are a 400). Misconceptions: strict forces
+  a call (no: E1 and ask 4 show it doesn't, and forced tool_choice is a 400 on Opus 5.5); strict makes
+  values correct (no: g7, rounding to the integer the schema demands, and dropped extra fields);
+  validation in code becomes unnecessary (no: ranges and business rules). Single runs at effort low:
+  wording, rounding direction (7 or 8) and which asks are refused vary.

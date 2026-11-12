@@ -77,6 +77,15 @@ def fake_reply(body: dict) -> tuple[int, dict]:
                  f"{', '.join(bad[1])}. Each `tool_use` block must have a corresponding `tool_result` block "
                  "in the next message."}}
         return 400, {"error": {"message": json.dumps(inner), "type": "None", "param": "None", "code": "400"}}
+    if (body.get("tool_choice") or {}).get("type") in ("any", "tool"):   # Opus 5.5 refuses a forced tool (s06 E1)
+        inner = {"type": "error", "error": {"type": "invalid_request_error",
+                 "message": 'tool_choice: type "tool" and "any" are not supported for this model.'}}
+        return 400, {"error": {"message": json.dumps(inner), "type": "None", "param": "None", "code": "400"}}
+    for t in tools:   # a strict schema must say additionalProperties: false (s06 E2)
+        if t.get("strict") and (t.get("input_schema") or {}).get("additionalProperties") is not False:
+            inner = {"type": "error", "error": {"type": "invalid_request_error", "message":
+                     "tools.0.custom: For 'object' type, 'additionalProperties' must be explicitly set to false"}}
+            return 400, {"error": {"message": json.dumps(inner), "type": "None", "param": "None", "code": "400"}}
     effort = (body.get("output_config") or {}).get("effort")
     size = len(json.dumps(messages)) + len(json.dumps(tools))
     usage = {"input_tokens": size // 4 if tools else 22, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
@@ -386,13 +395,16 @@ def check_panels(b: Browser, panels: list[str], check) -> None:
         b.wait("document.querySelectorAll('#timeline .trace-row').length > 0", "the timeline")
         rows = b.js("[...document.querySelectorAll('#timeline .trace-label')].map(l => l.textContent)")
         print(f"    timeline: {' | '.join(rows)}")
-        check("timeline: calls, the tool run between them, and its API request",
-              len(rows) >= 4 and any("result sent" in r for r in rows))
-        check("timeline: each tool row shows its input and id", any(
-            "get_opportunity" in r and re.search(r"OPP-\d+ · id …", r) for r in rows))
-        check("timeline: the one message check passes",
-              b.js("document.getElementById('timeline').textContent.includes('went back in one user message')"))
-    if "messages" in panels:
+        if "fixture" in panels:     # the tool-loop steps: calls, tool runs between them, the mock API
+            check("timeline: calls, the tool run between them, and its API request",
+                  len(rows) >= 4 and any("result sent" in r for r in rows))
+            check("timeline: each tool row shows its input and id", any(
+                "get_opportunity" in r and re.search(r"OPP-\d+ · id …", r) for r in rows))
+            check("timeline: the one message check passes",
+                  b.js("document.getElementById('timeline').textContent.includes('went back in one user message')"))
+        else:                        # s06's fuzzer: independent calls, no tool results
+            check("timeline: one row per call", len(rows) >= 8)
+    if "messages" in panels and "fixture" in panels:
         b.wait("document.querySelectorAll('#messages-view .msg').length > 0", "the messages view")
         check("messages: the last call's list, with what it added marked",
               b.js("document.querySelectorAll('#messages-view .msg.is-added').length") > 0
