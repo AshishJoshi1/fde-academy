@@ -1,5 +1,5 @@
 {
- "exported_at": "2026-11-12T11:09:04.526+00:00",
+ "exported_at": "2026-11-12T12:15:39.274+00:00",
  "format": "fde-academy-progress",
  "schema_version": 5,
  "tables": {
@@ -94,21 +94,106 @@
     "kind": "run",
     "run_id": "20261112-161026-008b40",
     "step_id": "m02.lab02.s03"
+   },
+   {
+    "code": "import os\n\nimport anthropic\n\nclient = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\nMODEL = os.getenv(\"LAB_MODEL\", \"claude-opus-5-5\")\n\nresponse = client.messages.create(\n    model=MODEL,\n    max_tokens=1024,\n    output_config={\"effort\": \"low\"},  # Opus 5.5: thinking can't be disabled; effort is the dial\n    messages=[{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}],\n)\n\nprint(\"stop_reason:\", response.stop_reason)\nprint(\"blocks:\", [block.type for block in response.content])\n\n# Keep only text blocks: content[0] may be a (empty) thinking block.\nanswer = \"\".join(block.text for block in response.content if block.type == \"text\")\nprint(\"answer:\", answer)\n\nu = response.usage\nprint(f\"usage: input={u.input_tokens} output={u.output_tokens} \"\n      f\"cache_write={u.cache_creation_input_tokens} cache_read={u.cache_read_input_tokens}\")\n",
+    "created_at": "2026-11-12T11:16:00.529+00:00",
+    "filename": "main.py",
+    "id": 11,
+    "kind": "run",
+    "run_id": "20261112-164600-0770f8",
+    "step_id": "m02.lab02.s01"
+   },
+   {
+    "code": "import os\n\nimport anthropic\n\nclient = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\nMODEL = os.getenv(\"LAB_MODEL\", \"claude-opus-5-5\")\n\nresponse = client.messages.create(\n    model=MODEL,\n    max_tokens=1024,\n    output_config={\"effort\": \"low\"},  # Opus 5.5: thinking can't be disabled; effort is the dial\n    messages=[{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}],\n)\n\nprint(\"stop_reason:\", response.stop_reason)\nprint(\"blocks:\", [block.type for block in response.content])\n\n# Keep only text blocks: content[0] may be a (empty) thinking block.\nanswer = \"\".join(block.text for block in response.content if block.type == \"text\")\nprint(\"answer:\", answer)\n\nu = response.usage\nprint(f\"usage: input={u.input_tokens} output={u.output_tokens} \"\n      f\"cache_write={u.cache_creation_input_tokens} cache_read={u.cache_read_input_tokens}\")\n",
+    "created_at": "2026-11-12T11:16:26.207+00:00",
+    "filename": "main.py",
+    "id": 12,
+    "kind": "run",
+    "run_id": "20261112-164626-119f3b",
+    "step_id": "m02.lab02.s01"
+   },
+   {
+    "code": "import json\nimport os\n\nimport anthropic\nimport httpx\n\nclient = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\nMODEL = os.getenv(\"LAB_MODEL\", \"claude-opus-5-5\")\nMERIDIAN = os.environ[\"MERIDIAN_API_URL\"]  # the lab starts the mock Meridian API for each run\nAUTH = {\"Authorization\": f\"Bearer {os.environ['MERIDIAN_API_TOKEN']}\"}\n\n# The same tool as in s02.\nTOOLS = [{\n    \"name\": \"get_opportunity\",\n    \"description\": \"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. \"\n                   \"Returns its account ID, stage, requested discount, staffing and CRM notes.\",\n    \"input_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\"opportunity_id\": {\"type\": \"string\", \"description\": \"e.g. OPP-1042\"}},\n        \"required\": [\"opportunity_id\"],\n    },\n}]\n\n\ndef get_opportunity(opportunity_id: str) -> dict:\n    r = httpx.get(f\"{MERIDIAN}/opportunities/{opportunity_id}\", headers=AUTH, timeout=10)\n    if r.status_code == 404:  # an error message written for the model: no URL, no token\n        raise LookupError(f\"no opportunity with ID {opportunity_id}\")\n    if r.status_code != 200:\n        raise RuntimeError(f\"the Meridian API answered {r.status_code}\")\n    return r.json()\n\n\nRUN = {\"get_opportunity\": get_opportunity}  # tool name -> the function that does the work\n\nmessages = [{\"role\": \"user\", \"content\": \"Which of OPP-1042, OPP-1046 and OPP-1048 has the largest \"\n                                        \"requested discount, and which account is each for?\"}]\n\nfor turn in range(1, 6):  # a cap on turns: never loop forever\n    response = client.messages.create(\n        model=MODEL,\n        max_tokens=2048,\n        output_config={\"effort\": \"low\"},\n        tools=TOOLS,\n        # tool_choice={\"type\": \"auto\", \"disable_parallel_tool_use\": True},  # E1\n        messages=messages,\n    )\n    uses = [b for b in response.content if b.type == \"tool_use\"]\n    print(f\"turn {turn}: stop_reason={response.stop_reason} tool_use blocks={len(uses)}\")\n    messages.append({\"role\": \"assistant\", \"content\": response.content})  # all of it, as it came back\n    if response.stop_reason != \"tool_use\":\n        break\n\n    results = []\n    for block in uses:  # run every tool the model asked for, then send all the results at once\n        try:\n            output = RUN[block.name](**block.input)\n            results.append({\"type\": \"tool_result\", \"tool_use_id\": block.id, \"content\": json.dumps(output)})\n        except Exception as e:  # a failed tool still gets a result: never drop one\n            results.append({\"type\": \"tool_result\", \"tool_use_id\": block.id,\n                            \"content\": f\"{type(e).__name__}: {e}\", \"is_error\": True})\n        print(f\"  {block.id}: {block.name}({json.dumps(block.input)})\"\n              + (\" -> is_error\" if results[-1].get(\"is_error\") else \"\"))\n    messages.append({\"role\": \"user\", \"content\": results})  # every result, in ONE user message\n\nif response.stop_reason == \"end_turn\":\n    print(\"answer:\", \"\".join(b.text for b in response.content if b.type == \"text\"))\nelse:\n    print(\"stopped without an answer: stop_reason =\", response.stop_reason)\n",
+    "created_at": "2026-11-12T11:27:55.152+00:00",
+    "filename": "main.py",
+    "id": 13,
+    "kind": "run",
+    "run_id": "20261112-165755-2ef9b8",
+    "step_id": "m02.lab02.s03"
    }
   ],
-  "experiment_attempts": [],
+  "experiment_attempts": [
+   {
+    "attempt": 1,
+    "committed_at": "2026-11-12T11:27:32.794+00:00",
+    "experiment_id": "e2",
+    "explained_at": null,
+    "explanation": null,
+    "graded_at": null,
+    "id": 1,
+    "module_id": "m02",
+    "run_id": null,
+    "step_id": "m02.lab02.s03"
+   }
+  ],
   "position": [
    {
     "cursor_col": null,
     "cursor_line": null,
     "filename": "main.py",
     "id": 1,
-    "last_run_id": "20261112-161026-008b40",
-    "step_id": "m02.lab02.s03",
-    "updated_at": "2026-11-12T10:40:26.074+00:00"
+    "last_run_id": "20261112-165755-2ef9b8",
+    "step_id": "m02.lab02.s02",
+    "updated_at": "2026-11-12T11:45:15.344+00:00"
    }
   ],
-  "predictions": [],
+  "predictions": [
+   {
+    "actual_display": null,
+    "actual_json": null,
+    "answer_json": "10.0",
+    "attempt_id": 1,
+    "correct": null,
+    "item_id": "p1",
+    "note": null,
+    "prompt": "How many tool_use blocks will Call 1 hold?",
+    "type": "numeric"
+   },
+   {
+    "actual_display": null,
+    "actual_json": null,
+    "answer_json": "2.0",
+    "attempt_id": 1,
+    "correct": null,
+    "item_id": "p2",
+    "note": null,
+    "prompt": "How many tool_results will carry is_error: true?",
+    "type": "numeric"
+   },
+   {
+    "actual_display": null,
+    "actual_json": null,
+    "answer_json": "0",
+    "attempt_id": 1,
+    "correct": null,
+    "item_id": "p3",
+    "note": null,
+    "prompt": "How will the run end?",
+    "type": "mcq"
+   },
+   {
+    "actual_display": null,
+    "actual_json": null,
+    "answer_json": "\"3\"",
+    "attempt_id": 1,
+    "correct": null,
+    "item_id": "p4",
+    "note": null,
+    "prompt": "What will the answer say about OPP-1099?",
+    "type": "text"
+   }
+  ],
   "quiz_attempts": [
    {
     "answer_json": "2",
@@ -285,6 +370,60 @@
     "item_version": 1,
     "module_id": "m02",
     "question": "Why could the model ask for all three lookups in one response?",
+    "score": null,
+    "source": "app",
+    "step_id": "m02.lab02.s03",
+    "type": "mcq"
+   },
+   {
+    "answer_json": "1",
+    "concepts_json": "[]",
+    "correct": 1,
+    "correct_json": "\"Three tool_results (request.last_message = user: tool_result, tool_result, tool_result)\"",
+    "created_at": "2026-11-12T11:27:02.437+00:00",
+    "feedback": null,
+    "graded_by": "auto",
+    "id": 11,
+    "item_id": "m02.lab02.s03:g3:c1",
+    "item_version": 1,
+    "module_id": "m02",
+    "question": "Which blocks does Call 2's last message hold?",
+    "score": null,
+    "source": "app",
+    "step_id": "m02.lab02.s03",
+    "type": "mcq"
+   },
+   {
+    "answer_json": "1",
+    "concepts_json": "[]",
+    "correct": 1,
+    "correct_json": "\"Accepts it, because it joins consecutive user messages, but the docs warn it teaches the model to stop calling tools in parallel\"",
+    "created_at": "2026-11-12T11:27:08.658+00:00",
+    "feedback": null,
+    "graded_by": "auto",
+    "id": 12,
+    "item_id": "m02.lab02.s03:g3:c2",
+    "item_version": 1,
+    "module_id": "m02",
+    "question": "You send each tool_result in its own user message. What does the API do?",
+    "score": null,
+    "source": "app",
+    "step_id": "m02.lab02.s03",
+    "type": "mcq"
+   },
+   {
+    "answer_json": "0",
+    "concepts_json": "[]",
+    "correct": 0,
+    "correct_json": "\"Nothing changes: each result is matched to its tool_use by tool_use_id\"",
+    "created_at": "2026-11-12T11:27:58.724+00:00",
+    "feedback": null,
+    "graded_by": "auto",
+    "id": 13,
+    "item_id": "m02.lab02.s03:g2:c1",
+    "item_version": 1,
+    "module_id": "m02",
+    "question": "Your code sends the three results in the order OPP-1048, OPP-1042, OPP-1046. What happens?",
     "score": null,
     "source": "app",
     "step_id": "m02.lab02.s03",
@@ -1327,6 +1466,279 @@
     "seq": 23,
     "t_ms": 13062,
     "type": "run.exit"
+   },
+   {
+    "data_json": "{\"step_id\": \"m02.lab02.s01\", \"model\": \"claude-opus-5-5\", \"entry\": \"main.py\", \"timeout_s\": 120, \"pid\": 30524, \"job_object\": true, \"fixture\": null}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 1,
+    "t_ms": 32,
+    "type": "run.started"
+   },
+   {
+    "data_json": "{\"call\": 1, \"method\": \"POST\", \"path\": \"/v1/messages\", \"query\": null, \"headers\": {\"x-stainless-timeout\": \"600\", \"x-stainless-retry-count\": \"0\", \"x-stainless-read-timeout\": \"600\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"user-agent\": \"Anthropic/Python 2.6.0\", \"x-stainless-lang\": \"python\", \"x-stainless-package-version\": \"2.6.0\", \"x-stainless-os\": \"Windows\", \"x-stainless-arch\": \"other:amd64\", \"x-stainless-runtime\": \"CPython\", \"x-stainless-runtime-version\": \"3.14.7\", \"x-stainless-async\": \"false\", \"anthropic-version\": \"2026-10-21\"}, \"body\": {\"max_tokens\": 1024, \"messages\": [{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}], \"model\": \"claude-opus-5-5\", \"output_config\": {\"effort\": \"low\"}}}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 2,
+    "t_ms": 7387,
+    "type": "llm.request"
+   },
+   {
+    "data_json": "{\"call\": 1, \"status\": 200, \"stream\": false, \"ms\": 3060, \"headers\": {\"alt-svc\": \"h3=\\\":443\\\"; ma=2592000\", \"content-security-policy\": \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'\", \"content-type\": \"application/json\", \"date\": \"Thu, 12 Nov 2026 11:16:08 GMT, Thu, 12 Nov 2026 11:16:09 GMT\", \"referrer-policy\": \"strict-origin-when-cross-origin\", \"strict-transport-security\": \"max-age=31536000; includeSubDomains\", \"via\": \"1.1 Caddy\", \"x-content-type-options\": \"nosniff\", \"x-frame-options\": \"DENY\", \"x-litellm-call-id\": \"97fb40f6-dc94-4cba-8dde-3a74ef3bc47b\", \"x-litellm-key-max-budget\": \"50.0\", \"x-litellm-key-rpm-limit\": \"60\", \"x-litellm-key-spend\": \"0.2326835\", \"x-litellm-key-tpm-limit\": \"100000\", \"x-litellm-model-id\": \"bc14cacc45f8785e90924f8f06c035ca683f5479b9e8f38934e2742e6a6b4a4e\", \"x-litellm-response-cost-discount-amount\": \"0.0\", \"x-litellm-response-cost-margin-amount\": \"0.0\", \"x-litellm-response-cost-margin-percent\": \"0.0\", \"x-litellm-response-cost-original\": \"0.001588\", \"x-litellm-version\": \"1.84.1\", \"transfer-encoding\": \"chunked\"}, \"body\": {\"model\": \"claude-opus-5-5\", \"id\": \"msg_011CgxwRAbi3EZtEoatdVcMz\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"An agent loop is the repeating cycle in which an AI model observes its current context, decides on an action (such as calling a tool), executes it, feeds the result back into its context, and repeats until the task is complete or a stopping condition is met.\"}], \"container\": null, \"stop_reason\": \"end_turn\", \"stop_sequence\": null, \"stop_details\": null, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 75, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 97}, \"diagnostics\": null}, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 75, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 97}, \"cost_usd\": 0.001588}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 3,
+    "t_ms": 10448,
+    "type": "llm.response"
+   },
+   {
+    "data_json": "{\"text\": \"stop_reason: end_turn\"}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 4,
+    "t_ms": 10498,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"blocks: ['text']\"}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 5,
+    "t_ms": 10498,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"answer: An agent loop is the repeating cycle in which an AI model observes its current context, decides on an action (such as calling a tool), executes it, feeds the result back into its context, and repeats until the task is complete or a stopping condition is met.\"}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 6,
+    "t_ms": 10498,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"usage: input=22 output=75 cache_write=0 cache_read=0\"}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 7,
+    "t_ms": 10499,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"outcome\": \"ok\", \"exit_code\": 0}",
+    "run_id": "20261112-164600-0770f8",
+    "seq": 8,
+    "t_ms": 11184,
+    "type": "run.exit"
+   },
+   {
+    "data_json": "{\"step_id\": \"m02.lab02.s01\", \"model\": \"claude-sonnet-5-5\", \"entry\": \"main.py\", \"timeout_s\": 120, \"pid\": 22644, \"job_object\": true, \"fixture\": null}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 1,
+    "t_ms": 53,
+    "type": "run.started"
+   },
+   {
+    "data_json": "{\"call\": 1, \"method\": \"POST\", \"path\": \"/v1/messages\", \"query\": null, \"headers\": {\"x-stainless-timeout\": \"600\", \"x-stainless-retry-count\": \"0\", \"x-stainless-read-timeout\": \"600\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"user-agent\": \"Anthropic/Python 2.6.0\", \"x-stainless-lang\": \"python\", \"x-stainless-package-version\": \"2.6.0\", \"x-stainless-os\": \"Windows\", \"x-stainless-arch\": \"other:amd64\", \"x-stainless-runtime\": \"CPython\", \"x-stainless-runtime-version\": \"3.14.7\", \"x-stainless-async\": \"false\", \"anthropic-version\": \"2026-10-21\"}, \"body\": {\"max_tokens\": 1024, \"messages\": [{\"role\": \"user\", \"content\": \"In one sentence: what is an agent loop?\"}], \"model\": \"claude-sonnet-5-5\", \"output_config\": {\"effort\": \"low\"}}}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 2,
+    "t_ms": 7364,
+    "type": "llm.request"
+   },
+   {
+    "data_json": "{\"call\": 1, \"status\": 200, \"stream\": false, \"ms\": 2812, \"headers\": {\"alt-svc\": \"h3=\\\":443\\\"; ma=2592000\", \"content-security-policy\": \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'\", \"content-type\": \"application/json\", \"date\": \"Thu, 12 Nov 2026 11:16:35 GMT, Thu, 12 Nov 2026 11:16:34 GMT\", \"referrer-policy\": \"strict-origin-when-cross-origin\", \"strict-transport-security\": \"max-age=31536000; includeSubDomains\", \"via\": \"1.1 Caddy\", \"x-content-type-options\": \"nosniff\", \"x-frame-options\": \"DENY\", \"x-litellm-call-id\": \"b9a3b019-bd8c-4d3f-b2c5-71be045c8260\", \"x-litellm-key-max-budget\": \"50.0\", \"x-litellm-key-rpm-limit\": \"60\", \"x-litellm-key-spend\": \"0.2342715\", \"x-litellm-key-tpm-limit\": \"100000\", \"x-litellm-model-id\": \"732240fea44548f4135d6ae75725c8b982ba24ea432057ab51f67a82450932a1\", \"x-litellm-response-cost-discount-amount\": \"0.0\", \"x-litellm-response-cost-margin-amount\": \"0.0\", \"x-litellm-response-cost-margin-percent\": \"0.0\", \"x-litellm-response-cost-original\": \"0.0009140000000000001\", \"x-litellm-version\": \"1.84.1\", \"transfer-encoding\": \"chunked\"}, \"body\": {\"model\": \"claude-sonnet-5-5\", \"id\": \"msg_011CgxwT374snYa3wuLUU7oV\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"An agent loop is the repeating cycle in which an AI agent observes its environment or context, decides on an action (often by calling a language model), executes that action (such as using a tool), and feeds the result back in as new input, continuing until it reaches its goal or a stopping condition.\"}], \"container\": null, \"stop_reason\": \"end_turn\", \"stop_sequence\": null, \"stop_details\": null, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 87, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 109}, \"diagnostics\": null}, \"usage\": {\"input_tokens\": 22, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 87, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 109}, \"cost_usd\": 0.000914}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 3,
+    "t_ms": 10177,
+    "type": "llm.response"
+   },
+   {
+    "data_json": "{\"text\": \"stop_reason: end_turn\"}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 4,
+    "t_ms": 10221,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"blocks: ['text']\"}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 5,
+    "t_ms": 10221,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"answer: An agent loop is the repeating cycle in which an AI agent observes its environment or context, decides on an action (often by calling a language model), executes that action (such as using a tool), and feeds the result back in as new input, continuing until it reaches its goal or a stopping condition.\"}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 6,
+    "t_ms": 10221,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"usage: input=22 output=87 cache_write=0 cache_read=0\"}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 7,
+    "t_ms": 10221,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"outcome\": \"ok\", \"exit_code\": 0}",
+    "run_id": "20261112-164626-119f3b",
+    "seq": 8,
+    "t_ms": 11112,
+    "type": "run.exit"
+   },
+   {
+    "data_json": "{\"step_id\": \"m02.lab02.s03\", \"model\": \"claude-sonnet-5-5\", \"entry\": \"main.py\", \"timeout_s\": 120, \"pid\": 17968, \"job_object\": true, \"fixture\": {\"name\": \"meridian\", \"url\": \"http://127.0.0.1:54898\"}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 1,
+    "t_ms": 67,
+    "type": "run.started"
+   },
+   {
+    "data_json": "{\"call\": 1, \"method\": \"POST\", \"path\": \"/v1/messages\", \"query\": null, \"headers\": {\"x-stainless-timeout\": \"600\", \"x-stainless-retry-count\": \"0\", \"x-stainless-read-timeout\": \"600\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"user-agent\": \"Anthropic/Python 2.6.0\", \"x-stainless-lang\": \"python\", \"x-stainless-package-version\": \"2.6.0\", \"x-stainless-os\": \"Windows\", \"x-stainless-arch\": \"other:amd64\", \"x-stainless-runtime\": \"CPython\", \"x-stainless-runtime-version\": \"3.14.7\", \"x-stainless-async\": \"false\", \"anthropic-version\": \"2026-10-21\"}, \"body\": {\"max_tokens\": 2048, \"messages\": [{\"role\": \"user\", \"content\": \"Which of OPP-1042, OPP-1046 and OPP-1048 has the largest requested discount, and which account is each for?\"}], \"model\": \"claude-sonnet-5-5\", \"output_config\": {\"effort\": \"low\"}, \"tools\": [{\"name\": \"get_opportunity\", \"description\": \"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. Returns its account ID, stage, requested discount, staffing and CRM notes.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"opportunity_id\": {\"type\": \"string\", \"description\": \"e.g. OPP-1042\"}}, \"required\": [\"opportunity_id\"]}}]}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 2,
+    "t_ms": 7058,
+    "type": "llm.request"
+   },
+   {
+    "data_json": "{\"call\": 1, \"status\": 200, \"stream\": false, \"ms\": 2203, \"headers\": {\"alt-svc\": \"h3=\\\":443\\\"; ma=2592000\", \"content-security-policy\": \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'\", \"content-type\": \"application/json\", \"date\": \"Thu, 12 Nov 2026 11:28:03 GMT, Thu, 12 Nov 2026 11:28:03 GMT\", \"referrer-policy\": \"strict-origin-when-cross-origin\", \"strict-transport-security\": \"max-age=31536000; includeSubDomains\", \"via\": \"1.1 Caddy\", \"x-content-type-options\": \"nosniff\", \"x-frame-options\": \"DENY\", \"x-litellm-call-id\": \"79dcf31a-0aa3-4f50-bdd1-cf5944d79de3\", \"x-litellm-key-max-budget\": \"50.0\", \"x-litellm-key-rpm-limit\": \"60\", \"x-litellm-key-spend\": \"0.2351855\", \"x-litellm-key-tpm-limit\": \"100000\", \"x-litellm-model-id\": \"732240fea44548f4135d6ae75725c8b982ba24ea432057ab51f67a82450932a1\", \"x-litellm-response-cost-discount-amount\": \"0.0\", \"x-litellm-response-cost-margin-amount\": \"0.0\", \"x-litellm-response-cost-margin-percent\": \"0.0\", \"x-litellm-response-cost-original\": \"0.00271\", \"x-litellm-version\": \"1.84.1\", \"transfer-encoding\": \"chunked\"}, \"body\": {\"model\": \"claude-sonnet-5-5\", \"id\": \"msg_011CgxxKo4dkxpg2J2bXEHod\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_01NQR7Ljzve71ehELyt2NCnB\", \"name\": \"get_opportunity\", \"input\": {\"opportunity_id\": \"OPP-1042\"}, \"caller\": {\"type\": \"direct\"}}, {\"type\": \"tool_use\", \"id\": \"toolu_01X9GGLJFuJH4SHEEPUdHmNE\", \"name\": \"get_opportunity\", \"input\": {\"opportunity_id\": \"OPP-1046\"}, \"caller\": {\"type\": \"direct\"}}, {\"type\": \"tool_use\", \"id\": \"toolu_01X8iVufjPxKgtFbtGTxSChx\", \"name\": \"get_opportunity\", \"input\": {\"opportunity_id\": \"OPP-1048\"}, \"caller\": {\"type\": \"direct\"}}], \"container\": null, \"stop_reason\": \"tool_use\", \"stop_sequence\": null, \"stop_details\": null, \"usage\": {\"input_tokens\": 485, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 174, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 659}, \"diagnostics\": null}, \"usage\": {\"input_tokens\": 485, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 174, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 659}, \"cost_usd\": 0.00271}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 3,
+    "t_ms": 9261,
+    "type": "llm.response"
+   },
+   {
+    "data_json": "{\"text\": \"turn 1: stop_reason=tool_use tool_use blocks=3\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 4,
+    "t_ms": 9457,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"n\": 1, \"fixture\": \"meridian\", \"method\": \"GET\", \"path\": \"/opportunities/OPP-1042\", \"query\": null, \"status\": 200, \"body\": {\"opportunity_id\": \"OPP-1042\", \"account_id\": \"ACC-017\", \"stage\": \"proposal\", \"engagement_type\": \"fixed_price\", \"currency\": \"EUR\", \"service_line\": \"data\", \"start_date\": \"2026-11-02\", \"effort\": [{\"role\": \"R-ARCH\", \"location\": \"UK\", \"days\": 20}], \"requested_discount_pct\": 12, \"travel_required\": true, \"crm_notes\": \"Discovery call 2026-09-14: customer wants a data platform assessment for its Hamburg hub. Procurement asked for 12% off list.\"}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 5,
+    "t_ms": 9603,
+    "type": "api.request"
+   },
+   {
+    "data_json": "{\"text\": \"  toolu_01NQR7Ljzve71ehELyt2NCnB: get_opportunity({\\\"opportunity_id\\\": \\\"OPP-1042\\\"})\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 6,
+    "t_ms": 9606,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"n\": 2, \"fixture\": \"meridian\", \"method\": \"GET\", \"path\": \"/opportunities/OPP-1046\", \"query\": null, \"status\": 200, \"body\": {\"opportunity_id\": \"OPP-1046\", \"account_id\": \"ACC-013\", \"stage\": \"proposal\", \"engagement_type\": \"fixed_price\", \"currency\": \"EUR\", \"service_line\": \"ai\", \"start_date\": \"2027-01-11\", \"effort\": [{\"role\": \"R-ARCH\", \"location\": \"UK\", \"days\": 60}, {\"role\": \"R-DENG\", \"location\": \"PL\", \"days\": 450}, {\"role\": \"R-MLE\", \"location\": \"IN\", \"days\": 180}, {\"role\": \"R-PM\", \"location\": \"UK\", \"days\": 40}, {\"role\": \"R-CLOUD\", \"location\": \"PL\", \"days\": 120}], \"requested_discount_pct\": 22, \"travel_required\": true, \"crm_notes\": \"Grid-asset predictive maintenance programme. CFO pushing hard on price; asked for 22% off.\"}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 7,
+    "t_ms": 9636,
+    "type": "api.request"
+   },
+   {
+    "data_json": "{\"text\": \"  toolu_01X9GGLJFuJH4SHEEPUdHmNE: get_opportunity({\\\"opportunity_id\\\": \\\"OPP-1046\\\"})\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 8,
+    "t_ms": 9639,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"n\": 3, \"fixture\": \"meridian\", \"method\": \"GET\", \"path\": \"/opportunities/OPP-1048\", \"query\": null, \"status\": 200, \"body\": {\"opportunity_id\": \"OPP-1048\", \"account_id\": \"ACC-002\", \"stage\": \"negotiation\", \"engagement_type\": \"fixed_price\", \"currency\": \"EUR\", \"service_line\": \"cloud\", \"start_date\": \"2026-12-01\", \"effort\": [{\"role\": \"R-CLOUD\", \"location\": \"UK\", \"days\": 150}, {\"role\": \"R-ARCH\", \"location\": \"UK\", \"days\": 40}, {\"role\": \"R-DENG\", \"location\": \"PL\", \"days\": 120}], \"requested_discount_pct\": 9, \"travel_required\": false, \"crm_notes\": \"Cloud landing zone and migration factory. The workshop format from last year worked well with this buyer.\"}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 9,
+    "t_ms": 9667,
+    "type": "api.request"
+   },
+   {
+    "data_json": "{\"text\": \"  toolu_01X8iVufjPxKgtFbtGTxSChx: get_opportunity({\\\"opportunity_id\\\": \\\"OPP-1048\\\"})\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 10,
+    "t_ms": 9669,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"call\": 2, \"method\": \"POST\", \"path\": \"/v1/messages\", \"query\": null, \"headers\": {\"x-stainless-timeout\": \"600\", \"x-stainless-retry-count\": \"0\", \"x-stainless-read-timeout\": \"600\", \"accept\": \"application/json\", \"content-type\": \"application/json\", \"user-agent\": \"Anthropic/Python 2.6.0\", \"x-stainless-lang\": \"python\", \"x-stainless-package-version\": \"2.6.0\", \"x-stainless-os\": \"Windows\", \"x-stainless-arch\": \"other:amd64\", \"x-stainless-runtime\": \"CPython\", \"x-stainless-runtime-version\": \"3.14.7\", \"x-stainless-async\": \"false\", \"anthropic-version\": \"2026-10-21\"}, \"body\": {\"max_tokens\": 2048, \"messages\": [{\"role\": \"user\", \"content\": \"Which of OPP-1042, OPP-1046 and OPP-1048 has the largest requested discount, and which account is each for?\"}, {\"role\": \"assistant\", \"content\": [{\"id\": \"toolu_01NQR7Ljzve71ehELyt2NCnB\", \"caller\": {\"type\": \"direct\"}, \"input\": {\"opportunity_id\": \"OPP-1042\"}, \"name\": \"get_opportunity\", \"type\": \"tool_use\"}, {\"id\": \"toolu_01X9GGLJFuJH4SHEEPUdHmNE\", \"caller\": {\"type\": \"direct\"}, \"input\": {\"opportunity_id\": \"OPP-1046\"}, \"name\": \"get_opportunity\", \"type\": \"tool_use\"}, {\"id\": \"toolu_01X8iVufjPxKgtFbtGTxSChx\", \"caller\": {\"type\": \"direct\"}, \"input\": {\"opportunity_id\": \"OPP-1048\"}, \"name\": \"get_opportunity\", \"type\": \"tool_use\"}]}, {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01NQR7Ljzve71ehELyt2NCnB\", \"content\": \"{\\\"opportunity_id\\\": \\\"OPP-1042\\\", \\\"account_id\\\": \\\"ACC-017\\\", \\\"stage\\\": \\\"proposal\\\", \\\"engagement_type\\\": \\\"fixed_price\\\", \\\"currency\\\": \\\"EUR\\\", \\\"service_line\\\": \\\"data\\\", \\\"start_date\\\": \\\"2026-11-02\\\", \\\"effort\\\": [{\\\"role\\\": \\\"R-ARCH\\\", \\\"location\\\": \\\"UK\\\", \\\"days\\\": 20}], \\\"requested_discount_pct\\\": 12, \\\"travel_required\\\": true, \\\"crm_notes\\\": \\\"Discovery call 2026-09-14: customer wants a data platform assessment for its Hamburg hub. Procurement asked for 12% off list.\\\"}\"}, {\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01X9GGLJFuJH4SHEEPUdHmNE\", \"content\": \"{\\\"opportunity_id\\\": \\\"OPP-1046\\\", \\\"account_id\\\": \\\"ACC-013\\\", \\\"stage\\\": \\\"proposal\\\", \\\"engagement_type\\\": \\\"fixed_price\\\", \\\"currency\\\": \\\"EUR\\\", \\\"service_line\\\": \\\"ai\\\", \\\"start_date\\\": \\\"2027-01-11\\\", \\\"effort\\\": [{\\\"role\\\": \\\"R-ARCH\\\", \\\"location\\\": \\\"UK\\\", \\\"days\\\": 60}, {\\\"role\\\": \\\"R-DENG\\\", \\\"location\\\": \\\"PL\\\", \\\"days\\\": 450}, {\\\"role\\\": \\\"R-MLE\\\", \\\"location\\\": \\\"IN\\\", \\\"days\\\": 180}, {\\\"role\\\": \\\"R-PM\\\", \\\"location\\\": \\\"UK\\\", \\\"days\\\": 40}, {\\\"role\\\": \\\"R-CLOUD\\\", \\\"location\\\": \\\"PL\\\", \\\"days\\\": 120}], \\\"requested_discount_pct\\\": 22, \\\"travel_required\\\": true, \\\"crm_notes\\\": \\\"Grid-asset predictive maintenance programme. CFO pushing hard on price; asked for 22% off.\\\"}\"}, {\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01X8iVufjPxKgtFbtGTxSChx\", \"content\": \"{\\\"opportunity_id\\\": \\\"OPP-1048\\\", \\\"account_id\\\": \\\"ACC-002\\\", \\\"stage\\\": \\\"negotiation\\\", \\\"engagement_type\\\": \\\"fixed_price\\\", \\\"currency\\\": \\\"EUR\\\", \\\"service_line\\\": \\\"cloud\\\", \\\"start_date\\\": \\\"2026-12-01\\\", \\\"effort\\\": [{\\\"role\\\": \\\"R-CLOUD\\\", \\\"location\\\": \\\"UK\\\", \\\"days\\\": 150}, {\\\"role\\\": \\\"R-ARCH\\\", \\\"location\\\": \\\"UK\\\", \\\"days\\\": 40}, {\\\"role\\\": \\\"R-DENG\\\", \\\"location\\\": \\\"PL\\\", \\\"days\\\": 120}], \\\"requested_discount_pct\\\": 9, \\\"travel_required\\\": false, \\\"crm_notes\\\": \\\"Cloud landing zone and migration factory. The workshop format from last year worked well with this buyer.\\\"}\"}]}], \"model\": \"claude-sonnet-5-5\", \"output_config\": {\"effort\": \"low\"}, \"tools\": [{\"name\": \"get_opportunity\", \"description\": \"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. Returns its account ID, stage, requested discount, staffing and CRM notes.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"opportunity_id\": {\"type\": \"string\", \"description\": \"e.g. OPP-1042\"}}, \"required\": [\"opportunity_id\"]}}]}}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 11,
+    "t_ms": 9676,
+    "type": "llm.request"
+   },
+   {
+    "data_json": "{\"call\": 2, \"status\": 200, \"stream\": false, \"ms\": 1649, \"headers\": {\"alt-svc\": \"h3=\\\":443\\\"; ma=2592000\", \"content-security-policy\": \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'\", \"content-type\": \"application/json\", \"date\": \"Thu, 12 Nov 2026 11:28:05 GMT, Thu, 12 Nov 2026 11:28:05 GMT\", \"referrer-policy\": \"strict-origin-when-cross-origin\", \"strict-transport-security\": \"max-age=31536000; includeSubDomains\", \"via\": \"1.1 Caddy\", \"x-content-type-options\": \"nosniff\", \"x-frame-options\": \"DENY\", \"x-litellm-call-id\": \"8d55fb76-ffc6-4204-9878-521f95969737\", \"x-litellm-key-max-budget\": \"50.0\", \"x-litellm-key-rpm-limit\": \"60\", \"x-litellm-key-spend\": \"0.23789549999999998\", \"x-litellm-key-tpm-limit\": \"100000\", \"x-litellm-model-id\": \"732240fea44548f4135d6ae75725c8b982ba24ea432057ab51f67a82450932a1\", \"x-litellm-response-cost-discount-amount\": \"0.0\", \"x-litellm-response-cost-margin-amount\": \"0.0\", \"x-litellm-response-cost-margin-percent\": \"0.0\", \"x-litellm-response-cost-original\": \"0.004556\", \"x-litellm-version\": \"1.84.1\", \"transfer-encoding\": \"chunked\"}, \"body\": {\"model\": \"claude-sonnet-5-5\", \"id\": \"msg_011CgxxKwRvQJS1DU6aKBTAA\", \"type\": \"message\", \"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"**OPP-1046 has the largest requested discount, at 22%.**\\n\\n| Opportunity | Account | Requested discount |\\n|---|---|---|\\n| OPP-1042 | ACC-017 | 12% |\\n| OPP-1046 | ACC-013 | 22% |\\n| OPP-1048 | ACC-002 | 9% |\\n\\nThe CRM notes say the CFO on OPP-1046 is pushing hard on price. That deal is a large AI programme for grid-asset predictive maintenance.\"}], \"container\": null, \"stop_reason\": \"end_turn\", \"stop_sequence\": null, \"stop_details\": null, \"usage\": {\"input_tokens\": 1448, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 166, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 1614}, \"diagnostics\": null}, \"usage\": {\"input_tokens\": 1448, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"cache_creation\": {\"ephemeral_5m_input_tokens\": 0, \"ephemeral_1h_input_tokens\": 0}, \"output_tokens\": 166, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"inference_geo\": \"global\", \"speed\": \"standard\", \"total_tokens\": 1614}, \"cost_usd\": 0.004556}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 12,
+    "t_ms": 11326,
+    "type": "llm.response"
+   },
+   {
+    "data_json": "{\"text\": \"turn 2: stop_reason=end_turn tool_use blocks=0\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 13,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"answer: **OPP-1046 has the largest requested discount, at 22%.**\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 14,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 15,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"| Opportunity | Account | Requested discount |\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 16,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"|---|---|---|\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 17,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"| OPP-1042 | ACC-017 | 12% |\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 18,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"| OPP-1046 | ACC-013 | 22% |\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 19,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"| OPP-1048 | ACC-002 | 9% |\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 20,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 21,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"text\": \"The CRM notes say the CFO on OPP-1046 is pushing hard on price. That deal is a large AI programme for grid-asset predictive maintenance.\"}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 22,
+    "t_ms": 11340,
+    "type": "console.out"
+   },
+   {
+    "data_json": "{\"outcome\": \"ok\", \"exit_code\": 0}",
+    "run_id": "20261112-165755-2ef9b8",
+    "seq": 23,
+    "t_ms": 12355,
+    "type": "run.exit"
    }
   ],
   "runs": [
@@ -1458,6 +1870,45 @@
     "outcome": "ok",
     "run_id": "20261112-161026-008b40",
     "started_at": "2026-11-12T10:40:26.073+00:00",
+    "step_id": "m02.lab02.s03"
+   },
+   {
+    "checks_passed": 0,
+    "checks_total": 0,
+    "cost_usd": 0.001588,
+    "ended_at": "2026-11-12T11:16:11.716+00:00",
+    "mode": "live",
+    "model": "claude-opus-5-5",
+    "module_id": "m02",
+    "outcome": "ok",
+    "run_id": "20261112-164600-0770f8",
+    "started_at": "2026-11-12T11:16:00.529+00:00",
+    "step_id": "m02.lab02.s01"
+   },
+   {
+    "checks_passed": 0,
+    "checks_total": 0,
+    "cost_usd": 0.000914,
+    "ended_at": "2026-11-12T11:16:37.329+00:00",
+    "mode": "live",
+    "model": "claude-sonnet-5-5",
+    "module_id": "m02",
+    "outcome": "ok",
+    "run_id": "20261112-164626-119f3b",
+    "started_at": "2026-11-12T11:16:26.207+00:00",
+    "step_id": "m02.lab02.s01"
+   },
+   {
+    "checks_passed": 0,
+    "checks_total": 0,
+    "cost_usd": 0.007266,
+    "ended_at": "2026-11-12T11:28:07.853+00:00",
+    "mode": "live",
+    "model": "claude-sonnet-5-5",
+    "module_id": "m02",
+    "outcome": "ok",
+    "run_id": "20261112-165755-2ef9b8",
+    "started_at": "2026-11-12T11:27:55.152+00:00",
     "step_id": "m02.lab02.s03"
    }
   ],
@@ -1593,32 +2044,92 @@
     "run_id": "20261112-161026-008b40",
     "source": "run",
     "ts": "2026-11-12T10:40:38.348+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "cost_usd": 0.001588,
+    "id": 12,
+    "input_tokens": 22,
+    "model": "claude-opus-5-5",
+    "output_tokens": 75,
+    "run_id": "20261112-164600-0770f8",
+    "source": "run",
+    "ts": "2026-11-12T11:16:10.978+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "cost_usd": 0.000914,
+    "id": 13,
+    "input_tokens": 22,
+    "model": "claude-sonnet-5-5",
+    "output_tokens": 87,
+    "run_id": "20261112-164626-119f3b",
+    "source": "run",
+    "ts": "2026-11-12T11:16:36.384+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "cost_usd": 0.00271,
+    "id": 14,
+    "input_tokens": 485,
+    "model": "claude-sonnet-5-5",
+    "output_tokens": 174,
+    "run_id": "20261112-165755-2ef9b8",
+    "source": "run",
+    "ts": "2026-11-12T11:28:04.413+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "cost_usd": 0.004556,
+    "id": 15,
+    "input_tokens": 1448,
+    "model": "claude-sonnet-5-5",
+    "output_tokens": 166,
+    "run_id": "20261112-165755-2ef9b8",
+    "source": "run",
+    "ts": "2026-11-12T11:28:06.478+00:00"
+   },
+   {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 12078,
+    "cost_usd": 0.0476155,
+    "id": 16,
+    "input_tokens": 4,
+    "model": "claude-sonnet-5-5",
+    "output_tokens": 122,
+    "run_id": null,
+    "source": "tutor",
+    "ts": "2026-11-12T11:46:21.418+00:00"
    }
   ],
   "step_progress": [
    {
-    "attempts": 8,
+    "attempts": 10,
     "code_hash": null,
     "completed_at": null,
-    "last_opened_at": "2026-11-11T13:57:36.893+00:00",
+    "last_opened_at": "2026-11-12T11:19:18.507+00:00",
     "module_id": "m02",
-    "status": "not_started",
+    "status": "in_progress",
     "step_id": "m02.lab02.s01"
    },
    {
     "attempts": 1,
     "code_hash": null,
     "completed_at": null,
-    "last_opened_at": "2026-11-11T14:03:30.312+00:00",
+    "last_opened_at": "2026-11-12T11:45:15.344+00:00",
     "module_id": "m02",
-    "status": "not_started",
+    "status": "in_progress",
     "step_id": "m02.lab02.s02"
    },
    {
-    "attempts": 1,
+    "attempts": 2,
     "code_hash": null,
     "completed_at": null,
-    "last_opened_at": "2026-11-12T10:40:26.074+00:00",
+    "last_opened_at": "2026-11-12T11:39:19.964+00:00",
     "module_id": "m02",
     "status": "in_progress",
     "step_id": "m02.lab02.s03"
@@ -1696,6 +2207,34 @@
     "sent_json": "[{\"text\": \"That's e3's p3, and you haven't committed your predictions yet, so I won't say what the gap is made of. Here's where to look.\\n\\n**Hint 1 (where to look):** Compare two numbers from your run: `output=79` on line 23's usage line, and the answer text printed on line 20. The gap is the first minus the second, counted in tokens, not characters.\\n\\nTo get the text's tokens, paste the answer into the **Count tokens** tool. It adds a small wrapper of about 8 tokens for the message, which the lab subtracts for you.\\n\\n**A question to carry with you:** your `blocks:` line shows `['text']`. In the response body, is there anything besides the text that could be generating tokens? Make your guess for p3 from that.\\n\\nTell me your guess, or tell me when you've counted, and I'll give the next hint.\", \"type\": \"text\"}]",
     "step_id": "m02.lab02.s01",
     "usage_json": "{\"cache_creation\": {\"ephemeral_1h_input_tokens\": 0, \"ephemeral_5m_input_tokens\": 1488}, \"cache_creation_input_tokens\": 1488, \"cache_read_input_tokens\": 9838, \"inference_geo\": \"global\", \"input_tokens\": 4, \"output_tokens\": 266, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"speed\": \"standard\", \"total_tokens\": 270}"
+   },
+   {
+    "content": "Which client is OPP-1042 for? give me a hint",
+    "cost_usd": 0.0,
+    "created_at": "2026-11-12T11:46:21.421+00:00",
+    "guide_id": "g1",
+    "id": 3,
+    "model": null,
+    "ms": null,
+    "request_json": null,
+    "role": "user",
+    "sent_json": "[{\"type\": \"text\", \"text\": \"<lab_context guide_step=\\\"g1\\\">\\nHe is on guide step 1 of 9: \\\"Meet Meridian\\\".\\nOn this step:\\n- check c1: not answered yet: don't reveal its answer\\n- check c2: not answered yet: don't reveal its answer\\n\\nHis code now:\\n--- main.py ---\\n   1  import json\\n   2  import os\\n   3  \\n   4  import anthropic\\n   5  import httpx\\n   6  \\n   7  client = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\\n   8  MODEL = os.getenv(\\\"LAB_MODEL\\\", \\\"claude-opus-5-5\\\")\\n   9  MERIDIAN = os.environ[\\\"MERIDIAN_API_URL\\\"]  # the lab starts the mock Meridian API for each run\\n  10  AUTH = {\\\"Authorization\\\": f\\\"Bearer {os.environ['MERIDIAN_API_TOKEN']}\\\"}\\n  11  \\n  12  # The tool as the model sees it: a name, a description, and a JSON Schema for its input.\\n  13  TOOLS = [{\\n  14      \\\"name\\\": \\\"get_opportunity\\\",\\n  15      \\\"description\\\": \\\"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. \\\"\\n  16                     \\\"Returns its account ID, stage, requested discount, staffing and CRM notes.\\\",\\n  17      \\\"input_schema\\\": {\\n  18          \\\"type\\\": \\\"object\\\",\\n  19          \\\"properties\\\": {\\\"opportunity_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"e.g. OPP-1042\\\"}},\\n  20          \\\"required\\\": [\\\"opportunity_id\\\"],\\n  21      },\\n  22  }]\\n  23  \\n  24  \\n  25  # The tool as your code runs it: a plain function that calls the Meridian API.\\n  26  def get_opportunity(opportunity_id: str) -> dict:\\n  27      r = httpx.get(f\\\"{MERIDIAN}/opportunities/{opportunity_id}\\\", headers=AUTH, timeout=10)\\n  28      return r.json()\\n  29  \\n  30  \\n  31  RUN = {\\\"get_opportunity\\\": get_opportunity}  # tool name -> the function that does the work\\n  32  \\n  33  messages = [{\\\"role\\\": \\\"user\\\", \\\"content\\\": \\\"What discount did procurement ask for on OPP-1042, \\\"\\n  34                                          \\\"and which account is it for?\\\"}]\\n  35  \\n  36  for turn in range(1, 6):  # a cap on turns: never loop forever\\n  37      response = client.messages.create(\\n  38          model=MODEL,\\n  39          max_tokens=2048,\\n  40          output_config={\\\"effort\\\": \\\"low\\\"},\\n  41          tools=TOOLS,\\n  42          messages=messages,\\n  43      )\\n  44      print(f\\\"turn {turn}: stop_reason={response.stop_reason} blocks={[b.type for b in response.content]}\\\")\\n  45      messages.append({\\\"role\\\": \\\"assistant\\\", \\\"content\\\": response.content})  # all of it, as it came back\\n  46      if response.stop_reason != \\\"tool_use\\\":\\n  47          break\\n  48  \\n  49      results = []\\n  50      for block in response.content:\\n  51          if block.type == \\\"tool_use\\\":\\n  52              output = RUN[block.name](**block.input)\\n  53              print(f\\\"  ran {block.name}({json.dumps(block.input)}): {len(json.dumps(output))} characters back\\\")\\n  54              results.append({\\\"type\\\": \\\"tool_result\\\", \\\"tool_use_id\\\": block.id, \\\"content\\\": json.dumps(output)})\\n  55      messages.append({\\\"role\\\": \\\"user\\\", \\\"content\\\": results})  # every result, in one user message\\n  56  \\n  57  if response.stop_reason == \\\"end_turn\\\":\\n  58      print(\\\"answer:\\\", \\\"\\\".join(b.text for b in response.content if b.type == \\\"text\\\"))\\n  59  else:\\n  60      print(\\\"stopped without an answer: stop_reason =\\\", response.stop_reason)\\n\\nHis latest run:\\nHe hasn't run this step yet.\\n</lab_context>\"}, {\"type\": \"text\", \"text\": \"Which client is OPP-1042 for? give me a hint\"}]",
+    "step_id": "m02.lab02.s02",
+    "usage_json": null
+   },
+   {
+    "content": "Start with where the answer lives. Open the **Meridian data** page from the top bar and find OPP-1042 in the opportunities list.\n\nThe opportunity record doesn't hold a client name. Which field does it hold that points to a client? Once you've found it, you'll need a second lookup on the same page.\n\nTell me what you find, and I'll give the next hint if you're still stuck.",
+    "cost_usd": 0.0476155,
+    "created_at": "2026-11-12T11:46:21.421+00:00",
+    "guide_id": "g1",
+    "id": 4,
+    "model": "claude-sonnet-5-5",
+    "ms": 4264,
+    "request_json": "{\"model\": \"claude-sonnet-5-5\", \"max_tokens\": 4000, \"output_config\": {\"effort\": \"low\"}, \"system\": [{\"type\": \"text\", \"text\": \"You are the tutor inside FDE Academy, a lab where one learner, Ashish, learns agent engineering with Python and the Anthropic SDK by running real code and reading the real API traffic it produces.\\n\\nThe lesson he is doing comes next, in full: its teaching text, every check with its answer, the experiments, the quiz and notes for you. Each of his questions arrives with a <lab_context> block: the guide step he is on, which of its checks he has answered, his code now and his latest run.\\n\\nHow you answer:\\n- Ground every answer in what he actually has. Quote his run's values (usage, content blocks, stop_reason, console lines) and point at his code by line number. If his code changed since his last run, say the run doesn't show it yet.\\n- Teach with questions and hints, not answers. Start with one short question that points him where to look. If he is still stuck, give one hint per reply, in three levels: where to look, then what to notice there, then nearly the answer. Explain outright only after the third hint, or when he asks you to explain.\\n- Never reveal the answer to a check, prediction or quiz item he hasn't submitted yet; <lab_context> says which are still open. Once he has answered one, discuss it freely, including why his answer was wrong.\\n- Keep each reply under about 120 words, in plain markdown, with at most one short code snippet.\\n- Trust the lesson text and his run over your memory of the API: the lesson was written from measured runs, and the API changes. If neither settles a question, say you don't know.\\n- Stay on this lesson. If he asks about something else, say it is outside this step.\"}, {\"type\": \"text\", \"text\": \"<lesson id=\\\"m02.lab02.s02\\\" title=\\\"The manual loop\\\">\\n<intro>\\n# The manual loop\\n\\nIn s01 the model could only answer from what it already knew. Here you give it a tool, a lookup in the Meridian CRM, and work through the loop every agent is built on: call the model, run the tool it asks for, send the result back, and call again until it answers. The **Timeline**, **Messages** and **Mock API** panels on the right show each turn of your run.\\n</intro>\\n\\n<step_yaml>\\nid: s02\\ntitle: \\\"The manual loop\\\"\\nfiles:\\n  main.py: starter/main.py\\nsolution:\\n  main.py: solution/main.py\\npanels: [console, timeline, messages, fixture]\\nrun:\\n  fixture: meridian\\nhints:\\n  - \\\"Print response.stop_reason after every call. Which value makes your loop call again?\\\"\\n  - \\\"A tool_result goes in a user message, and its tool_use_id must equal the tool_use block's id.\\\"\\n\\nguide:\\n  - id: g1\\n    title: \\\"Meet Meridian\\\"\\n    teach: |\\n      From this step on, the lessons' tools work on the data of one made-up company, so you can\\n      check every answer against the records.\\n\\n      **Northwind Meridian Consulting** sells data, cloud and AI projects in the UK, the EU, the\\n      US and APAC. Its sales team tracks every possible deal in a CRM, and all of its sales data\\n      sits behind one small internal REST API. The same company is the scenario of Project 04,\\n      the proposal builder.\\n\\n      | ID | What it is | Example |\\n      |---|---|---|\\n      | `OPP-1042` | An **opportunity**: a possible sale being worked on, with its stage, the staffing it needs (roles \\u00d7 days), the discount the client's procurement asked for, and CRM notes | OPP-1042: a data platform assessment for M\\u00fcller Logistik's Hamburg hub; procurement asked for 12% off |\\n      | `ACC-017` | An **account**: a client company, with its past deals | ACC-017: M\\u00fcller Logistik GmbH, logistics, EU |\\n      | `R-ARCH` | A **role** on the rate card, which gives its day rate per location, and the dates each rate is valid | R-ARCH in the UK: \\u20ac1,150 a day from 2026-10-01 (rate card RC-2026.1) |\\n\\n      The API has three read endpoints. The lab starts a mock of it for every run of a step that\\n      needs it, and your code reads its URL and token from the environment:\\n\\n      | Request | Returns |\\n      |---|---|\\n      | `GET /opportunities/{id}` | One opportunity, or a 404 |\\n      | `GET /accounts?page=` | The accounts with their past deals, 10 per page |\\n      | `GET /rate-card?role=&location=&as_of=` | The day rates that match |\\n\\n      There are seven opportunities, OPP-1042 to OPP-1048, and 17 accounts. The\\n      **[Meridian data](/meridian)** page in the top bar lists every record the mock API serves.\\n    do: \\\"Open **[Meridian data](/meridian)** from the top bar, and find OPP-1042 and its account.\\\"\\n    check:\\n      - id: c1\\n        type: mcq\\n        prompt: \\\"What is OPP-1042?\\\"\\n        options:\\n          - \\\"A support ticket\\\"\\n          - \\\"A sales opportunity: a possible deal with a client, tracked in Meridian's CRM\\\"\\n          - \\\"A client company\\\"\\n          - \\\"A day rate on the rate card\\\"\\n        answer: 1\\n        explanation: \\\"OPP-\\u2026 IDs are opportunities. ACC-\\u2026 IDs are the client accounts they belong to: OPP-1042's is ACC-017.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"Which client is OPP-1042 for?\\\"\\n        options: [\\\"Aldgate Retail Group plc\\\", \\\"M\\u00fcller Logistik GmbH\\\", \\\"Nordhavn Shipping A/S\\\", \\\"Tasman Power & Gas Pty Ltd\\\"]\\n        answer: 1\\n        explanation: \\\"Its account_id is ACC-017, and ACC-017 is M\\u00fcller Logistik GmbH. The opportunity holds only the account ID; the name is in the account record.\\\"\\n  - id: g2\\n    title: \\\"Define a tool\\\"\\n    code: [\\\"13-22\\\", 41]\\n    teach: |\\n      In s01 the model could only answer from what it already knew, and it knows nothing about\\n      Meridian's CRM. To let it look things up, you give it a **tool**. The model never runs\\n      anything itself: a tool is a *description* you send with the request, plus a promise that\\n      your code will do the work when the model asks.\\n\\n      **Lines 13 to 22** define one tool, `get_opportunity`:\\n\\n      | Field | What it's for |\\n      |---|---|\\n      | `name` | What the model writes when it wants the tool. Your code uses it to pick the function to run. |\\n      | `description` | When to use the tool and what it returns. The model decides whether to call it from this text, so write it like documentation for a new colleague. |\\n      | `input_schema` | A JSON Schema for the input. The model writes its input to match it: here, an object with a required string `opportunity_id`. |\\n\\n      **Line 41** sends the list as `tools=TOOLS`. Tools are part of the request, like the\\n      messages, and the API keeps nothing between calls, so they're sent again on every call.\\n\\n      They also cost tokens. Measured with `count_tokens`, your question alone is **33 tokens**,\\n      and the same question with the tool is **469**. About 436 tokens go on the definition plus\\n      the instructions the API adds to explain tool use to the model, on every call.\\n    do: \\\"Press **Run**. Under **Model calls**, open **Call 1** and find `tools` in the **Request body**.\\\"\\n    show: [request.tool_names, first.response.usage.input_tokens]\\n    notice: |\\n      Call 1's `input_tokens` is about 469, though your question is one sentence: most of it is\\n      the tool. An agent with twenty tools can spend thousands of tokens per call on definitions\\n      before the conversation even starts. Module 02-A, \\\"Designing tools\\\", comes back to this.\\n    check:\\n      - id: c1\\n        type: mcq\\n        prompt: \\\"Who runs get_opportunity when the model asks for it?\\\"\\n        options:\\n          - \\\"The model, on Anthropic's servers\\\"\\n          - \\\"The gateway\\\"\\n          - \\\"Your code, in main.py\\\"\\n          - \\\"The Meridian API, by itself\\\"\\n        answer: 2\\n        explanation: \\\"The model only writes a request for it (a tool_use block). Your code decides whether and how to run it: lines 26 to 28 and line 52.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"What does input_schema tell the model?\\\"\\n        options:\\n          - \\\"How to call the Meridian API\\\"\\n          - \\\"The shape of the input it must write for this tool\\\"\\n          - \\\"What the tool returns\\\"\\n          - \\\"Which models may use the tool\\\"\\n        answer: 1\\n        explanation: \\\"It's a JSON Schema for the tool's input, so the model writes {\\\\\\\"opportunity_id\\\\\\\": \\\\\\\"OPP-1042\\\\\\\"}. The URL, the token and the shape of the result stay in your code.\\\"\\n\\n  - id: g3\\n    title: \\\"The model asks for it\\\"\\n    code: [44, \\\"46-47\\\"]\\n    teach: |\\n      Call 1 doesn't come back with an answer. It comes back with a **request**: `stop_reason`\\n      is `tool_use`, and `content` holds a `tool_use` block like this one:\\n\\n      ```json\\n      {\\\"type\\\": \\\"tool_use\\\", \\\"id\\\": \\\"toolu_01RLMp...\\\", \\\"name\\\": \\\"get_opportunity\\\",\\n       \\\"input\\\": {\\\"opportunity_id\\\": \\\"OPP-1042\\\"}}\\n      ```\\n\\n      - `name` is the tool it wants, from your `tools` list.\\n      - `input` matches your `input_schema`. The model took `OPP-1042` from your question.\\n      - `id` is unique to this request. Your code sends the result back under this id.\\n\\n      This is the s01 table at work: **`tool_use` means \\\"run the tools I asked for, send me the\\n      results, and call me again\\\"**. `end_turn` would mean it had finished. **Line 44** prints\\n      `stop_reason` and the block types, and **lines 46 to 47** leave the loop on anything but\\n      `tool_use`.\\n\\n      The content can also hold a `text` block before the `tool_use` (\\\"I'll look that up\\\") or a\\n      `thinking` block. Filter by `block.type`, as in s01: never assume positions.\\n    do: \\\"Read the `turn 1:` line in the **Console**, then open Call 1's **Response body**.\\\"\\n    show: [first.response.stop_reason, first.response.blocks, first.response.tool_name, first.response.tool_input]\\n    notice: |\\n      At effort `low` the model went straight to the tool in every measured run: one `tool_use`\\n      block, with no text and no thinking, in 60 output tokens. Its input is exactly the ID from\\n      your question.\\n    check:\\n      - id: c1\\n        type: mcq\\n        prompt: \\\"What stop_reason did Call 1 come back with?\\\"\\n        options: [\\\"end_turn\\\", \\\"tool_use\\\", \\\"max_tokens\\\"]\\n        answer_from: first.response.stop_reason\\n        explanation: \\\"tool_use: the model needs a tool run before it can answer. The turn 1: line in the Console and Call 1's response body both show it.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"Call 1 came back with stop_reason tool_use. What does your code do next?\\\"\\n        options:\\n          - \\\"Print the text: the model is done\\\"\\n          - \\\"Run the tool it asked for, send the result back, and call the model again\\\"\\n          - \\\"Call the model again with the same messages\\\"\\n          - \\\"Stop: tool_use is an error\\\"\\n        answer: 1\\n        explanation: \\\"tool_use means: run these tools, then call me again with their results. end_turn is the one that means done.\\\"\\n\\n  - id: g4\\n    title: \\\"Run the tool\\\"\\n    code: [\\\"25-31\\\", 52]\\n    teach: |\\n      Now your code does the work. **Line 52** looks up the function by the name the model wrote\\n      (`RUN[block.name]`, from line 31) and calls it with the model's input as keyword arguments:\\n      `get_opportunity(opportunity_id=\\\"OPP-1042\\\")`.\\n\\n      **Lines 26 to 28** are an ordinary HTTP call to the Meridian API. The lab starts a mock of\\n      it for each run, and gives your code its URL and a token (lines 9 and 10).\\n\\n      Notice what the model never sees: the URL, the token, the HTTP request. It sees the tool's\\n      name and description, and later only the result you choose to send back. That boundary is\\n      where you enforce rules: which tools exist, what they may touch, what goes back. s04,\\n      \\\"Gate and block\\\", builds on it.\\n\\n      The tool runs **between** two model calls. On the **Timeline** it's the `get_opportunity`\\n      row between Call 1 and Call 2, with its API request under it.\\n    do: \\\"Open the **Timeline** and the **Mock API \\u00b7 request log** panels on the right.\\\"\\n    show: [api.requests, api.last_request]\\n    notice: |\\n      One request, `GET /opportunities/OPP-1042`, answered with a 200. The whole tool step,\\n      from Call 1's response to Call 2's request, takes about 0.1 s, while each model call takes\\n      2 to 3 seconds: the model calls are most of the run's time.\\n    check:\\n      - id: c1\\n        type: numeric\\n        prompt: \\\"How many requests did your run make to the mock Meridian API?\\\"\\n        answer_from: api.requests\\n        explanation: \\\"One. The model asked for one tool call, and your code made one API request for it.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"The Meridian API needs a bearer token. Where is it in this run?\\\"\\n        options:\\n          - \\\"In the tool's description\\\"\\n          - \\\"In the messages, so the model can call the API\\\"\\n          - \\\"Only in your code's environment: the model never sees it\\\"\\n          - \\\"In the tool_use block's input\\\"\\n        answer: 2\\n        explanation: \\\"Line 10 reads it from the environment, and line 27 sends it. Nothing the model reads or writes contains it.\\\"\\n\\n  - id: g5\\n    title: \\\"Send the result back\\\"\\n    code: [45, \\\"54-55\\\"]\\n    teach: |\\n      Call 2 must carry the whole conversation so far, because the API is stateless (s01, step 1).\\n      Two appends build it.\\n\\n      1. **Line 45** appends Call 1's response as an `assistant` message: **all of\\n         `response.content`, exactly as it came back**, so any thinking and text blocks go back\\n         with the `tool_use`. Opus 5.5 ties its thinking blocks to the turn they came from, so\\n         don't pick blocks out or rewrite them.\\n      2. **Lines 54 and 55** append one `user` message holding a `tool_result` block for each\\n         `tool_use`:\\n\\n      ```python\\n      {\\\"type\\\": \\\"tool_result\\\", \\\"tool_use_id\\\": block.id, \\\"content\\\": json.dumps(output)}\\n      ```\\n\\n      `tool_use_id` copies the `id` of the `tool_use` block: that is how the API pairs each result\\n      with its request. `content` is a string, here the opportunity as JSON.\\n\\n      So Call 2's `messages` is: `[0]` your question, `[1]` the assistant's `tool_use`, and\\n      `[2]` your `tool_result`. The **Messages** panel shows that list, and marks the messages\\n      that are new since Call 1.\\n    do: \\\"Open the **Messages** panel. Switch between **Call 1** and **Call 2**, and match the `tool_result`'s `tool_use_id` with the `tool_use`'s `id`.\\\"\\n    show: [request.messages, request.last_message]\\n    notice: |\\n      Call 2 sent 3 messages, and the last one is `user: tool_result`. A tool result comes from\\n      the **user** side, because your code is the one answering the model. There is no \\\"tool\\\"\\n      role in the Messages API.\\n    check:\\n      - id: c1\\n        type: mcq\\n        prompt: \\\"Which role carries a tool_result?\\\"\\n        options: [\\\"assistant\\\", \\\"user\\\", \\\"tool\\\", \\\"system\\\"]\\n        answer: 1\\n        explanation: \\\"user. The Messages API has only user and assistant turns, and the results from your code go in a user message.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"How does the API know which tool_use a tool_result answers?\\\"\\n        options:\\n          - \\\"By their order in the message\\\"\\n          - \\\"By the tool's name\\\"\\n          - \\\"The tool_result's tool_use_id equals the tool_use block's id\\\"\\n          - \\\"The SDK pairs them for you\\\"\\n        answer: 2\\n        explanation: \\\"By id. Line 54 copies block.id into tool_use_id. With several tool calls in one turn (s03), that's the only thing that ties each result to its request.\\\"\\n\\n  - id: g6\\n    title: \\\"Loop until end_turn\\\"\\n    code: [36, \\\"46-47\\\", \\\"57-60\\\"]\\n    teach: |\\n      Put those steps in a loop and you have an agent:\\n\\n      ```\\n      call the model\\n        stop_reason is tool_use   ->  run each tool, append the results, call again\\n        anything else             ->  stop\\n      ```\\n\\n      **Line 36** loops, and **lines 46 to 47** decide. Here it takes two calls: Call 2 has the\\n      opportunity in its messages, so it answers and returns `end_turn`.\\n\\n      Every loop needs two guards:\\n\\n      - **A cap on turns.** Line 36 allows at most 5 calls. A model that keeps asking for tools,\\n        or a tool that keeps failing, would otherwise loop, and spend, without end.\\n      - **A check of how it ended.** The loop also stops on `max_tokens` (cut off), on `refusal`,\\n        or at the cap. Only `end_turn` means the answer is complete, so lines 57 to 60 print an\\n        answer only then.\\n\\n      You pay for both calls, and Call 2 costs more, because it resends everything Call 1 sent\\n      plus the tool exchange.\\n    do: \\\"Read the Console from `turn 1:` to `answer:`, then the input tokens per call under the **Timeline**.\\\"\\n    show: [run.calls, response.stop_reason, run.cost_usd]\\n    notice: |\\n      Two calls, about $0.008 to $0.009 for the run, against about $0.003 for Call 1 alone.\\n      Call 2 has more input (the history) and more output (the written answer).\\n    check:\\n      - id: c1\\n        type: mcq\\n        prompt: \\\"Which stop_reason ended your loop?\\\"\\n        options: [\\\"end_turn\\\", \\\"tool_use\\\", \\\"max_tokens\\\", \\\"refusal\\\"]\\n        answer_from: response.stop_reason\\n        explanation: \\\"end_turn: the model had what it needed and answered. The loop leaves at line 47, and line 58 prints the answer.\\\"\\n      - id: c2\\n        type: mcq\\n        prompt: \\\"Your loop reaches its cap of 5 calls, and the last stop_reason is still tool_use. What should the code report?\\\"\\n        options:\\n          - \\\"The last text it got, as the answer\\\"\\n          - \\\"That it stopped without an answer: the task isn't finished\\\"\\n          - \\\"Nothing: raise the cap and keep calling\\\"\\n        answer: 1\\n        explanation: \\\"The cap is a safety stop, not success. Lines 57 to 60 print an answer only on end_turn, and say plainly when the loop stopped without one.\\\"\\n\\n  - id: g7\\n    title: \\\"History only grows\\\"\\n    teach: |\\n      Every call sends the **whole** conversation again, and an agent's conversation only gets\\n      longer: each turn adds an assistant message and a tool result. Two things follow.\\n\\n      - **Input tokens grow with every turn.** Each call pays again for everything before it,\\n        every tool result included. A large tool result (a whole document, a page of records) is\\n        paid for again on every later call.\\n      - **Never edit an earlier turn.** Append; don't rewrite. Opus 5.5 ties its thinking blocks\\n        to the conversation they came from, and prompt caching (Module 01) needs the start of the\\n        request to stay exactly the same from call to call.\\n\\n      Predict how much Call 2 grows, then measure it.\\n    experiment: e1\\n\\n  - id: g8\\n    title: \\\"Drop a tool_result\\\"\\n    teach: |\\n      The API checks the structure of the conversation on every call. One of its rules: **every\\n      `tool_use` must be answered by a `tool_result` with the same id, in the very next\\n      message.** A loop that loses one (a tool raised an exception, or a bug skipped the append)\\n      gets its call rejected.\\n\\n      Break it on purpose: stop the results from being sent, and predict what happens.\\n    experiment: e2\\n\\n  - id: g9\\n    title: \\\"Quiz\\\"\\n    teach: |\\n      Three questions on the whole step. Every answer is saved, and a miss comes back in spaced\\n      review on the home page until you get it right.\\n    quiz: true\\n\\nexperiments:\\n  - id: e1\\n    title: \\\"Watch the history grow\\\"\\n    question: \\\"What does Call 2 send that Call 1 didn't, and how big is it?\\\"\\n    predict:\\n      - id: p1\\n        type: numeric\\n        prompt: \\\"How many messages will Call 2's request hold?\\\"\\n        answer_from: request.messages\\n      - id: p2\\n        type: mcq\\n        prompt: \\\"Call 2's input tokens, compared with Call 1's?\\\"\\n        options:\\n          - \\\"About the same (under 1.2x)\\\"\\n          - \\\"Half as much again (1.2x to 2x)\\\"\\n          - \\\"More than double (2x or more)\\\"\\n        bins: [1.2, 2]\\n        answer_from: loop.input_ratio\\n      - id: p3\\n        type: numeric\\n        prompt: \\\"How many more input tokens will Call 2 send than Call 1?\\\"\\n        hint: \\\"The tool result is the opportunity as JSON, about 440 characters. A rule of thumb is about 4 characters per token.\\\"\\n        answer_from: loop.input_growth\\n        tol_factor: 1.5\\n        unit: tokens\\n      - id: p4\\n        type: mcq\\n        prompt: \\\"Will Call 2's messages start with exactly Call 1's messages, unchanged?\\\"\\n        options: [\\\"yes\\\", \\\"no\\\"]\\n        answer_from: request.history_grows\\n    change: \\\"Nothing: run the code as it is. This run is the measurement.\\\"\\n    observe:\\n      - \\\"Messages: Call 2's list, and which messages are new in it\\\"\\n      - \\\"Timeline: the input tokens per call, under the chart\\\"\\n      - \\\"Model calls: the usage line on each call\\\"\\n    explain: |\\n      Call 2 held 3 messages: your question, carried over unchanged, plus the two this turn\\n      added, the assistant's `tool_use` and your `tool_result`.\\n\\n      Its input was 724 tokens against Call 1's 469: 255 more, about 1.5 times as much.\\n      Measured with `count_tokens`, about 190 of those are the tool result (the opportunity's\\n      440 characters of JSON). The rest is the `tool_use` turn and the message framing. The\\n      tool definition, about 436 tokens, is in both calls.\\n\\n      Now scale it up. In a loop of 10 calls where each turn adds a 2,000-token tool result,\\n      call 10 carries about 18,000 tokens of earlier results, and the run's total input grows\\n      with the square of the number of calls. That's why a tool should return only what the\\n      model needs, and why long agents use prompt caching and compaction (Module 02-D).\\n\\n  - id: e2\\n    title: \\\"Drop the tool_result\\\"\\n    question: \\\"What does the API do when a tool_use gets no tool_result?\\\"\\n    predict:\\n      - id: p1\\n        type: mcq\\n        prompt: \\\"What HTTP status will Call 2 get?\\\"\\n        options:\\n          - {label: \\\"200 OK\\\", value: 200}\\n          - {label: \\\"400 Bad Request\\\", value: 400}\\n          - {label: \\\"429 Too Many Requests\\\", value: 429}\\n          - {label: \\\"500 Internal Server Error\\\", value: 500}\\n        answer_from: response.status\\n      - id: p2\\n        type: numeric\\n        prompt: \\\"How many model calls will reach the relay, the SDK's retries included?\\\"\\n        hint: \\\"By default the SDK retries 408, 409, 429, 5xx and connection errors, twice.\\\"\\n        answer_from: run.calls\\n      - id: p3\\n        type: numeric\\n        prompt: \\\"How many requests will your tool make to the mock API?\\\"\\n        answer_from: api.requests\\n      - id: p4\\n        type: text\\n        prompt: \\\"If Call 2 fails, what will the error say?\\\"\\n        show_from: response.error_message\\n    change: 'In main.py, line 55: put a # in front of messages.append({\\\"role\\\": \\\"user\\\", \\\"content\\\": results}), so the results are never sent. Change nothing else.'\\n    observe:\\n      - \\\"Timeline: the get_opportunity row, and Call 2's status\\\"\\n      - \\\"Messages: Call 2's list ends with the assistant's tool_use\\\"\\n      - \\\"Console: the traceback (anthropic.BadRequestError)\\\"\\n    explain: |\\n      `400 invalid_request_error`: \\\"messages.1: `tool_use` ids were found without `tool_result`\\n      blocks immediately after: toolu_\\u2026. Each `tool_use` block must have a corresponding\\n      `tool_result` block in the next message.\\\" `messages.1` is the assistant message holding\\n      the `tool_use`, counting from 0.\\n\\n      A 400 means the request itself is wrong, so the SDK doesn't retry it: 2 calls in all, and\\n      the run ends with a traceback. The tool did run (one API request). Its result just never\\n      reached the model.\\n\\n      The same rule catches a tool that crashes: if `get_opportunity` raised an exception, there\\n      would be no result to send. Don't skip it. Send a `tool_result` with `is_error: true` and\\n      the error text, so the model can try again or tell the user. s03 does this.\\n\\n      Remove the # when you're done.\\n\\nquiz:\\n  - id: q1\\n    type: mcq\\n    prompt: \\\"Why does line 45 append the whole response.content as the assistant message, instead of only its tool_use block?\\\"\\n    options:\\n      - \\\"To save tokens\\\"\\n      - \\\"Each call must send earlier turns back exactly as they came, thinking blocks included; the tool_result in the next message then answers the tool_use by id\\\"\\n      - \\\"Because the SDK only accepts a list\\\"\\n      - \\\"So the model can run the tool again by itself\\\"\\n    answer: 1\\n    concepts: [agent-loop, history]\\n    explanation: >\\n      History only grows, and it's sent back as it came. On Opus 5.5 the thinking blocks are tied to\\n      the turn they came from, and the API pairs each tool_result with its tool_use by id. Picking\\n      blocks out or rewriting a turn breaks that.\\n  - id: q2\\n    type: numeric\\n    prompt: \\\"A loop makes two calls on claude-opus-5-5. Call 1: 470 input and 60 output tokens. Call 2: 720 input and 130 output. At $4 / $20 per million tokens, what does the run cost in USD?\\\"\\n    answer: 0.00856\\n    tol: 0.00001\\n    unit: USD\\n    concepts: [cost-estimation, history]\\n    explanation: \\\"Input: (470 + 720) x $4/1M = $0.00476. Output: (60 + 130) x $20/1M = $0.0038. Total $0.00856, close to your run. Call 2's input includes everything Call 1 sent.\\\"\\n  - id: q3\\n    type: mcq\\n    prompt: \\\"In your loop, what does the model actually do when it 'uses a tool'?\\\"\\n    options:\\n      - \\\"It calls the Meridian API over HTTP\\\"\\n      - \\\"It returns a tool_use block; your code runs the tool and sends a tool_result back in the next call\\\"\\n      - \\\"The SDK runs the tool inside client.messages.create\\\"\\n      - \\\"Anthropic's servers run the tool\\\"\\n    answer: 1\\n    concepts: [tool-use]\\n    explanation: \\\"The model only writes the request. Your code runs the tool (line 52) and sends the result back (lines 54 and 55); the next call sees it.\\\"\\ntutor_notes: >\\n  Common misconceptions: the model runs the tool itself (it only writes a tool_use block; main.py runs\\n  it at line 52); a tool result goes in an assistant or \\\"tool\\\" message (it goes in a user message,\\n  matched by tool_use_id); the API remembers the tool result between calls (it doesn't: Call 2 resends\\n  it). end_turn and tool_use are easy to mix up: point at the turn 1: and turn 2: lines in the Console\\n  and at the Timeline, where each call's stop_reason is its label.\\n</step_yaml>\\n\\n<facts_measured_from_a_run>\\nGuide steps show these values from the learner's latest run; checks with answer_from are graded against them.\\n- api.last_request: the last of those requests, with the status it got\\n- api.requests: requests your code made to the step's mock API\\n- first.response.blocks: content block types of the first call's response\\n- first.response.stop_reason: stop_reason of the run's first call\\n- first.response.tool_input: input of that tool_use block, as JSON\\n- first.response.tool_name: name of the first tool_use block in the first response\\n- first.response.usage.input_tokens: usage.input_tokens of the first call\\n- loop.input_growth: the last call's input_tokens minus the first call's\\n- loop.input_ratio: the last call's input_tokens divided by the first call's\\n- request.history_grows: whether each call's messages start with the previous call's messages, unchanged\\n- request.last_message: role and block types of the last request's last message, e.g. 'user: tool_result'\\n- request.messages: how many messages the last request sent\\n- request.tool_names: the tools defined in the last request, by name\\n- response.error_message: the error message of a failed call (the gateway's wrapper unwrapped)\\n- response.status: HTTP status of the last call\\n- response.stop_reason: stop_reason of the last response\\n- run.calls: model calls the relay saw\\n- run.cost_usd: the relay's cost of every call in the run, added up\\n</facts_measured_from_a_run>\\n\\n<starter_code>\\nThe guide's line numbers refer to this starter code.\\n--- main.py ---\\n   1  import json\\n   2  import os\\n   3  \\n   4  import anthropic\\n   5  import httpx\\n   6  \\n   7  client = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\\n   8  MODEL = os.getenv(\\\"LAB_MODEL\\\", \\\"claude-opus-5-5\\\")\\n   9  MERIDIAN = os.environ[\\\"MERIDIAN_API_URL\\\"]  # the lab starts the mock Meridian API for each run\\n  10  AUTH = {\\\"Authorization\\\": f\\\"Bearer {os.environ['MERIDIAN_API_TOKEN']}\\\"}\\n  11  \\n  12  # The tool as the model sees it: a name, a description, and a JSON Schema for its input.\\n  13  TOOLS = [{\\n  14      \\\"name\\\": \\\"get_opportunity\\\",\\n  15      \\\"description\\\": \\\"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. \\\"\\n  16                     \\\"Returns its account ID, stage, requested discount, staffing and CRM notes.\\\",\\n  17      \\\"input_schema\\\": {\\n  18          \\\"type\\\": \\\"object\\\",\\n  19          \\\"properties\\\": {\\\"opportunity_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"e.g. OPP-1042\\\"}},\\n  20          \\\"required\\\": [\\\"opportunity_id\\\"],\\n  21      },\\n  22  }]\\n  23  \\n  24  \\n  25  # The tool as your code runs it: a plain function that calls the Meridian API.\\n  26  def get_opportunity(opportunity_id: str) -> dict:\\n  27      r = httpx.get(f\\\"{MERIDIAN}/opportunities/{opportunity_id}\\\", headers=AUTH, timeout=10)\\n  28      return r.json()\\n  29  \\n  30  \\n  31  RUN = {\\\"get_opportunity\\\": get_opportunity}  # tool name -> the function that does the work\\n  32  \\n  33  messages = [{\\\"role\\\": \\\"user\\\", \\\"content\\\": \\\"What discount did procurement ask for on OPP-1042, \\\"\\n  34                                          \\\"and which account is it for?\\\"}]\\n  35  \\n  36  for turn in range(1, 6):  # a cap on turns: never loop forever\\n  37      response = client.messages.create(\\n  38          model=MODEL,\\n  39          max_tokens=2048,\\n  40          output_config={\\\"effort\\\": \\\"low\\\"},\\n  41          tools=TOOLS,\\n  42          messages=messages,\\n  43      )\\n  44      print(f\\\"turn {turn}: stop_reason={response.stop_reason} blocks={[b.type for b in response.content]}\\\")\\n  45      messages.append({\\\"role\\\": \\\"assistant\\\", \\\"content\\\": response.content})  # all of it, as it came back\\n  46      if response.stop_reason != \\\"tool_use\\\":\\n  47          break\\n  48  \\n  49      results = []\\n  50      for block in response.content:\\n  51          if block.type == \\\"tool_use\\\":\\n  52              output = RUN[block.name](**block.input)\\n  53              print(f\\\"  ran {block.name}({json.dumps(block.input)}): {len(json.dumps(output))} characters back\\\")\\n  54              results.append({\\\"type\\\": \\\"tool_result\\\", \\\"tool_use_id\\\": block.id, \\\"content\\\": json.dumps(output)})\\n  55      messages.append({\\\"role\\\": \\\"user\\\", \\\"content\\\": results})  # every result, in one user message\\n  56  \\n  57  if response.stop_reason == \\\"end_turn\\\":\\n  58      print(\\\"answer:\\\", \\\"\\\".join(b.text for b in response.content if b.type == \\\"text\\\"))\\n  59  else:\\n  60      print(\\\"stopped without an answer: stop_reason =\\\", response.stop_reason)\\n</starter_code>\\n</lesson>\", \"cache_control\": {\"type\": \"ephemeral\", \"ttl\": \"1h\"}}], \"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"<lab_context guide_step=\\\"g1\\\">\\nHe is on guide step 1 of 9: \\\"Meet Meridian\\\".\\nOn this step:\\n- check c1: not answered yet: don't reveal its answer\\n- check c2: not answered yet: don't reveal its answer\\n\\nHis code now:\\n--- main.py ---\\n   1  import json\\n   2  import os\\n   3  \\n   4  import anthropic\\n   5  import httpx\\n   6  \\n   7  client = anthropic.Anthropic()  # in the lab, the key and URL are injected for you (relay)\\n   8  MODEL = os.getenv(\\\"LAB_MODEL\\\", \\\"claude-opus-5-5\\\")\\n   9  MERIDIAN = os.environ[\\\"MERIDIAN_API_URL\\\"]  # the lab starts the mock Meridian API for each run\\n  10  AUTH = {\\\"Authorization\\\": f\\\"Bearer {os.environ['MERIDIAN_API_TOKEN']}\\\"}\\n  11  \\n  12  # The tool as the model sees it: a name, a description, and a JSON Schema for its input.\\n  13  TOOLS = [{\\n  14      \\\"name\\\": \\\"get_opportunity\\\",\\n  15      \\\"description\\\": \\\"Look up one sales opportunity in the Meridian CRM by its ID, e.g. OPP-1042. \\\"\\n  16                     \\\"Returns its account ID, stage, requested discount, staffing and CRM notes.\\\",\\n  17      \\\"input_schema\\\": {\\n  18          \\\"type\\\": \\\"object\\\",\\n  19          \\\"properties\\\": {\\\"opportunity_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"e.g. OPP-1042\\\"}},\\n  20          \\\"required\\\": [\\\"opportunity_id\\\"],\\n  21      },\\n  22  }]\\n  23  \\n  24  \\n  25  # The tool as your code runs it: a plain function that calls the Meridian API.\\n  26  def get_opportunity(opportunity_id: str) -> dict:\\n  27      r = httpx.get(f\\\"{MERIDIAN}/opportunities/{opportunity_id}\\\", headers=AUTH, timeout=10)\\n  28      return r.json()\\n  29  \\n  30  \\n  31  RUN = {\\\"get_opportunity\\\": get_opportunity}  # tool name -> the function that does the work\\n  32  \\n  33  messages = [{\\\"role\\\": \\\"user\\\", \\\"content\\\": \\\"What discount did procurement ask for on OPP-1042, \\\"\\n  34                                          \\\"and which account is it for?\\\"}]\\n  35  \\n  36  for turn in range(1, 6):  # a cap on turns: never loop forever\\n  37      response = client.messages.create(\\n  38          model=MODEL,\\n  39          max_tokens=2048,\\n  40          output_config={\\\"effort\\\": \\\"low\\\"},\\n  41          tools=TOOLS,\\n  42          messages=messages,\\n  43      )\\n  44      print(f\\\"turn {turn}: stop_reason={response.stop_reason} blocks={[b.type for b in response.content]}\\\")\\n  45      messages.append({\\\"role\\\": \\\"assistant\\\", \\\"content\\\": response.content})  # all of it, as it came back\\n  46      if response.stop_reason != \\\"tool_use\\\":\\n  47          break\\n  48  \\n  49      results = []\\n  50      for block in response.content:\\n  51          if block.type == \\\"tool_use\\\":\\n  52              output = RUN[block.name](**block.input)\\n  53              print(f\\\"  ran {block.name}({json.dumps(block.input)}): {len(json.dumps(output))} characters back\\\")\\n  54              results.append({\\\"type\\\": \\\"tool_result\\\", \\\"tool_use_id\\\": block.id, \\\"content\\\": json.dumps(output)})\\n  55      messages.append({\\\"role\\\": \\\"user\\\", \\\"content\\\": results})  # every result, in one user message\\n  56  \\n  57  if response.stop_reason == \\\"end_turn\\\":\\n  58      print(\\\"answer:\\\", \\\"\\\".join(b.text for b in response.content if b.type == \\\"text\\\"))\\n  59  else:\\n  60      print(\\\"stopped without an answer: stop_reason =\\\", response.stop_reason)\\n\\nHis latest run:\\nHe hasn't run this step yet.\\n</lab_context>\"}, {\"type\": \"text\", \"text\": \"Which client is OPP-1042 for? give me a hint\", \"cache_control\": {\"type\": \"ephemeral\"}}]}]}",
+    "role": "assistant",
+    "sent_json": "[{\"text\": \"Start with where the answer lives. Open the **Meridian data** page from the top bar and find OPP-1042 in the opportunities list.\\n\\nThe opportunity record doesn't hold a client name. Which field does it hold that points to a client? Once you've found it, you'll need a second lookup on the same page.\\n\\nTell me what you find, and I'll give the next hint if you're still stuck.\", \"type\": \"text\"}]",
+    "step_id": "m02.lab02.s02",
+    "usage_json": "{\"cache_creation\": {\"ephemeral_1h_input_tokens\": 10795, \"ephemeral_5m_input_tokens\": 1283}, \"cache_creation_input_tokens\": 12078, \"cache_read_input_tokens\": 0, \"inference_geo\": \"global\", \"input_tokens\": 4, \"output_tokens\": 122, \"output_tokens_details\": {\"thinking_tokens\": 0}, \"service_tier\": \"standard\", \"speed\": \"standard\", \"total_tokens\": 126}"
    }
   ]
  }

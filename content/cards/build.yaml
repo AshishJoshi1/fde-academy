@@ -153,6 +153,43 @@ cards:
       A fresh session per lesson keeps the context small, and so any miss.
     source: "PROGRESS.md, Cost log (2026-11-12)"
 
+  - id: context-times-turns
+    tag: cost
+    front: |
+      On 2026-11-12 the session cost $14.99, and the output (the actual work) only about $3. What was
+      the other $12?
+    back: |
+      **Cache reads and cache writes**: about $6.16 and $5.77, nearly 80% of the bill. Each turn
+      resends the whole conversation, so that cost grows with the context's size times the number of
+      turns. The context had grown to about 235K tokens per request, over 131 requests.
+
+      To cut the bill, shrink the context and make fewer turns; a cheaper reply barely moves it.
+    source: "PROGRESS.md, Cost log (2026-11-12 and 2026-11-11 second session)"
+
+  - id: fresh-session-per-task
+    tag: cost
+    front: |
+      The glossary was built after the day's first `/wrap` and cost $2.97. Why so much for a small
+      feature, and what's the rule?
+    back: |
+      Every one of its turns carried the whole day's context (about 235K tokens), so a small task paid
+      for a big conversation. Built in a fresh session it would have cost about half (an estimate).
+
+      After `/wrap`, run `/clear` before any new task, and give a request that arrives after a wrap
+      its own session.
+    source: "PROGRESS.md, Cost log (2026-11-12 and 2026-11-11 second session)"
+
+  - id: read-in-parts
+    tag: cost
+    front: |
+      Why read a big file in parts (grep, then `offset` and `limit`) instead of whole?
+    back: |
+      A file read stays in the conversation, so every later turn pays for it again. Reading
+      `lab.html` whole (about 24K tokens) put it in every turn's context for the rest of the session.
+
+      Search first, read only the lines you need, and don't re-read a file after editing it.
+    source: "PROGRESS.md, Cost log (2026-11-11, second session)"
+
   # ----------------------------------------------------------------- security
   - id: dummy-key
     tag: security
