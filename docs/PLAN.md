@@ -62,7 +62,7 @@ For each lesson:
 Features Ashish asked for that aren't tied to one lesson.
 - **Start over** (the lab page's "Start this lesson over"; the home page's "Start over all lessons"):
   - A marker per lesson step (`step_restarts`, migration 5). Nothing is deleted.
-  - The lab shows only what came after the marker: check and quiz answers, experiment attempts, the latest run's values, tutor threads. Every step loses its tick.
+  - The lab shows only what came after the marker: check and quiz answers, experiment attempts, the latest run's values, tutor threads. Every step loses its tick, and every lesson goes back to "Not started" until it's opened again (a lesson never opened stays without a progress row).
   - Spaced review, quiz history, spend and run history keep everything, so a miss from before still comes back until it's answered right.
   - An option puts the code back to the starter too (only for lessons that have a playground copy).
 - **Flash cards** (`/cards`, the top bar's "Flash cards"):

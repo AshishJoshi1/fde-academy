@@ -57,11 +57,14 @@ def test_marker_applies_to_runs_experiments_and_tutor_threads(store):
 def test_start_over_resets_the_step_status_and_survives_export(store, home):
     store.open_step(STEP, "m02")
     store.complete_step(STEP, "m02", {"main.py": "x = 1\n"})
-    at = store.start_over([(STEP, "m02")], code_reset=True)
-    assert store.step_status()[STEP] == "in_progress"
+    at = store.start_over([(STEP, "m02"), ("m02.lab02.s02", "m02")], code_reset=True)
+    assert store.step_status() == {STEP: "not_started"}       # nothing done since; a step never opened gets no row
+    store.open_step(STEP, "m02")
+    assert store.step_status()[STEP] == "in_progress"         # opening it again starts it
 
     data = store.export_all()
-    assert data["tables"]["step_restarts"] == [{"id": 1, "step_id": STEP, "at": at, "code_reset": 1}]
+    assert data["tables"]["step_restarts"] == [{"id": 1, "step_id": STEP, "at": at, "code_reset": 1},
+                                               {"id": 2, "step_id": "m02.lab02.s02", "at": at, "code_reset": 1}]
     from academy_server.store import Store
     other = Store(home / "other.db")
     other.import_all(data)
@@ -120,6 +123,8 @@ def test_start_all_over_marks_every_step_and_never_creates_a_playground(client, 
     assert r.status_code == 200
     every = list(client.app.state.content.steps)
     assert STEP in every and sorted(r.json()["steps"]) == sorted(every) and r.json()["code_reset"] == []
+    assert client.app.state.store.step_status() == {}         # no lesson was opened, so none is in progress
+    assert "In progress" not in client.get("/").text
     assert not any((home / "playground" / s).exists() for s in every)
     assert all(client.app.state.store.started_over_at(s) == r.json()["started_over_at"] for s in every)
 

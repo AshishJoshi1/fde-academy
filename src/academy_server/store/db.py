@@ -141,14 +141,16 @@ class Store:
     # ------------------------------------------------------------ start over
     def start_over(self, steps: Iterable[tuple[str, str]], *, code_reset: bool = False) -> str:
         """Mark (step_id, module_id) steps as started over. Deletes nothing: reads that take
-        `since` show only what came after the marker. Returns the marker's time."""
+        `since` show only what came after the marker. Returns the marker's time.
+
+        Each step goes back to not started: nothing in it is done since the marker. A step that was
+        never opened gets no progress row, and opening a step again (open_step) makes it in progress."""
         with self.tx() as c:
             at = utcnow()
-            for step_id, module_id in steps:
+            for step_id, _module_id in steps:
                 c.execute("INSERT INTO step_restarts (step_id, at, code_reset) VALUES (?, ?, ?)",
                           (step_id, at, int(code_reset)))
-                self._touch_step(c, step_id, module_id)
-                c.execute("UPDATE step_progress SET status = 'in_progress', completed_at = NULL, code_hash = NULL "
+                c.execute("UPDATE step_progress SET status = 'not_started', completed_at = NULL, code_hash = NULL "
                           "WHERE step_id = ?", (step_id,))
             # Timestamps have millisecond precision. Hold the lock until the clock moves on, so
             # everything written later is strictly after the marker, and everything earlier isn't.

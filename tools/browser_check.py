@@ -417,6 +417,19 @@ def walk_start_over(b: Browser, base: str, token: str, step_id: str, out: Path) 
     check(f"spaced review kept ({misses} misses)", len(api_get(base, token, "/api/mistakes")["still_wrong"]) == misses)
     shot = b.call("Page.captureScreenshot", format="png")["data"]
     (out / f"{step_id}-start-over.png").write_bytes(base64.b64decode(shot))
+
+    print("  start over all lessons (home page)")
+    b.call("Page.navigate", url=f"{base}/")
+    b.wait("!!document.querySelector('details.start-over')", "the home page")
+    check("this lesson is in progress before (the lab just opened it)",
+          b.js("document.body.textContent.includes('In progress')"))
+    b.js("document.querySelector('details.start-over > summary').click()")
+    reload_after(b, "document.querySelector('details.start-over .start-over-go').click()", "the home page to reload")
+    b.wait("!!document.querySelector('details.start-over')", "the home page")
+    check("every lesson back to Not started, none In progress",
+          not b.js("document.body.textContent.includes('In progress')")
+          and b.js("document.body.textContent.includes('Not started')"))
+    check(f"spaced review still kept ({misses} misses)", len(api_get(base, token, "/api/mistakes")["still_wrong"]) == misses)
     return fails
 
 
