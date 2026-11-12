@@ -1,0 +1,82 @@
+# FDE Academy: decisions and cost analysis
+
+Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions here and new cost breakdowns under "Cost analysis".
+
+## Decisions log
+- 2026-11-06:
+  - Teach the Agent Loop first.
+  - Local app, bring your own key.
+  - FastAPI server. Server-rendered pages first; React and Monaco only if a lesson needs them.
+  - Default `claude-opus-5-5`.
+  - Private GitHub backup.
+  - Commit and push at `/wrap` without asking.
+  - UI look: an Anthropic-inspired warm-neutral design system (ivory, oat and slate, a clay accent, serif headings) in one stylesheet; data colours validated with the dataviz validator.
+- 2026-11-06 (later):
+  - A learning lab for one learner, built lesson by lesson; each lesson adds only the features it needs (`docs/PLAN.md`).
+  - Live calls only: no cassettes, replay or recording. Budgets are left to the gateway.
+  - Experiments are lesson content (`experiments:` in `step.yaml`): predict, change one thing, run, compare, explain.
+  - The tutor uses Sonnet 5.5 through the gateway. Lesson code defaults to Opus 5.5.
+  - Ashish's code lives in `playground/<step-id>/`, tracked in git.
+  - Live calls go through the Bounteous LiteLLM gateway, with credentials in `%LOCALAPPDATA%\fde-academy\anthropic.env` and never in user-wide env vars (CLAUDE.md, "Gateway").
+- 2026-11-07:
+  - Simple features first: server-rendered pages, vanilla JavaScript, and a simple editor on the lab page (a textarea with Save), plus VS Code on the same files. The Monaco workbench comes later, only if a lesson needs it.
+  - The lab's model picker offers `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-4-5`, each with a note on what it accepts.
+  - `claude-haiku-4-5` is priced from the Claude API skill's model table ($1 in, $5 out per million tokens).
+- 2026-11-09:
+  - **Teaching format:** lessons are guided walkthroughs: teach one idea, highlight its code lines, say what to do, show the learner's own run values with what to notice, then check with the why.
+    - Experiments come only after the idea is taught, inside a step; the quiz is the last step.
+    - Run is never locked, the lesson text is never hidden, and the model menu starts on Opus 5.5.
+  - **Grading:** predictions and checks are graded against a fixed answer or a fact measured from the run's events (`schema.FACTS`; an unknown fact fails validation).
+    - Check and quiz answers are stored as quiz attempts, so misses come back in spaced review.
+    - A value the run didn't produce is "not graded", never a miss.
+  - **Lesson text:** markdown rendered with `markdown-it-py`, raw HTML disabled.
+  - **How we work:** outline first (step titles approved before any build), one lesson per session, and `tools/browser_check.py` (fake gateway, throwaway data) passing before a lesson is handed over.
+  - **Module 02 scope:** 17 lessons after s01, proposed in `docs/PLAN.md`. Each module ends with guided projects in the same format, with code that builds up across steps in the project's own repo.
+    - The Module 02 projects, including Project 02's SDK, are discussed only after all 17 lessons.
+- 2026-11-09 (later):
+  - **Tutor:** `claude-sonnet-5-5` at effort `low`, with the Anthropic SDK (not raw HTTP) through the gateway.
+    - One thread per guide step, with the lesson as a cached prefix (1-hour TTL) and the lab context resent only on change.
+    - The rules are a file Ashish owns (`playground/tutor/rules.md`).
+    - No server-side refusal fallback: calls go through LiteLLM, and a refusal returns a message and stores nothing.
+  - **Projects:** the Module 02 projects are set aside. The choice between the Claude Agent SDK and LangGraph for them is made later.
+  - **Cost:** every `/wrap` logs `/cost` in the Cost log. Module 02 is re-estimated from those numbers after s02 and s03.
+- 2026-11-11:
+  - **Building runs ahead of learning:** building modules and labs comes first; Ashish finishes the course at his own pace, and finishing a lesson is no longer a gate for the next build.
+  - **Learner tools** Ashish asks for are the one exception to "no feature without a lesson": Start over and flash cards.
+  - **Start over** keeps the quiz, spend and run history; only the lab's view starts fresh (markers, nothing deleted). The code reset is a checkbox.
+  - **Flash cards** hold what building the lab taught, each fact with its source. `/wrap` proposes 1–3 per session, and only the ones Ashish picks are added. A review counts as a quiz attempt, so a miss comes back in spaced review.
+- 2026-11-11 (later):
+  - **s02 outline** approved as proposed: 8 steps, with E1 (history grows) and E2 (drop a `tool_result`).
+  - **Fixtures run in the server, one per run:** the mock Meridian API starts on a free port with a fresh token, and its requests are run events, so the timeline orders model calls and API requests on one clock. The vendored copy stays byte-identical to Projects/04, and a test checks it.
+  - **Lab panels are per step** (`panels:` in `step.yaml`): s01 keeps the console only; s02 adds the timeline, the messages view and the mock API log, built on the design system's trace and messages-diff styles.
+  - **Measurement runs** use a throwaway home through the real relay, so the learner's runs, spend and history stay his own.
+- 2026-11-12:
+  - **s03 outline** approved, with "split the results" kept only if it returned a 400. Measured, the API accepts split results (it joins consecutive user messages), so it was cut: s03 has 6 steps, E1 (parallel calls off) and E2 (an ID that doesn't exist).
+  - **Lessons introduce the scenario before using its IDs:** s02 opens with "Meet Meridian", and the Meridian data page (`/meridian`) shows every record the mock API serves, linked from the top bar and the Mock API panel.
+  - **The one message check is the lab's**, because the API won't flag split results: on the timeline, in the messages view, and as the run fact `loop.results_in_one_message`.
+  - **Glossary** is a learner tool (Ashish asked for it): `content/glossary.yaml` at `/glossary`, every entry naming the file that defines it, and a test that fails when a slash command, `labctl` subcommand or tool has no entry.
+  - **Cost rules approved** (to apply in the next session; savings are estimates): a session target of about $8; `/clear` after `/wrap`; read files in parts; big references through a subagent; fewer screenshots; a fresh start after an idle gap of an hour or more; try Sonnet 5.5 on one content-heavy session.
+  - **Estimate to finish every module:** about $600–650 more in Claude Code at current usage (about $445 with the fixes), on assumed session counts for Modules 01, 03, 04 and 05 (only Module 02 has a lesson outline); gateway $15–40.
+- 2026-11-12 (3rd session):
+  - **Decisions log and cost breakdowns live in `docs/DECISIONS.md`**, so `/today` reads only what it needs to resume.
+  - **The lab page's JavaScript is static files** (`pages/lab_js/`), with a `window.LAB` config inline, so edits touch small files.
+  - **s04 outline** approved as proposed: 5 teaching steps plus the quiz, E1 (prompt against gate) and E2 (flip the toggle).
+
+## Cost analysis
+- **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.
+- **Module 02 re-estimate** (from the s02 and s03 rows): a lesson session costs about $10–12 in Claude Code ($10.07 for s02; $12.02 for s03, which also built s02's new step and the Meridian page). 15 lessons are left (s04–s06, then lessons 6–17), so about $150–180, plus the two guided projects. Gateway measurement stays under $0.15 a lesson.
+- **Where the 2026-11-11 cost went:**
+  - 97% of input came from the cache (12.4M tokens read, 323K written), over 79 requests;
+  - one cache miss after an idle past the 1-hour TTL re-cached 37.7K tokens, and the context compaction forced one rebuild;
+  - `/wrap` was about 6% of usage and `/today` about 4%.
+- **Where the 2026-11-11 (2nd) cost went** ($10.07 over 113 requests, 99% of input from the cache, no cache misses):
+  - cache reads, 25.1M tokens: about $5.02 (half);
+  - output, 126.2K tokens (the lesson, the code, the tests): about $2.52;
+  - cache writes, 314.6K tokens at the 1-hour price: about $2.52;
+  - reading `lab.html` whole (about 24K tokens) put it in every later turn's context; read large files in parts.
+- **Where the 2026-11-12 cost went** ($14.99 over 131 requests, 98% of input from the cache):
+  - cache reads, 30.8M tokens: about $6.16 (41%);
+  - cache writes, 721.8K tokens at the 1-hour price: about $5.77 (39%). One cache miss re-cached 260K tokens (about $2.08); `/cost` reported it as likely server-side, with the prompt unchanged;
+  - output, 151.9K tokens: about $3.04;
+  - the context averaged about 235K tokens per request (30.8M ÷ 131): the `/claude-api` skill text, whole-file reads and the long build stayed in every later turn;
+  - building the glossary after the first wrap, in the same session, cost $2.97, because every turn carried the whole day's context. Two `/wrap`s made `/wrap` about 14% of usage; `/today` was about 3%.

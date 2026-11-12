@@ -50,7 +50,13 @@ def test_reset_restores_the_starter_and_leaves_the_lesson_untouched(make_client,
 
 
 def test_lab_page_has_the_editor(make_client):
-    html = make_client().get(f"/lab/{STEP}").text
+    c = make_client()
+    html = c.get(f"/lab/{STEP}").text
+    for name in ("editor", "panels", "run", "extras"):   # the page's scripts are static files
+        js = c.get(f"/static/lab-js/lab-{name}.js")
+        assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
+        html += js.text
+    assert c.get("/static/lab-js/..%5Capp.py").status_code == 404
     for marker in ('id="code"', 'id="gutter"', 'id="save"', 'id="reset"', "window.labEditor.saveAll()",
                    '<option>claude-haiku-4-5</option>', 'rejects output_config.effort with a 400'):
         assert marker in html, marker

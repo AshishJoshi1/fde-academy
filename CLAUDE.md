@@ -2,7 +2,7 @@
 
 FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent engineering in depth with Python, the Anthropic SDK and LangGraph. Every lesson is a set of experiments (predict, change one thing, run live, compare, explain) that ends in a quiz, with a Claude tutor that guides through questions and hints.
 
-- Full design: `docs/PLAN.md`. Build state and the exact stopping point: `PROGRESS.md`.
+- Full design: `docs/PLAN.md`. Build state and the exact stopping point: `PROGRESS.md`. Decisions log and cost analysis: `docs/DECISIONS.md`.
 - Remote: https://github.com/AshishJoshi1/fde-academy (private), branch `main`.
 - **How we work:** the app is built lesson by lesson (`docs/PLAN.md`, "How a lesson is made").
   - Each lesson is its content plus the app features it needs. No feature without a lesson that needs it, except learner tools Ashish asks for (Start over, flash cards).
@@ -14,6 +14,13 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
   - Live calls only: no cassettes, replay or recording.
   - Simple features first: server-rendered pages and vanilla JavaScript.
   - Until a lesson's UI exists, Ashish runs its code with `tools/run_live.py`.
+  - **Cost rules** (session target about $8; `/wrap` logs target against actual in the Cost log):
+    - After `/wrap`, `/clear` before any new task. A request that arrives after a wrap gets its own session unless tiny.
+    - Never read a file whole: grep first, then `offset` and `limit`. Don't re-read after an edit.
+    - Send broad searches and big references (the `/claude-api` skill) to a subagent. Don't load the skill for facts this file already records.
+    - Screenshots only when a layout is in question.
+    - After an idle gap of an hour or more, `/clear` and `/today` instead of resuming (a cache miss re-caches the whole context, about $2 at 260K tokens).
+    - A content-heavy session may run on Sonnet 5.5 (half the price); log its cost against the target and note any rework.
   - **Flash cards:** `content/cards/build.yaml` holds what building the lab taught, each fact with its source (`/cards` in the app). `/wrap` proposes 1–3 new cards from the session; only the ones Ashish approves are added.
 
 ## Session protocol (do this every session)
@@ -33,6 +40,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
     - `fixtures/`: the mock Meridian API (`meridian/meridian_api.py` and its seed, vendored unchanged from Projects/04), started for each run of a step with `run: {fixture: meridian}`; `/meridian` shows its data, so lessons can refer to its IDs;
     - `tutor.py` (the tutor's request layers; its default rules are `tutor_rules.md`, and Ashish's copy is `playground/tutor/rules.md`);
     - `pricing.py`, `credentials.py` and `playground.py`.
+  - `pages/lab_js/` holds the lab page's JavaScript (editor, panels, run, lesson steps), served at `/static/lab-js/`; `pages/lab.html` keeps only the markup and a `window.LAB` config.
   - `web/` has only `src/styles/academy.css`, the design system; `/design` is its reference page. A React and Monaco workbench may come later, only if a lesson needs it.
   - `src/labkit` (empty) is for in-process hooks, added when a lesson needs them (s05 approvals).
   - `content/` holds the lessons, the flash-card decks in `content/cards/`, and the glossary of commands (`content/glossary.yaml`, shown at `/glossary`; a test checks every slash command, `labctl` subcommand and tool has an entry).

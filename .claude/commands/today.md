@@ -4,9 +4,9 @@ description: Start the day. Restore context, do a spaced review of past misses, 
 Start today's FDE Academy session. Follow these steps in order and keep the output short.
 
 1. **Restore context.**
-   - Read `PROGRESS.md`.
-   - Run `python -X utf8 tools/session_status.py`.
-   - If `tools/labctl.py` exists, also run `python -X utf8 tools/labctl.py status`.
+   - The SessionStart hook already printed the session status: don't run `tools/session_status.py` again.
+   - Read only the top of `PROGRESS.md` (Current position and Last session; `grep -n '^## '` for the line numbers, then `offset` and `limit`). The decisions log and cost analysis are in `docs/DECISIONS.md`: don't read them unless needed.
+   - If `tools/labctl.py` exists, run `python -X utf8 tools/labctl.py status`.
 2. **Unwrapped work check.** If any tracked repo has uncommitted changes, or commits that aren't pushed, from a previous day:
    - Say so.
    - Offer to run the `/wrap` steps for that work first, with a commit dated to describe that work.

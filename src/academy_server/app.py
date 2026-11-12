@@ -765,6 +765,13 @@ def create_app(settings: AppSettings) -> FastAPI:
         app.state.content = load_content(settings.content_dir)
         return {"steps": len(app.state.content.steps), "errors": app.state.content.errors}
 
+    @app.get("/static/lab-js/{name}", include_in_schema=False)
+    def lab_script(name: str) -> FileResponse:
+        path = (pages.HERE / "lab_js" / name).resolve()
+        if path.parent != (pages.HERE / "lab_js").resolve() or path.suffix != ".js" or not path.is_file():
+            raise HTTPException(404, "script not found")
+        return FileResponse(path, media_type="text/javascript", headers={"cache-control": "no-cache"})
+
     @app.get(STYLESHEET_PATH, include_in_schema=False)
     def stylesheet() -> FileResponse:
         if not settings.stylesheet.is_file():

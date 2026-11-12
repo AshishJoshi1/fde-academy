@@ -9,8 +9,8 @@ Wrap up today's FDE Academy session. Standing permission: commit and push withou
    - **Last session:** date (today), what was done, and open questions or blockers.
    - Tick the milestone checklist and update the curriculum table.
    - Move any quiz misses from this session into the misses section, unless `labctl quiz record` already stored them.
-   - Add today's decisions to the decisions log.
-   - **Cost log:** ask me for this session's `/cost` figure (you can't read it yourself) and add a row to the "Cost log" table: date, what was built or taught, Claude Code $, and gateway $ from `labctl status`. If I don't give it, write "not given"; never guess.
+   - Add today's decisions to the decisions log in `docs/DECISIONS.md` (not PROGRESS.md), and any cost breakdown under its "Cost analysis".
+   - **Cost log:** ask me for this session's `/cost` figure (you can't read it yourself) and add a row to the "Cost log" table: date, what was built or taught, Claude Code $ (with the $8 target beside it), and gateway $ from `labctl status`. Tell me to `/clear` before the next task. If I don't give it, write "not given"; never guess.
 2. **Flash cards.** Propose 1–3 new cards for `content/cards/build.yaml` from what this session's building taught (cost, workflow, design or engineering lessons with a lasting why; not a log of what happened).
    - Each card has a question, an answer with the why, a tag from the deck's `tags`, and its `source` (the file, section or log that records the fact). Facts come from the records, never from memory.
    - Show them to me with AskUserQuestion (multi-select). Add only the ones I pick, then run `labctl content validate`.
