@@ -130,6 +130,7 @@ FACTS: dict[str, str] = {
     "run.first_call_ms": "ms from process start to the first model call reaching the relay",
     "run.model": "the model picked for the run (LAB_MODEL)",
     "run.cost_usd": "the relay's cost of every call in the run, added up",
+    "run.input_tokens": "usage.input_tokens of every call in the run, added up",
     "request.model": "model in the last request body",
     "request.max_tokens": "max_tokens in the last request body",
     "request.effort": "output_config.effort in the last request body, or 'not set'",
@@ -160,13 +161,20 @@ FACTS: dict[str, str] = {
     "first.response.blocks": "content block types of the first call's response",
     "first.response.tool_name": "name of the first tool_use block in the first response",
     "first.response.tool_input": "input of that tool_use block, as JSON",
+    "first.response.tool_uses": "how many tool_use blocks the first response holds",
+    "first.response.tool_inputs": "the inputs of the first response's tool_use blocks, in order, as JSON",
     "first.response.usage.input_tokens": "usage.input_tokens of the first call",
     "loop.input_growth": "the last call's input_tokens minus the first call's",
     "loop.input_ratio": "the last call's input_tokens divided by the first call's",
+    "loop.tool_results": "tool_result blocks in the last request's messages",
+    "loop.error_results": "of those, how many carry is_error: true",
+    "loop.results_in_one_message": "whether each assistant turn's tool_use blocks are all answered in the one user message right after it",
     "api.requests": "requests your code made to the step's mock API",
     "api.last_request": "the last of those requests, with the status it got",
     "prev.response.usage.output_tokens": "usage.output_tokens of your previous run of this step",
     "ratio.output_tokens": "this run's output_tokens divided by the previous run's",
+    "prev.run.input_tokens": "run.input_tokens of your previous run of this step",
+    "ratio.input_tokens": "this run's run.input_tokens divided by the previous run's",
 }
 FactPath = Annotated[str, Field(description="a key of FACTS, e.g. response.usage.output_tokens")]
 

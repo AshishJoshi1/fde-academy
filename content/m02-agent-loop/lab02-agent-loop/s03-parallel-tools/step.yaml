@@ -1,0 +1,350 @@
+id: s03
+title: "Parallel tool calls"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages, fixture]
+run:
+  fixture: meridian
+hints:
+  - "Count the tool_use blocks in Call 1's response: line 49 prints how many came back."
+  - "Every tool_use needs a tool_result with its id, and they all go in one user message (line 64)."
+
+guide:
+  - id: g1
+    title: "Three lookups in one turn"
+    code: ["36-37", "48-49"]
+    teach: |
+      The question names three opportunities in Meridian's CRM. (s02's first step introduced
+      Meridian; the **[Meridian data](/meridian)** page in the top bar has every record.)
+
+      | Opportunity | Account | Client | Discount asked |
+      |---|---|---|---|
+      | OPP-1042 | ACC-017 | Müller Logistik GmbH | 12% |
+      | OPP-1046 | ACC-013 | Tasman Power & Gas Pty Ltd | 22% |
+      | OPP-1048 | ACC-002 | Nordhavn Shipping A/S | 9% |
+
+      So the right answer is OPP-1046, for account ACC-013. The model can't know that without all
+      three records, and the tool fetches one record per call.
+
+      **Lines 36 and 37** ask the question. The tool is the same as in s02. The three lookups
+      don't depend on each other: nothing in OPP-1042 decides which record to fetch next. So the
+      model asks for all three **in one response**: three `tool_use` blocks, each with its own
+      `id` and `input`, and `stop_reason: tool_use`. This is **parallel tool use**, and it's on
+      by default.
+
+      **Line 48** collects the `tool_use` blocks by type, never by position, and **line 49**
+      prints how many came back.
+    do: "Press **Run**. Read the `turn 1:` line in the **Console**, then Call 1's row on the **Timeline**."
+    show: [first.response.stop_reason, first.response.tool_uses, first.response.tool_inputs]
+    notice: |
+      Three `tool_use` blocks in Call 1, one per opportunity, with no text and no thinking: 174
+      output tokens in every measured run. When one lookup needs another's result (find the
+      opportunity, then look up its account), the model has to wait for the first result, and
+      asks for the second in a later turn.
+
+      The tool returns account IDs, not client names, so the answer says ACC-013, not Tasman
+      Power & Gas. The Meridian data page maps one to the other.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many tool_use blocks did Call 1 return?"
+        answer_from: first.response.tool_uses
+        explanation: "Three, one per opportunity in the question, all in one response. The turn 1: line counts them (line 49)."
+      - id: c2
+        type: mcq
+        prompt: "Why could the model ask for all three lookups in one response?"
+        options:
+          - "None of the lookups needs another's result"
+          - "The tool's input_schema takes a list of IDs"
+          - "Opus 5.5 always calls a tool three times"
+          - "The SDK split one request into three"
+        answer: 0
+        explanation: "They're independent. The schema takes one ID (line 19), so three lookups need three tool_use blocks, and since none waits on another, they can all go in one turn."
+
+  - id: g2
+    title: "Match each result by id"
+    code: ["55-58"]
+    teach: |
+      Your code now has three requests to answer. **Line 55** loops over every `tool_use`
+      block, and **line 58** builds a `tool_result` for each one, copying that block's `id` into
+      `tool_use_id`:
+
+      ```python
+      {"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(output)}
+      ```
+
+      With one tool call (s02) the id looked like a formality. With three, it's the only thing
+      that says which record answers which request: the API and the model pair them **by id, not
+      by position**. Measured: the same three results sent in reverse order gave the same Call 2
+      (1,448 input tokens) and the same answer.
+
+      That matters once tools run at the same time (threads, `asyncio`): they finish in whatever
+      order they finish, and each result still finds its request by its id.
+    do: "Open the **Messages** panel on **Call 2**. Match each `tool_result`'s `tool_use_id` with an `id` in message [1]."
+    show: [loop.tool_results, api.requests]
+    notice: |
+      Three results and three API requests, one per `tool_use`. On the **Timeline**, each
+      `get_opportunity` row shows its input and the end of its id. The three API requests come
+      one after another: the model asked in parallel, but your loop (line 55) runs the tools one
+      at a time.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Your code sends the three results in the order OPP-1048, OPP-1042, OPP-1046. What happens?"
+        options:
+          - "The API rejects the call: results must be in tool_use order"
+          - "Nothing changes: each result is matched to its tool_use by tool_use_id"
+          - "The model mixes up which record is which"
+          - "The SDK sorts them first"
+        answer: 1
+        explanation: "Measured: reversed results gave the same Call 2 and the same answer. The id ties each result to its request; the order doesn't matter."
+      - id: c2
+        type: mcq
+        prompt: "Where does a tool_result's tool_use_id come from?"
+        options:
+          - "Your code makes up a new one"
+          - "It's the id of the tool_use block it answers, copied at line 58"
+          - "The API assigns it when Call 2 arrives"
+          - "It's the opportunity ID"
+        answer: 1
+        explanation: "Line 58 copies block.id. The model wrote that id in Call 1's response, and the result has to name it."
+
+  - id: g3
+    title: "All results in one user message"
+    code: [64]
+    teach: |
+      **Line 64** sends all three results in **one** `user` message, right after the assistant
+      turn that asked for them. So Call 2 sends three messages: `[0]` your question, `[1]` the
+      assistant's three `tool_use` blocks, and `[2]` one user message with three `tool_result`
+      blocks.
+
+      One assistant turn, answered by one user turn. The Claude docs make it a rule: sending
+      each result in its own user message "silently trains Claude to stop making parallel calls".
+
+      *Silently*, because the API doesn't stop you. Measured: three user messages in a row, one
+      result each, got no error. The API joins consecutive user messages, so Call 2 sent the same
+      1,448 input tokens either way. The harm comes later in a conversation: the model sees from
+      its own history that its tool calls get answered one at a time, and stops asking for
+      several at once.
+
+      Because the API won't flag it, the lab does: the **one message** check under the
+      **Timeline**, and the pill on the results message in **Messages**.
+    do: "Find the **one message** check under the **Timeline**, then the pill on message [2] of **Call 2** in **Messages**."
+    show: [request.last_message, loop.results_in_one_message]
+    notice: |
+      `user: tool_result, tool_result, tool_result`: one message, three results. The check passes
+      because every `tool_use` in message [1] is answered in message [2], and no other message
+      carries a result for it.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which blocks does Call 2's last message hold?"
+        options:
+          - {label: "One tool_result", value: "user: tool_result"}
+          - {label: "Three tool_results", value: "user: tool_result, tool_result, tool_result"}
+          - {label: "Three tool_results and a text block", value: "user: tool_result, tool_result, tool_result, text"}
+        answer_from: request.last_message
+        explanation: "Three tool_results in one user message: line 64 appends the whole results list at once."
+      - id: c2
+        type: mcq
+        prompt: "You send each tool_result in its own user message. What does the API do?"
+        options:
+          - "Returns a 400, as it does for a dropped result"
+          - "Accepts it, because it joins consecutive user messages, but the docs warn it teaches the model to stop calling tools in parallel"
+          - "Retries the call"
+          - "Reads only the first result"
+        answer: 1
+        explanation: "Measured: no error, and the same input tokens. That's why it's easy to get wrong, and why the lab checks it for you."
+
+  - id: g4
+    title: "Fewer round trips"
+    code: [45]
+    teach: |
+      Why ask in parallel at all? Count the round trips. With parallel calls, three lookups take
+      **two** model calls: one that asks, one that answers. One lookup per turn takes **four**,
+      and every call resends the whole history (s02, "History only grows"), so the early
+      messages are paid for again on each extra call.
+
+      `tool_choice` controls tool use. `{"type": "auto"}` is the default: the model decides.
+      Adding `"disable_parallel_tool_use": true` allows **at most one** tool call per response.
+      (On Opus 5.5 the forcing values `any` and `tool` return a 400, but `auto` with this flag
+      works.)
+
+      **Line 45** has it ready, commented out. Predict what it changes, then measure it.
+
+      One thing parallel calls don't do is run your tools at the same time. The model asked for
+      three at once, and your loop still runs them one after another. Running them concurrently
+      is your code's choice. Here the mock API answers in milliseconds, so it would change
+      nothing; with a CRM that takes a second per lookup, it would save two seconds.
+    experiment: e1
+
+  - id: g5
+    title: "A lookup fails: is_error"
+    code: ["27-30", "56-61"]
+    teach: |
+      A real tool fails sometimes: a wrong ID, a timeout, a 500. What your loop does then decides
+      whether the agent recovers.
+
+      **Lines 27 to 30**: a 404 raises a `LookupError` with a short message written for the
+      model, "no opportunity with ID …". It leaves out the URL, which httpx's own error message
+      would include.
+
+      **Lines 56 to 61**: the loop catches the exception and still sends a `tool_result` for that
+      `tool_use`, with the error text and **`is_error: true`**. The other choices are all worse:
+
+      | If the loop… | What happens |
+      |---|---|
+      | drops the result | Call 2 gets a 400: every `tool_use` needs its `tool_result` (s02, "Drop a tool_result") |
+      | lets the exception escape | The run ends with a traceback, and no answer |
+      | sends made-up data | The model takes it as fact |
+      | sends `is_error: true` with the reason | The model knows that lookup failed, and can retry, work around it or tell the user |
+
+      Predict what happens when one of the three IDs doesn't exist.
+    experiment: e2
+
+  - id: g6
+    title: "Quiz"
+    teach: |
+      Three questions on the whole step. Every answer is saved, and a miss comes back in spaced
+      review on the home page until you get it right.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Turn parallel calls off"
+    question: "What does disable_parallel_tool_use cost on a question that needs three lookups?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many model calls will the run make?"
+        hint: "At most one lookup per response, and the last call answers."
+        answer_from: run.calls
+      - id: p2
+        type: numeric
+        prompt: "How many tool_use blocks will Call 1 hold?"
+        answer_from: first.response.tool_uses
+      - id: p3
+        type: mcq
+        prompt: "The run's total input tokens, compared with your previous run (parallel calls on)?"
+        options:
+          - "About the same (under 1.3x)"
+          - "Up to two and a half times (1.3x to 2.5x)"
+          - "Two and a half times or more"
+        bins: [1.3, 2.5]
+        answer_from: ratio.input_tokens
+      - id: p4
+        type: text
+        prompt: "The three results are the same size either way. Why would this run cost more?"
+    change: 'Line 45: delete the "# " at the start of the line, so the request sends tool_choice={"type": "auto", "disable_parallel_tool_use": True}. Change nothing else.'
+    observe:
+      - "Timeline: four calls, with one get_opportunity row between each pair"
+      - "Timeline: the input tokens per call, under the chart"
+      - "Messages: Call 4's list of 7 messages"
+    explain: |
+      Measured: four calls, one `tool_use` in each of the first three, then the answer. Input
+      per call was 485, 740, 1,085 and 1,379 tokens: 3,689 in all, against 1,933 with parallel
+      calls, **1.9 times** as much. The run cost $0.023 against $0.015, and took two extra round
+      trips of 2 to 3 seconds each. The answer was the same.
+
+      The results were the same size both ways. What changed is how often things were sent:
+      every call resends everything before it, so the question and the tool definition went out
+      four times instead of twice, and the first result three times instead of once.
+
+      So leave parallel calls on. Turn them off only when your code must handle one tool call at
+      a time: tools that change something the next call has to see, or a backend that can't take
+      several requests at once. Put the `# ` back when you're done.
+
+  - id: e2
+    title: "Look up an ID that doesn't exist"
+    question: "What does the model do with a tool_result marked is_error?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many tool_use blocks will Call 1 hold?"
+        answer_from: first.response.tool_uses
+      - id: p2
+        type: numeric
+        prompt: "How many tool_results will carry is_error: true?"
+        answer_from: loop.error_results
+      - id: p3
+        type: mcq
+        prompt: "How will the run end?"
+        options:
+          - {label: "It answers: the run ends ok", value: "ok"}
+          - {label: "It crashes with a traceback", value: "error"}
+        answer_from: run.outcome
+      - id: p4
+        type: text
+        prompt: "What will the answer say about OPP-1099?"
+    change: "Line 36: change OPP-1046 to OPP-1099, an ID that isn't in the CRM. Change nothing else."
+    observe:
+      - "Mock API · request log: the 404"
+      - "Timeline: the get_opportunity row marked is_error"
+      - "Messages: Call 2's results message, with its is_error block"
+      - "Console: the answer"
+    explain: |
+      Measured: Call 1 still asked for all three, because the model can't know an ID is missing
+      until it looks. The OPP-1099 request got a 404, `get_opportunity` raised `LookupError`, and
+      the loop sent `LookupError: no opportunity with ID OPP-1099` with `is_error: true`, beside
+      the two good results, in one message.
+
+      Call 2 ended with `end_turn`. The answer compared the two records it found (OPP-1042, at
+      12%, is the larger), said OPP-1099 isn't in the CRM, so it can't tell which of all three is
+      largest, and asked you to check the ID. That's what `is_error` buys: an honest partial
+      answer, instead of a crash or a guess.
+
+      Without the `try`/`except` (lines 56 to 61), the `LookupError` would end the run at turn 1
+      with a traceback, and the two good results would never be sent. Put OPP-1046 back when
+      you're done.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "Call 1 returns three tool_use blocks. How should the next request's messages end?"
+    options:
+      - "With three user messages, one tool_result each"
+      - "With the assistant turn holding all three tool_use blocks, then one user message with three tool_results matched by tool_use_id"
+      - "With one user message holding the first tool_result; the others go in later calls"
+      - "With the three tool_results inside the assistant message"
+    answer: 1
+    concepts: [parallel-tools, agent-loop]
+    explanation: >
+      One assistant turn, answered by one user turn. Every tool_use gets a tool_result with its id, all
+      in the next user message. Split results are accepted, but the docs warn they teach the model to
+      stop calling tools in parallel.
+  - id: q2
+    type: mcq
+    prompt: "One of three lookups fails with a 404. What should your loop send for it?"
+    options:
+      - "Nothing: drop that result"
+      - "A tool_result with its tool_use_id, is_error: true and a short reason"
+      - "A tool_result with an empty record, so the model doesn't notice"
+      - "No next call: raise the error and stop"
+    answer: 1
+    concepts: [tool-errors]
+    explanation: >
+      Dropping it gets a 400, raising ends the run without an answer, and fake data is taken as fact.
+      An is_error result lets the model answer with what it has and say what failed.
+  - id: q3
+    type: mcq
+    prompt: "Why does one lookup per turn cost more than three lookups in one turn?"
+    options:
+      - "Each tool result is bigger"
+      - "There are more calls, and each one resends the whole history"
+      - "disable_parallel_tool_use is billed extra"
+      - "The model thinks longer on each call"
+    answer: 1
+    concepts: [parallel-tools, history]
+    explanation: "Measured: 4 calls and 3,689 input tokens against 2 calls and 1,933. The results were the same size; they were just sent again on every later call."
+tutor_notes: >
+  Common misconceptions: parallel tool use means the tools run at the same time (no: the model asks for
+  several in one response; main.py still runs them one after another at line 55); results must come back
+  in tool_use order (no: they're paired by tool_use_id; reversed order was measured to work); results in
+  separate user messages are fine because there's no error (they're accepted, since the API joins
+  consecutive user messages, but the docs warn they teach the model to stop calling tools in parallel);
+  an is_error result is an exception or a dropped result (it's a normal tool_result with a flag, and the
+  model answers with what it has); disable_parallel_tool_use forces a tool call (no: at most one per
+  response). The client names aren't in get_opportunity's result, only account IDs: the Meridian data
+  page (/meridian) maps them.

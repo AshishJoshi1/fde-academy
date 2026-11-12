@@ -13,6 +13,52 @@ hints:
 
 guide:
   - id: g1
+    title: "Meet Meridian"
+    teach: |
+      From this step on, the lessons' tools work on the data of one made-up company, so you can
+      check every answer against the records.
+
+      **Northwind Meridian Consulting** sells data, cloud and AI projects in the UK, the EU, the
+      US and APAC. Its sales team tracks every possible deal in a CRM, and all of its sales data
+      sits behind one small internal REST API. The same company is the scenario of Project 04,
+      the proposal builder.
+
+      | ID | What it is | Example |
+      |---|---|---|
+      | `OPP-1042` | An **opportunity**: a possible sale being worked on, with its stage, the staffing it needs (roles × days), the discount the client's procurement asked for, and CRM notes | OPP-1042: a data platform assessment for Müller Logistik's Hamburg hub; procurement asked for 12% off |
+      | `ACC-017` | An **account**: a client company, with its past deals | ACC-017: Müller Logistik GmbH, logistics, EU |
+      | `R-ARCH` | A **role** on the rate card, which gives its day rate per location, and the dates each rate is valid | R-ARCH in the UK: €1,150 a day from 2026-10-01 (rate card RC-2026.1) |
+
+      The API has three read endpoints. The lab starts a mock of it for every run of a step that
+      needs it, and your code reads its URL and token from the environment:
+
+      | Request | Returns |
+      |---|---|
+      | `GET /opportunities/{id}` | One opportunity, or a 404 |
+      | `GET /accounts?page=` | The accounts with their past deals, 10 per page |
+      | `GET /rate-card?role=&location=&as_of=` | The day rates that match |
+
+      There are seven opportunities, OPP-1042 to OPP-1048, and 17 accounts. The
+      **[Meridian data](/meridian)** page in the top bar lists every record the mock API serves.
+    do: "Open **[Meridian data](/meridian)** from the top bar, and find OPP-1042 and its account."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What is OPP-1042?"
+        options:
+          - "A support ticket"
+          - "A sales opportunity: a possible deal with a client, tracked in Meridian's CRM"
+          - "A client company"
+          - "A day rate on the rate card"
+        answer: 1
+        explanation: "OPP-… IDs are opportunities. ACC-… IDs are the client accounts they belong to: OPP-1042's is ACC-017."
+      - id: c2
+        type: mcq
+        prompt: "Which client is OPP-1042 for?"
+        options: ["Aldgate Retail Group plc", "Müller Logistik GmbH", "Nordhavn Shipping A/S", "Tasman Power & Gas Pty Ltd"]
+        answer: 1
+        explanation: "Its account_id is ACC-017, and ACC-017 is Müller Logistik GmbH. The opportunity holds only the account ID; the name is in the account record."
+  - id: g2
     title: "Define a tool"
     code: ["13-22", 41]
     teach: |
@@ -63,7 +109,7 @@ guide:
         answer: 1
         explanation: "It's a JSON Schema for the tool's input, so the model writes {\"opportunity_id\": \"OPP-1042\"}. The URL, the token and the shape of the result stay in your code."
 
-  - id: g2
+  - id: g3
     title: "The model asks for it"
     code: [44, "46-47"]
     teach: |
@@ -110,7 +156,7 @@ guide:
         answer: 1
         explanation: "tool_use means: run these tools, then call me again with their results. end_turn is the one that means done."
 
-  - id: g3
+  - id: g4
     title: "Run the tool"
     code: ["25-31", 52]
     teach: |
@@ -151,7 +197,7 @@ guide:
         answer: 2
         explanation: "Line 10 reads it from the environment, and line 27 sends it. Nothing the model reads or writes contains it."
 
-  - id: g4
+  - id: g5
     title: "Send the result back"
     code: [45, "54-55"]
     teach: |
@@ -199,7 +245,7 @@ guide:
         answer: 2
         explanation: "By id. Line 54 copies block.id into tool_use_id. With several tool calls in one turn (s03), that's the only thing that ties each result to its request."
 
-  - id: g5
+  - id: g6
     title: "Loop until end_turn"
     code: [36, "46-47", "57-60"]
     teach: |
@@ -246,7 +292,7 @@ guide:
         answer: 1
         explanation: "The cap is a safety stop, not success. Lines 57 to 60 print an answer only on end_turn, and say plainly when the loop stopped without one."
 
-  - id: g6
+  - id: g7
     title: "History only grows"
     teach: |
       Every call sends the **whole** conversation again, and an agent's conversation only gets
@@ -262,7 +308,7 @@ guide:
       Predict how much Call 2 grows, then measure it.
     experiment: e1
 
-  - id: g7
+  - id: g8
     title: "Drop a tool_result"
     teach: |
       The API checks the structure of the conversation on every call. One of its rules: **every
@@ -273,7 +319,7 @@ guide:
       Break it on purpose: stop the results from being sent, and predict what happens.
     experiment: e2
 
-  - id: g8
+  - id: g9
     title: "Quiz"
     teach: |
       Three questions on the whole step. Every answer is saved, and a miss comes back in spaced

@@ -81,6 +81,33 @@ def error_message(body: Any) -> str | None:
     return msg
 
 
+def _blocks(message: Any) -> list[dict[str, Any]]:
+    content = message.get("content") if isinstance(message, dict) else None
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+
+
+def results_in_one_message(messages: list[Any]) -> bool | None:
+    """Whether every assistant turn's tool_use blocks are all answered by tool_results in the one user
+    message right after it. None when no assistant turn asked for a tool.
+
+    The API rejects a tool_use with no tool_result in the next message (s02), but it accepts results
+    split over several user messages in a row, because it joins them: only this check catches that."""
+    verdicts = []
+    for i, m in enumerate(messages):
+        ids = {b.get("id") for b in _blocks(m) if b.get("type") == "tool_use"}
+        if not ids or not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        after = []
+        for nxt in messages[i + 1:]:
+            if isinstance(nxt, dict) and nxt.get("role") == "assistant":
+                break
+            after.append(nxt)
+        with_results = [n for n in after if any(b.get("type") == "tool_result" for b in _blocks(n))]
+        answered = {b.get("tool_use_id") for b in _blocks(after[0]) if b.get("type") == "tool_result"} if after else set()
+        verdicts.append(len(with_results) == 1 and with_results[0] is after[0] and ids <= answered)
+    return all(verdicts) if verdicts else None
+
+
 def _events(events: list[dict[str, Any]], *types: str) -> list[dict[str, Any]]:
     return [e for e in events if e["type"] in types]
 
@@ -118,6 +145,9 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
     responses = _events(events, "llm.response")
     if responses:
         f["run.cost_usd"] = round(sum(r["data"].get("cost_usd") or 0 for r in responses), 8)
+        ins = [(r["data"].get("usage") or {}).get("input_tokens") for r in responses]
+        if any(n is not None for n in ins):
+            f["run.input_tokens"] = sum(n or 0 for n in ins)
 
     if requests:
         req = requests[-1]["data"]
@@ -133,6 +163,11 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         if isinstance(msgs, list):
             f["request.messages"] = len(msgs)
             f["request.last_message"] = message_shape(msgs[-1]) if msgs else "(none)"
+            # The last request carries the whole history, so its tool_results are every result sent.
+            results_sent = [b for m in msgs for b in _blocks(m) if b.get("type") == "tool_result"]
+            f["loop.tool_results"] = len(results_sent)
+            f["loop.error_results"] = sum(1 for b in results_sent if b.get("is_error"))
+            f["loop.results_in_one_message"] = results_in_one_message(msgs)
         # History only grows: every call resends the previous call's messages, unchanged, then adds to them.
         lists = [r["data"]["body"]["messages"] for r in requests
                  if isinstance(r["data"].get("body"), dict) and isinstance(r["data"]["body"].get("messages"), list)]
@@ -180,10 +215,12 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             content = msg.get("content") or []
             f["first.response.stop_reason"] = msg.get("stop_reason")
             f["first.response.blocks"] = ", ".join(str(b.get("type")) for b in content) or "(none)"
-            tool = next((b for b in content if b.get("type") == "tool_use"), None)
-            if tool is not None:
-                f["first.response.tool_name"] = tool.get("name")
-                f["first.response.tool_input"] = json.dumps(tool.get("input"), ensure_ascii=False)
+            uses = [b for b in content if b.get("type") == "tool_use"]
+            f["first.response.tool_uses"] = len(uses)
+            if uses:
+                f["first.response.tool_name"] = uses[0].get("name")
+                f["first.response.tool_input"] = json.dumps(uses[0].get("input"), ensure_ascii=False)
+                f["first.response.tool_inputs"] = ", ".join(json.dumps(b.get("input"), ensure_ascii=False) for b in uses)
         first_in, last_in = f["first.response.usage.input_tokens"], f["response.usage.input_tokens"]
         if first_in and last_in is not None:
             f["loop.input_growth"] = last_in - first_in
@@ -197,11 +234,16 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             f["api.last_request"] = f"{a.get('method')} {a.get('path')}{'?' + a['query'] if a.get('query') else ''} → {a.get('status')}"
 
     if prev_events is not None:
-        prev_out = run_facts(prev_events)["response.usage.output_tokens"]
+        prev = run_facts(prev_events)
+        prev_out = prev["response.usage.output_tokens"]
         f["prev.response.usage.output_tokens"] = prev_out
         out = f["response.usage.output_tokens"]
         if out is not None and prev_out:
             f["ratio.output_tokens"] = round(out / prev_out, 3)
+        prev_in = prev["run.input_tokens"]
+        f["prev.run.input_tokens"] = prev_in
+        if f["run.input_tokens"] is not None and prev_in:
+            f["ratio.input_tokens"] = round(f["run.input_tokens"] / prev_in, 3)
     return f
 
 

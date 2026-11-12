@@ -6,3 +6,4 @@ summary: >
 steps:
   - s01-one-call
   - s02-manual-loop
+  - s03-parallel-tools

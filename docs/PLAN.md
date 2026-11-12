@@ -93,7 +93,8 @@ After a module's lessons, its project is built as one more guided lesson, in the
 - **Fixtures** (`src/academy_server/fixtures/`): a step with `run: {fixture: meridian}` gets the mock Meridian API (vendored unchanged from Projects/04) for each run:
   - started in the server on a free port with a fresh token, which the lesson process gets as `MERIDIAN_API_URL` and `MERIDIAN_API_TOKEN`, and stopped when the run ends;
   - every request it answers is an `api.request` run event (method, path, query, status, the body sent back), recorded before the response goes out, so the events keep the true order;
-  - `tools/run_live.py` starts it too, and prints each request.
+  - `tools/run_live.py` starts it too, and prints each request;
+  - the **Meridian data** page (`/meridian`, in the top bar) shows every record it serves, read from the same seed files, so a lesson's IDs can be looked up and a model's answer checked.
 - **Store:** existing tables, plus run events, predictions and experiment progress (new migrations). Cost comes from usage × `pricing.yaml`.
 - **Tutor** (`src/academy_server/tutor.py`, `POST /api/steps/{id}/tutor/{guide_id}`):
   - `claude-sonnet-5-5` at effort `low`, called by the server through the gateway with the SDK. Lesson code never sees the key.
@@ -108,7 +109,8 @@ After a module's lessons, its project is built as one more guided lesson, in the
   - lesson text and the code diff
   - guided lesson steps, experiments and quiz
   - console, call inspector, usage and cost
-  - for steps that turn them on (`panels:`): the timeline (model calls, the tool run between them, mock API requests), the messages each call sent (carried over or new), and the mock API's request log
+  - for steps that turn them on (`panels:`): the timeline (model calls, each tool run between them with its input and id, mock API requests), the messages each call sent (carried over or new), and the mock API's request log
+  - the **one message** check, on the timeline and in the messages view: each assistant turn's `tool_use` blocks are all answered in the one user message after it (marked split or unanswered otherwise). The API accepts split results, because it joins consecutive user messages, so only this check catches them. The same rule is the run fact `loop.results_in_one_message`.
   - run history
   - tutor
   - home
@@ -209,21 +211,39 @@ One tool, `get_opportunity`, backed by the mock Meridian API; Opus 5.5 at effort
 
 | Step | Teaches | Your run shows | Then |
 |---|---|---|---|
-| 1 Define a tool | `name`, `description`, `input_schema`; tools are sent, and cost tokens, on every call | the tool names, Call 1's input tokens | Checks |
-| 2 The model asks for it | `stop_reason: tool_use` and the `tool_use` block | Call 1's stop_reason, blocks, tool and input | Checks |
-| 3 Run the tool | Your code runs it; the model never sees the URL or token | API requests, the last one | Checks |
-| 4 Send the result back | The whole assistant turn, then one user message of `tool_result`s matched by id | messages sent, the last message | Checks |
-| 5 Loop until end_turn | The loop, a turn cap, and checking how it ended | calls, last stop_reason, run cost | Checks |
-| 6 History only grows | Every call resends everything; never edit earlier turns | | Experiment E1 |
-| 7 Drop a tool_result | The API's pairing rule: a 400, not retried | | Experiment E2 |
-| 8 Quiz | | | q1 to q3 |
+| 1 Meet Meridian | The sample company: opportunities (OPP-), accounts (ACC-), the rate card, the three read endpoints, the Meridian data page | | Checks |
+| 2 Define a tool | `name`, `description`, `input_schema`; tools are sent, and cost tokens, on every call | the tool names, Call 1's input tokens | Checks |
+| 3 The model asks for it | `stop_reason: tool_use` and the `tool_use` block | Call 1's stop_reason, blocks, tool and input | Checks |
+| 4 Run the tool | Your code runs it; the model never sees the URL or token | API requests, the last one | Checks |
+| 5 Send the result back | The whole assistant turn, then one user message of `tool_result`s matched by id | messages sent, the last message | Checks |
+| 6 Loop until end_turn | The loop, a turn cap, and checking how it ended | calls, last stop_reason, run cost | Checks |
+| 7 History only grows | Every call resends everything; never edit earlier turns | | Experiment E1 |
+| 8 Drop a tool_result | The API's pairing rule: a 400, not retried | | Experiment E2 |
+| 9 Quiz | | | q1 to q3 |
+
+## s03 "Parallel tool calls": the end result
+The s02 tool and loop, with a question that needs three lookups (OPP-1042, OPP-1046, OPP-1048), a tool that raises on a 404, and a loop that sends a failed tool's result with `is_error: true`. Opus 5.5 at effort `low`. Measured on 2026-11-12 (6 runs):
+- **Parallel calls** (2 runs, alike): Call 1 is 485 input tokens and returns three `tool_use` blocks (174 output tokens); Call 2 sends 3 messages and 1,448 input tokens and ends with `end_turn`; the run costs $0.015 to $0.016.
+- **`disable_parallel_tool_use`** (passed through by the gateway): 4 calls, one `tool_use` each; input 485, 740, 1,085 and 1,379 (3,689 in all, 1.9×); $0.023.
+- **Results in reverse order:** accepted, with the same 1,448 input tokens and the same answer: results pair by `tool_use_id`.
+- **Results split over three user messages:** accepted, with the same 1,448 input tokens (the API joins consecutive user messages). So the planned "split the results" experiment was cut: one run shows no error, and the harm (the docs: split results teach the model to stop calling tools in parallel) isn't visible in one run. Step 3 teaches it, and the lab's one message check catches it.
+- **OPP-1099** (not in the CRM): Call 1 still asks for all three; the 404 goes back as `is_error: true`; Call 2 (1,187 input) answers for the two found, says OPP-1099 isn't in the CRM and asks to check the ID; $0.016.
+
+| Step | Teaches | Your run shows | Then |
+|---|---|---|---|
+| 1 Three lookups in one turn | Independent lookups come back as several `tool_use` blocks in one response | Call 1's stop_reason, tool_use count and inputs | Checks |
+| 2 Match each result by id | Results pair with requests by `tool_use_id`, not position | tool results, API requests | Checks |
+| 3 All results in one user message | One assistant turn, one user turn; split results are accepted but teach the model to stop calling in parallel | the last message, the one message check | Checks |
+| 4 Fewer round trips | `tool_choice` and `disable_parallel_tool_use`; asking in parallel doesn't mean the tools run at the same time | | Experiment E1 |
+| 5 A lookup fails: is_error | A failed tool still gets a result, with `is_error: true` and a reason written for the model | | Experiment E2 |
+| 6 Quiz | | | q1 to q3 |
 
 ## Lab 02 roadmap: what each step adds to the app
 | Step | New in the app |
 |---|---|
 | s01 One call | Runner, thin relay, lab page, guided steps with code highlights and run values, experiments, quiz, run history, tutor |
 | s02 Manual loop | The Meridian mock API (vendored `meridian_api.py`) as the tools' backend; a messages view of what each turn added; a timeline of all calls |
-| s03 Parallel tool calls | Several tool calls per turn on the timeline; an automatic check that all `tool_result`s went back in one user message |
+| s03 Parallel tool calls | Several tool calls per turn on the timeline, each with its input and id; the one message check (timeline, messages view, `loop.results_in_one_message`); the Meridian data page |
 | s04 Gate and block | A "block tool X" toggle (`work/policy.json`); the mock API's write log proving zero writes; the "Why?" chain from outcome back to the code line, shown as a highlighted snippet |
 | s05 Tool runner and approval | The run pauses for Approve or Deny in the UI |
 | s06 Strict schema | A malformed-call fuzzer and its results |

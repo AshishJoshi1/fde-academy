@@ -5,7 +5,8 @@
 
 - A fake gateway stands in for Claude (a one-sentence text answer; a thinking block when effort is
   high; count_tokens counts words), so the check costs nothing and makes no live calls. With tools in
-  the request it asks for the first tool, answers its tool_result with text, and returns the real
+  the request it asks for the first tool once per OPP- ID in the question, all in one turn (one per
+  turn under disable_parallel_tool_use), answers the tool_results with text, and returns the real
   API's 400 when a tool_use has no tool_result after it. A step's mock API (s02 on) is the real one.
 - The lab runs with its own temporary data dir and playground: your progress and playground/ are
   untouched.
@@ -13,8 +14,9 @@
   check, plays any experiment through to its explanation, answers the quiz, and saves a screenshot.
 - Then it starts the lesson over (every tick gone, no run reopened, history and spaced review kept),
   and walks the flash cards (flip, "Didn't know" and "Knew it", tag filter, all cards, the card's
-  link back from spaced review).
-- On a step with the timeline, messages or mock API panels, it checks each one drew the first run.
+  link back from spaced review), and opens the Meridian data page.
+- On a step with the timeline, messages or mock API panels, it checks each one drew the first run,
+  with the "one message" check on the tool results.
 - It reports any JavaScript error. Exit code 1 if anything failed.
 
 A lesson whose code needs a different reply extends fake_reply() below.
@@ -25,6 +27,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -75,17 +78,24 @@ def fake_reply(body: dict) -> tuple[int, dict]:
                  "in the next message."}}
         return 400, {"error": {"message": json.dumps(inner), "type": "None", "param": "None", "code": "400"}}
     effort = (body.get("output_config") or {}).get("effort")
-    answered = any(b.get("type") == "tool_result" for b in _blocks(messages[-1] if messages else {}))
     size = len(json.dumps(messages)) + len(json.dumps(tools))
     usage = {"input_tokens": size // 4 if tools else 22, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
-    if tools and not answered:   # ask for the first tool, with OPP-1042 for every required field
+    question = messages[0].get("content") if messages else ""
+    wanted = re.findall(r"OPP-\d+", question if isinstance(question, str) else "") or ["OPP-1042"]
+    asked = {v for m in messages if m.get("role") == "assistant" for b in _blocks(m) if b.get("type") == "tool_use"
+             for v in (b.get("input") or {}).values()}
+    todo = [x for x in wanted if x not in asked]
+    if tools and todo:   # every ID in the question in one turn (parallel calls), or one per turn when that's off
+        if (body.get("tool_choice") or {}).get("disable_parallel_tool_use"):
+            todo = todo[:1]
         schema = tools[0].get("input_schema") or {}
-        content = [{"type": "tool_use", "id": f"toolu_fake{len(messages):02d}", "name": tools[0]["name"],
-                    "input": {k: "OPP-1042" for k in schema.get("required", [])}}]
+        content = [{"type": "tool_use", "id": f"toolu_fake{len(messages):02d}{k}", "name": tools[0]["name"],
+                    "input": {f: opp for f in schema.get("required", [])}} for k, opp in enumerate(todo)]
         return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
                      "content": content, "stop_reason": "tool_use", "stop_sequence": None,
-                     "usage": {**usage, "output_tokens": 60}}
-    content = [{"type": "text", "text": TOOL_ANSWER if tools else ANSWER}]
+                     "usage": {**usage, "output_tokens": 60 * len(todo)}}
+    answer = TOOL_ANSWER if len(wanted) == 1 else f"Looked up {', '.join(wanted)} (a fake answer)."
+    content = [{"type": "text", "text": answer if tools else ANSWER}]
     out = min(25, body.get("max_tokens") or 25)
     stop = "max_tokens" if out < 25 else "end_turn"
     if effort == "high":
@@ -368,16 +378,50 @@ def check_panels(b: Browser, panels: list[str], check) -> None:
         print(f"    timeline: {' | '.join(rows)}")
         check("timeline: calls, the tool run between them, and its API request",
               len(rows) >= 4 and any("result sent" in r for r in rows))
+        check("timeline: each tool row shows its input and id", any(
+            "get_opportunity" in r and "OPP-1042 · id …" in r for r in rows))
+        check("timeline: the one message check passes",
+              b.js("document.getElementById('timeline').textContent.includes('went back in one user message')"))
     if "messages" in panels:
         b.wait("document.querySelectorAll('#messages-view .msg').length > 0", "the messages view")
         check("messages: the last call's list, with what it added marked",
               b.js("document.querySelectorAll('#messages-view .msg.is-added').length") > 0
               and b.js("document.querySelectorAll('#messages-tabs .tab').length") > 1)
+        check("messages: the results message is marked 'one message'",
+              b.js("[...document.querySelectorAll('#messages-view .msg-head .pill')].some(p => p.textContent === 'one message')"))
         b.js("document.querySelector('#messages-tabs .tab').click()")
         check("messages: call 1's tab shows call 1's list",
               b.js("document.getElementById('messages-view').textContent.includes('Call 1 sent 1 message')"))
     if "fixture" in panels:
         check("mock API log lists the tool's request", b.js("document.querySelectorAll('#api-log tbody tr').length") > 0)
+        check("mock API panel links the Meridian data page",
+              b.js("!!document.querySelector('.pane[data-panel=fixture] a[href=\"/meridian\"]')"))
+
+
+def walk_meridian(b: Browser, base: str, out: Path) -> list[str]:
+    """The Meridian data page: every record the mock API serves, reachable from the top bar."""
+    fails: list[str] = []
+
+    def check(label: str, ok: bool) -> None:
+        print(f"    [{'ok' if ok else 'FAIL'}] {label}")
+        if not ok:
+            fails.append(label)
+
+    from academy_server.fixtures import load_seed
+    seed = load_seed()
+    print("  Meridian data page")
+    b.call("Page.navigate", url=f"{base}/meridian")
+    b.wait("document.title.startsWith('Meridian data')", "the Meridian data page")
+    check("it's the current page in the top bar",
+          b.js("document.querySelector('.nav a[aria-current=page]').textContent") == "Meridian data")
+    counts = b.js("[...document.querySelectorAll('article.card')].map(a => a.querySelectorAll('tbody tr').length)")
+    check(f"opportunities, accounts and rate card all listed ({counts[2:]})",
+          counts[2:] == [len(seed["opportunities"]), len(seed["accounts"]), len(seed["rate_card"])])
+    check("OPP-1042 shows its client", b.js(
+        "document.getElementById('OPP-1042').closest('tr').textContent.includes('Müller Logistik GmbH')"))
+    shot = b.call("Page.captureScreenshot", format="png")["data"]
+    (out / "meridian.png").write_bytes(base64.b64decode(shot))
+    return fails
 
 
 def api_get(base: str, token: str, path: str):
@@ -508,6 +552,7 @@ def main(argv: list[str] | None = None) -> int:
         seen = len(browser.errors())          # walk() reported these already
         fails += walk_start_over(browser, base, token, args.step_id, shots)
         fails += walk_cards(browser, base, token, shots)
+        fails += walk_meridian(browser, base, shots)
         errors = browser.errors()[seen:]
         if errors:
             fails.append(f"JavaScript errors after the lesson walk: {'; '.join(errors)}")

@@ -72,7 +72,8 @@
         </div>
       </div>
       <div class="pane" data-panel="fixture" hidden>
-        <div class="pane-head"><h3 class="card-title">Mock API · request log</h3><span class="spacer"></span><span class="small muted" id="api-count"></span></div>
+        <div class="pane-head"><h3 class="card-title">Mock API · request log</h3><span class="spacer"></span><span class="small muted" id="api-count"></span>
+          <a class="small" href="/meridian" target="_blank" rel="noopener" title="Every record the mock Meridian API serves">Meridian data</a></div>
         <div class="pane-body stack" id="api-log"><p class="small muted">Every request your tool code makes to the mock Meridian API, as the API saw it.</p></div>
       </div>
     </div>
@@ -269,6 +270,30 @@
   function blocksOf(message) {
     return typeof message.content === "string" ? [{type: "text", text: message.content}] : (message.content || []);
   }
+  function toolUseIds(message) {
+    return message.role !== "assistant" ? [] : blocksOf(message)
+      .filter(function (b) { return b.type === "tool_use"; }).map(function (b) { return b.id; });
+  }
+  // The "one message" check on the assistant message msgs[at]: every tool_use in it is answered in the ONE
+  // user message right after it. The API joins consecutive user messages, so results split over several
+  // get no error; only this check catches them. The same rule as results_in_one_message in experiments.py.
+  function resultsCheck(msgs, at) {
+    var ids = toolUseIds(msgs[at]);
+    if (!ids.length) return null;
+    var after = [];
+    for (var k = at + 1; k < msgs.length && msgs[k].role !== "assistant"; k++) after.push(k);
+    var withResults = after.filter(function (k) { return blocksOf(msgs[k]).some(function (b) { return b.type === "tool_result"; }); });
+    var answered = {};
+    after.forEach(function (k) { blocksOf(msgs[k]).forEach(function (b) { if (b.type === "tool_result") answered[b.tool_use_id] = k; }); });
+    var missing = ids.filter(function (id) { return !(id in answered); });
+    return {at: at, ids: ids, withResults: withResults, missing: missing,
+            ok: !missing.length && withResults.length === 1 && withResults[0] === after[0]};
+  }
+  function checkPill(chk) {
+    return chk.ok ? pill("pill-good", "one message")
+         : chk.missing.length ? pill("pill-critical", chk.missing.length + " unanswered")
+         : pill("pill-warning", "split over " + chk.withResults.length + " messages");
+  }
 
   // Calls, the tools run between them, and the API requests, from the events.
   function model() {
@@ -354,7 +379,9 @@
         var tag = !c.res ? pill("pill-plain", "waiting")
                 : c.failed ? pill("pill-critical", c.res.status ? String(c.res.status) : "no response")
                 : pill("pill-plain pill-mono", (c.msg && c.msg.stop_reason) || String(c.res.status));
-        var row = traceRow([el("span", "seq", String(c.n)), el("span", "name", "Call " + c.n), tag], 0,
+        var nUses = c.msg ? toolUseIds(Object.assign({role: "assistant"}, c.msg)).length : 0, bits = [el("span", "seq", String(c.n)), el("span", "name", "Call " + c.n), tag];
+        if (nUses > 1) bits.push(pill("pill-plain pill-mono", nUses + " tool_use"));   // parallel calls: several in one response
+        var row = traceRow(bits, 0,
           c.res ? (ms / 1000).toFixed(2) + " s" : "",
           "Call " + c.n + ": " + c.req.body.messages.length + " message(s) sent" +
           (c.res ? ", " + (ms / 1000).toFixed(2) + " s, input " + (u.input_tokens ?? "?") + ", output " + (u.output_tokens ?? "?") : ""),
@@ -366,10 +393,12 @@
         var t = r.tool, state = t.result ? (t.result.is_error ? pill("pill-critical", "is_error") : pill("pill-good", "result sent"))
                 : t.next ? pill("pill-critical", "no tool_result")
                 : t.ended ? pill("pill-warning", "never sent back") : pill("pill-plain", "running");
-        var name = el("span", "name"), code = el("code", null, t.use.name);
-        name.append(code);
+        // Its input and the end of its id tell apart several calls of the same tool in one turn.
+        var args = Object.values(t.use.input || {}).map(String).join(", "), name = el("span", "name two-line");
+        name.append(el("code", null, t.use.name),
+                    el("span", "small muted", clip(args, 40) + " · id …" + String(t.use.id).slice(-4)));
         grid.append(traceRow([name, state], 1, ((t.until - t.t) / 1000).toFixed(2) + " s",
-          "Tool " + t.use.name + " " + json(t.use.input) + ": call " + t.from + "'s response asked for it, and your code ran it" +
+          "Tool " + t.use.name + " " + json(t.use.input) + ", tool_use id " + t.use.id + ": call " + t.from + "'s response asked for it, and your code ran it" +
           (t.next ? ". Call " + t.next.n + (t.result ? " carried its tool_result." : " did not carry its tool_result.") : "."),
           bar("tool", t.t, t.until - t.t, m.total)));
       } else {
@@ -380,6 +409,25 @@
       }
     });
     box.append(grid);
+    // The "one message" check, for each call whose tool_use blocks the next call answered (or should have).
+    m.calls.forEach(function (c, i) {
+      var next = m.calls[i + 1];
+      if (!c.msg || !next) return;
+      var ids = toolUseIds(Object.assign({role: "assistant"}, c.msg)), msgs = next.req.body.messages;
+      if (!ids.length) return;
+      var at = msgs.findIndex(function (msg) { return toolUseIds(msg).indexOf(ids[0]) >= 0; });
+      var chk = at >= 0 ? resultsCheck(msgs, at) : {ok: false, ids: ids, missing: ids, withResults: []};
+      var n = ids.length, what = "Call " + c.n + "'s " + (n === 1 ? "tool_use" : n + " tool_use blocks");
+      var line = el("p", "small row", null), text = el("span", "secondary");
+      text.textContent = chk.ok ? what + ": " + (n === 1 ? "its tool_result" : "all " + n + " tool_results") +
+          " went back in one user message, message [" + chk.withResults[0] + "] of call " + next.n + "."
+        : chk.missing.length ? what + ": " + chk.missing.length + " got no tool_result in call " + next.n + "'s messages."
+        : what + ": the results were split over " + chk.withResults.length + " user messages in call " + next.n +
+          ". The API joins them, so there's no error, but send them in one message: split results teach the model to stop calling tools in parallel.";
+      line.style.margin = "var(--sp-3) 0 0";
+      line.append(checkPill(chk), text);
+      box.append(line);
+    });
     var ins = m.calls.filter(function (c) { return c.res && c.res.usage; }).map(function (c) { return c.res.usage.input_tokens; });
     var cost = m.calls.reduce(function (s, c) { return s + ((c.res && c.res.cost_usd) || 0); }, 0);
     if (ins.length) {
@@ -445,10 +493,33 @@
         ". History should only grow: send every earlier message back exactly as it was."));
       view.append(warn);
     }
+    // Each assistant turn's tool_use blocks, checked against the messages after it: "one message", split or unanswered.
+    var checks = {}, split = null;
+    msgs.forEach(function (msg, k) {
+      var chk = resultsCheck(msgs, k);
+      if (!chk) return;
+      if (!chk.ok && !chk.missing.length) split = split || chk;
+      if (chk.missing.length) checks[k] = chk;                       // marked on the assistant turn
+      chk.withResults.forEach(function (r) { checks[r] = chk; });   // and on each message carrying its results
+    });
+    if (split) {
+      var sw = el("div", "callout callout-warning");
+      sw.append(el("span", "icon icon-alert"), el("p", "small", "Message [" + split.at + "]'s " + split.ids.length +
+        " tool_use blocks are answered over " + split.withResults.length + " user messages. The API joins consecutive " +
+        "user messages, so there's no error, but send every result in one message: split results teach the model to stop calling tools in parallel."));
+      view.append(sw);
+    }
     var list = el("div", "messages");
     msgs.forEach(function (msg, k) {
       var added = k >= carried, tags = [];
       if (added) tags.push(pill("pill-accent", "new in call " + c.n));
+      if (checks[k]) {
+        var chk = checks[k], here = blocksOf(msg).filter(function (b) { return b.type === "tool_result"; }).length;
+        var p = checkPill(chk);
+        p.title = msg.role === "assistant" ? chk.missing.length + " of these tool_use blocks got no tool_result after them"
+          : "This message answers " + here + " of message [" + chk.at + "]'s " + chk.ids.length + " tool_use block(s)";
+        tags.unshift(p);
+      }
       if (msg.role === "user" && blocksOf(msg).some(function (b) { return b.type === "tool_result" && b.is_error; })) tags.unshift(pill("pill-critical", "is_error"));
       list.append(messageView("[" + k + "]", msg, tags, added && i > 0));
     });
@@ -1003,6 +1074,7 @@
       var tr = el("tr"), k = el("td"), v = el("td", "num");
       k.append(el("code", null, f.key), el("div", "small muted", f.label));
       v.textContent = value(f.key, f.value);
+      if (v.textContent.length > 24) v.classList.add("is-long");   // e.g. several tool inputs: wrap, don't overflow
       tr.append(k, v); body.append(tr);
     });
     t.append(body); box.append(t);

@@ -130,6 +130,29 @@ cards:
       Every tool you define is paid for on every call, used or not. Measured with `count_tokens`.
     source: "docs/PLAN.md, s02 \"The manual loop\": the end result (measured 2026-11-11)"
 
+  - id: parallel-saves-calls
+    tag: cost
+    front: |
+      What did `disable_parallel_tool_use` cost on a question that needs three independent lookups?
+    back: |
+      **4 calls instead of 2**, and 3,689 input tokens instead of 1,933 (1.9×): $0.023 against $0.015.
+      The results were the same size; every extra call resent the whole history.
+
+      Leave parallel calls on, unless your tools must run one at a time.
+    source: "docs/PLAN.md, \"s03 'Parallel tool calls': the end result\" (measured 2026-11-12)"
+
+  - id: cache-miss-big-context
+    tag: cost
+    front: |
+      Why can one prompt-cache miss late in a long session cost dollars?
+    back: |
+      A miss writes the whole conversation to the cache again, at the cache-write price ($8 per million
+      tokens on Opus 5.5 with the 1-hour TTL). On 2026-11-12 one miss re-cached 260K tokens: about
+      $2.08 of the $12.02 session.
+
+      A fresh session per lesson keeps the context small, and so any miss.
+    source: "PROGRESS.md, Cost log (2026-11-12)"
+
   # ----------------------------------------------------------------- security
   - id: dummy-key
     tag: security
@@ -225,3 +248,15 @@ cards:
 
       Record an event at the point where its outcome is decided, not after it is handed on.
     source: "src/academy_server/fixtures/__init__.py, module docstring"
+
+  - id: split-tool-results
+    tag: engineering
+    front: |
+      Does the API reject `tool_result`s sent in separate user messages, one result per message?
+    back: |
+      **No.** It joins consecutive user messages: measured, Call 2 sent the same 1,448 input tokens
+      either way, with no error. But the docs warn that split results train Claude to stop making
+      parallel calls, so send every result in one user message.
+
+      The API won't flag it, so only a check in your code catches it (the lab's "one message" check).
+    source: "docs/PLAN.md, \"s03 'Parallel tool calls': the end result\" (measured 2026-11-12)"

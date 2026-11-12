@@ -5,6 +5,7 @@ and response is recorded in order."""
 from __future__ import annotations
 
 import json
+import re
 import socket
 import sys
 import threading
@@ -24,8 +25,11 @@ from academy_server.runs import DUMMY_KEY
 from academy_server.runs.proctree import pid_alive
 
 REAL_KEY = "sk-real-gateway-key-must-never-reach-lesson-code"
-S02_STARTER = (Path(__file__).resolve().parent.parent / "content" / "m02-agent-loop" / "lab02-agent-loop"
-               / "s02-manual-loop" / "starter" / "main.py")
+LAB02 = Path(__file__).resolve().parent.parent / "content" / "m02-agent-loop" / "lab02-agent-loop"
+S02_STARTER = LAB02 / "s02-manual-loop" / "starter" / "main.py"
+S03_STARTER = (LAB02 / "s03-parallel-tools" / "starter" / "main.py").read_text(encoding="utf-8")
+S03_PARALLEL_OFF = '        # tool_choice={"type": "auto", "disable_parallel_tool_use": True},  # E1'
+assert S03_PARALLEL_OFF in S03_STARTER and S03_STARTER.count("OPP-1046") == 1   # what E1 and E2 change
 MESSAGE = {"id": "msg_test", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
            "content": [{"type": "text", "text": "An agent loop repeats until the task is done."}],
            "stop_reason": "end_turn", "stop_sequence": None,
@@ -73,6 +77,9 @@ print("spawned", child.pid, flush=True)
 time.sleep(120)
 """, 5),
     "loop": (S02_STARTER.read_text(encoding="utf-8"), 120),    # the real s02 code, against the real mock API
+    "parallel": (S03_STARTER, 120),                             # the real s03 code, as it starts
+    "sequential": (S03_STARTER.replace(S03_PARALLEL_OFF, S03_PARALLEL_OFF.replace("# ", "", 1)), 120),   # E1's change
+    "missing": (S03_STARTER.replace("OPP-1046", "OPP-1099"), 120),                                      # E2's change
     "orphan": ("""
 import pathlib, subprocess, sys
 child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
@@ -104,7 +111,7 @@ def write_content(root: Path) -> None:
         (chapter / name / "starter").mkdir(parents=True)
         (chapter / name / "step.yaml").write_text(
             f'id: {name}\ntitle: "{name}"\nfiles:\n  main.py: starter/main.py\nrun:\n  timeout_s: {limit}\n'
-            + ("  fixture: meridian\n" if name == "loop" else "")
+            + ("  fixture: meridian\n" if name in ("loop", "parallel", "sequential", "missing") else "")
             + (EXPERIMENT if name == "call" else ""), encoding="utf-8")
         (chapter / name / "step.md").write_text(f"# {name}\n", encoding="utf-8")
         (chapter / name / "starter" / "main.py").write_text(code.lstrip(), encoding="utf-8")
@@ -119,11 +126,20 @@ class FakeGateway:
         body = json.loads(request.content or b"{}")
         if body.get("stream"):
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=SSE.encode())
-        last = (body.get("messages") or [{}])[-1].get("content")
-        if body.get("tools") and not (isinstance(last, list) and any(b.get("type") == "tool_result" for b in last)):
+        # With tools: one get_opportunity per OPP- ID in the question, all in one turn (parallel calls),
+        # or one per turn under disable_parallel_tool_use; then a text answer.
+        messages = body.get("messages") or [{}]
+        question = messages[0].get("content")
+        wanted = re.findall(r"OPP-\d+", question if isinstance(question, str) else "")
+        uses = [b for m in messages if m.get("role") == "assistant" and isinstance(m.get("content"), list)
+                for b in m["content"] if b.get("type") == "tool_use"]
+        todo = [x for x in wanted if x not in {b["input"]["opportunity_id"] for b in uses}]
+        if body.get("tools") and todo:
+            if (body.get("tool_choice") or {}).get("disable_parallel_tool_use"):
+                todo = todo[:1]
             return httpx.Response(200, json={**MESSAGE, "stop_reason": "tool_use", "content": [
-                {"type": "tool_use", "id": "toolu_test1", "name": "get_opportunity",
-                 "input": {"opportunity_id": "OPP-1042"}}]})
+                {"type": "tool_use", "id": f"toolu_test{len(uses) + k + 1}", "name": "get_opportunity",
+                 "input": {"opportunity_id": opp}} for k, opp in enumerate(todo)]})
         return httpx.Response(200, json=MESSAGE, headers={"x-litellm-call-id": "call-123"})
 
 
@@ -274,6 +290,70 @@ def test_a_fixture_step_runs_the_loop_against_the_mock_api(server):
     assert any(line.startswith("answer:") for line in console(view))
     with pytest.raises((httpx.ConnectError, httpx.ConnectTimeout)):   # the mock API stopped with the run
         httpx.get(started["fixture"]["url"] + "/accounts", timeout=2, trust_env=False)
+
+
+def _tool_results(request_body: dict) -> list[dict]:
+    return [b for m in request_body["messages"] if isinstance(m["content"], list)
+            for b in m["content"] if b.get("type") == "tool_result"]
+
+
+def test_s03_parallel_calls_go_back_in_one_message(server):
+    view = run_to_end(server, "parallel")
+    assert view["run"]["outcome"] == "ok", console(view)
+    events = view["events"]
+    bodies = [e["data"]["body"] for e in events if e["type"] == "llm.request"]
+    assert len(bodies) == 2                                    # one call asks for all three, one answers
+    paths = [e["data"]["path"] for e in events if e["type"] == "api.request"]
+    assert paths == ["/opportunities/OPP-1042", "/opportunities/OPP-1046", "/opportunities/OPP-1048"]
+    last = bodies[1]["messages"][-1]
+    assert last["role"] == "user" and [b["tool_use_id"] for b in last["content"]] == ["toolu_test1", "toolu_test2", "toolu_test3"]
+    facts = run_facts(events)
+    assert facts["first.response.tool_uses"] == 3 and facts["loop.tool_results"] == 3 and facts["loop.error_results"] == 0
+    assert facts["first.response.tool_inputs"] == ('{"opportunity_id": "OPP-1042"}, {"opportunity_id": "OPP-1046"}, '
+                                                   '{"opportunity_id": "OPP-1048"}')
+    assert facts["request.last_message"] == "user: tool_result, tool_result, tool_result"
+    assert facts["loop.results_in_one_message"] is True
+    assert facts["run.input_tokens"] == 44                    # the fake gateway's 22 per call, added up
+
+
+def test_s03_parallel_off_takes_a_call_per_lookup(server):
+    parallel = run_to_end(server, "parallel")["events"]
+    view = run_to_end(server, "sequential")
+    assert view["run"]["outcome"] == "ok", console(view)
+    bodies = [e["data"]["body"] for e in view["events"] if e["type"] == "llm.request"]
+    assert [b["tool_choice"] for b in bodies] == [{"type": "auto", "disable_parallel_tool_use": True}] * 4
+    facts = run_facts(view["events"], prev_events=parallel)
+    assert facts["run.calls"] == 4 and facts["first.response.tool_uses"] == 1 and facts["request.messages"] == 7
+    assert facts["loop.results_in_one_message"] is True and facts["loop.tool_results"] == 3
+    assert facts["prev.run.input_tokens"] == 44 and facts["ratio.input_tokens"] == 2.0   # 4 calls against 2
+
+
+def test_s03_a_failed_lookup_goes_back_as_is_error(server):
+    view = run_to_end(server, "missing")
+    assert view["run"]["outcome"] == "ok", console(view)
+    events = view["events"]
+    statuses = {e["data"]["path"]: e["data"]["status"] for e in events if e["type"] == "api.request"}
+    assert statuses == {"/opportunities/OPP-1042": 200, "/opportunities/OPP-1099": 404, "/opportunities/OPP-1048": 200}
+    results = _tool_results([e["data"]["body"] for e in events if e["type"] == "llm.request"][-1])
+    failed = [r for r in results if r.get("is_error")]
+    assert len(results) == 3 and len(failed) == 1
+    assert failed[0]["content"] == "LookupError: no opportunity with ID OPP-1099"     # no URL, no token
+    facts = run_facts(events)
+    assert facts["loop.error_results"] == 1 and facts["loop.results_in_one_message"] is True
+    assert any("-> is_error" in line for line in console(view))
+
+
+def test_results_in_one_message_catches_split_and_missing_results():
+    from academy_server.experiments import results_in_one_message
+    ask = {"role": "assistant", "content": [{"type": "tool_use", "id": "a"}, {"type": "tool_use", "id": "b"}]}
+    res = {"a": {"type": "tool_result", "tool_use_id": "a"}, "b": {"type": "tool_result", "tool_use_id": "b"}}
+    q = {"role": "user", "content": "q"}
+    assert results_in_one_message([q]) is None                                          # no tool asked for
+    assert results_in_one_message([q, ask, {"role": "user", "content": [res["b"], res["a"]]}]) is True  # any order
+    assert results_in_one_message([q, ask, {"role": "user", "content": [res["a"]]},
+                                   {"role": "user", "content": [res["b"]]}]) is False   # split: the API accepts it
+    assert results_in_one_message([q, ask, {"role": "user", "content": [res["a"]]}]) is False   # one missing
+    assert results_in_one_message([q, ask]) is False                                     # dropped (s02's E2: a 400)
 
 
 def test_timeout_kills_the_whole_process_tree(server):

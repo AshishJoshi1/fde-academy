@@ -1,7 +1,8 @@
 """Server-rendered HTML pages, all styled by /static/academy.css.
 
 The home page, the styled 401 page (served before any session exists), the /design
-style guide, the lab page where a step is run, and the flash cards.
+style guide, the lab page where a step is run, the flash cards, and /meridian: the data
+the mock Meridian API serves.
 
 Every dynamic value goes through html.escape. Lesson markdown is rendered with raw HTML
 disabled, so step.md can't inject markup either.
@@ -71,7 +72,8 @@ def shell(title: str, body: str, *, theme: str | None = None, active: str | None
     theme_attr = f' data-theme="{theme}"' if theme in THEMES else ""
     links = ""
     if nav:
-        items = [("home", "/", "Home"), ("cards", "/cards", "Flash cards"), ("design", "/design", "Design system")]
+        items = [("home", "/", "Home"), ("cards", "/cards", "Flash cards"), ("meridian", "/meridian", "Meridian data"),
+                 ("design", "/design", "Design system")]
         current = ' aria-current="page"'
         links = '<nav class="nav" aria-label="Main">' + "".join(
             f'<a href="{href}"{current if key == active else ""}>{label}</a>'
@@ -375,6 +377,93 @@ def cards_page(*, theme: str | None = None) -> str:
     """Flash cards: what building FDE Academy taught. The cards load from /api/cards."""
     body = (HERE / "cards.html").read_text(encoding="utf-8")
     return shell("Flash cards · FDE Academy", body, theme=theme, active="cards")
+
+
+# ----------------------------------------------------------------- meridian
+def _table(head: list[str], rows: list[list[str]], *, nums: tuple[int, ...] = ()) -> str:
+    """A design-system table; cells are already-escaped HTML. Wide tables scroll sideways."""
+    def cell(tag: str, i: int, value: str) -> str:
+        cls = ' class="num"' if i in nums else ""
+        return f"<{tag}{cls}>{value}</{tag}>"
+    ths = "".join(cell("th", i, esc(h)) for i, h in enumerate(head))
+    trs = "".join("<tr>" + "".join(cell("td", i, v) for i, v in enumerate(r)) + "</tr>" for r in rows)
+    return (f'<div style="overflow-x:auto"><table class="table"><thead><tr>{ths}</tr></thead>'
+            f"<tbody>{trs}</tbody></table></div>")
+
+
+def meridian_page(seed: dict[str, Any], *, theme: str | None = None) -> str:
+    """Every record the mock Meridian API serves, read from the same seed files, so the OPP-, ACC- and
+    R- IDs in a lesson can be looked up, and a model's answer checked against the data."""
+    accounts = {a["account_id"]: a for a in seed["accounts"]}
+
+    def money(amount: float, currency: str) -> str:
+        return f"{esc(currency)} {amount:,.0f}"
+
+    opps = []
+    for o in seed["opportunities"]:
+        acc = accounts.get(o["account_id"], {})
+        staffing = "<br>".join(f"{esc(e['role'])} · {esc(e['location'])} · {e['days']:,} days" for e in o["effort"])
+        opps.append([f'<code id="{esc(o["opportunity_id"])}">{esc(o["opportunity_id"])}</code>',
+                     f'<code>{esc(o["account_id"])}</code><br><span class="small secondary">{esc(acc.get("legal_name", "?"))}</span>',
+                     esc(o["service_line"]), esc(o["stage"]), esc(o["engagement_type"]), esc(o["start_date"]),
+                     staffing, f'{o["requested_discount_pct"]}%', "yes" if o["travel_required"] else "no",
+                     f'<span class="small">{esc(o["crm_notes"])}</span>'])
+    accs = []
+    for a in seed["accounts"]:
+        deals = "<br>".join(f"{esc(d['deal_id'])}: {esc(d['outcome'])} {esc(d['closed_on'])}, "
+                            f"{money(d['amount'], d['currency'])} at {d['discount_pct']}% off, {esc(d['service_line'])}"
+                            for d in a["deals"]) or '<span class="muted">none</span>'
+        accs.append([f'<code id="{esc(a["account_id"])}">{esc(a["account_id"])}</code>', esc(a["legal_name"]),
+                     esc(a["industry"]), esc(a["contracting_region"]),
+                     ", ".join(f"<code>{esc(c)}</code>" for c in a["competitor_ids"]) or '<span class="muted">none</span>',
+                     f'<span class="small">{deals}</span>'])
+    rates = [[f"<code>{esc(r['role'])}</code>", esc(r["location"]), money(r["day_rate"], r["currency"]),
+              esc(r["version"]), esc(r["valid_from"]), esc(r["valid_to"])]
+             for r in sorted(seed["rate_card"], key=lambda r: (r["version"], r["role"], r["location"]))]
+    n_opp, n_acc, n_rate = len(opps), len(accs), len(rates)
+
+    body = f"""
+<section class="container page-head">
+  <p class="eyebrow">The lessons' sample company</p>
+  <h1>Meridian data</h1>
+  <p class="lede">Northwind Meridian Consulting is a made-up consultancy that sells data, cloud and AI projects
+  in the UK, the EU, the US and APAC. Its sales data sits behind one small internal REST API, and from s02 on the
+  lab starts a mock of that API for each run. This page shows every record the mock serves, read from the same
+  seed files, so you can check a model's answer against the data.</p>
+</section>
+<section class="container stack-lg" style="padding-bottom:var(--sp-7)">
+  <article class="card"><div class="card-head"><h2 class="card-title">What the IDs mean</h2></div>
+    <div class="card-body">{_table(["ID", "What it is"], [
+        ["<code>OPP-…</code>", "An <b>opportunity</b>: a possible sale being worked on in the CRM, with its stage, "
+         "the staffing it needs, the discount the client's procurement asked for, and CRM notes."],
+        ["<code>ACC-…</code>", "An <b>account</b>: a client company, with its past deals."],
+        ["<code>D-…</code>", "A <b>past deal</b> with an account: won or lost, with its amount and discount."],
+        ["<code>R-…</code>", "A <b>role</b> code, such as R-ARCH. The rate card gives each role's day rate per "
+         "location (UK, PL, IN), and the dates each rate is valid."]])}</div></article>
+  <article class="card"><div class="card-head"><h2 class="card-title">The API</h2></div>
+    <div class="card-body stack">{_table(["Request", "Returns"], [
+        ["<code>GET /opportunities/{id}</code>", "One opportunity, or a 404 if the ID doesn't exist."],
+        ["<code>GET /accounts?page=&amp;page_size=</code>", "One page of accounts (at most 10), each with its "
+         "<code>deals[]</code>, and <code>next_page</code> (null on the last page)."],
+        ["<code>GET /rate-card?role=&amp;location=&amp;as_of=</code>", "The rate-card rows that match. With "
+         "<code>as_of</code>, only the rows valid on that date."],
+        ["<code>PATCH /opportunities/{id}</code>", "A write endpoint. It accepts the call and stores nothing."]])}
+      <p class="small muted" style="margin:0">Every request needs <code>Authorization: Bearer &lt;token&gt;</code>.
+      The lab gives each run its own URL and token, in <code>MERIDIAN_API_URL</code> and
+      <code>MERIDIAN_API_TOKEN</code>. The model never sees either.</p></div></article>
+  <article class="card"><div class="card-head"><h2 class="card-title">Opportunities</h2><span class="spacer"></span>
+    <span class="small muted">{n_opp} records · <code>GET /opportunities/{{id}}</code></span></div>
+    <div class="card-body">{_table(["ID", "Account", "Service line", "Stage", "Engagement", "Start", "Staffing",
+                                    "Discount asked", "Travel", "CRM notes"], opps, nums=(7,))}</div></article>
+  <article class="card"><div class="card-head"><h2 class="card-title">Accounts</h2><span class="spacer"></span>
+    <span class="small muted">{n_acc} records · <code>GET /accounts</code></span></div>
+    <div class="card-body">{_table(["ID", "Legal name", "Industry", "Region", "Competitors", "Past deals"], accs)}</div></article>
+  <article class="card"><div class="card-head"><h2 class="card-title">Rate card</h2><span class="spacer"></span>
+    <span class="small muted">{n_rate} rows · <code>GET /rate-card</code></span></div>
+    <div class="card-body">{_table(["Role", "Location", "Day rate", "Version", "Valid from", "Valid to"], rates,
+                                   nums=(2,))}</div></article>
+</section>"""
+    return shell("Meridian data · FDE Academy", body, theme=theme, active="meridian")
 
 
 def design_page(*, theme: str | None = None) -> str:

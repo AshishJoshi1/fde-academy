@@ -10,29 +10,35 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s01` "One call" (9 steps, g1–g9, experiments E2–E5, the quiz in g9), started over on 2026-11-11; steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done yet.
-  - **s02 "The manual loop"** is built and ready at `/lab/m02.lab02.s02`, for when he gets there.
-  - **Spaced review:** g3.c1 (s01) is **still wrong**, missed again in today's review: he picked `end_turn`, but `tool_use` means "run the tools, then call again". s02's g2 and g5 teach it in his own trace (the Timeline labels each call with its stop_reason).
-  - **Flash cards:** 17 in the deck (3 added today), 1 reviewed (`cache-share`, known).
-- **Building:** s01 and s02 are complete.
-  - **s02** (`content/m02-agent-loop/lab02-agent-loop/s02-manual-loop/`): 8 guided steps (define a tool, the model asks, run the tool, send the result back, loop until end_turn, history only grows with E1, drop a tool_result with E2, quiz q1–q3), written from measured runs (`docs/PLAN.md`, "s02 'The manual loop': the end result").
-  - **New in the app for s02:**
-    - **the mock Meridian API as a fixture** (`src/academy_server/fixtures/`, vendored unchanged from Projects/04): one per run, its URL and token in the lesson env, each request an `api.request` run event; `run_live.py` starts it too;
-    - **lab panels** a step turns on with `panels:`: a timeline (model calls, the tool run between them, API requests), the messages each call sent (carried over or new; the failed call's error unwrapped), and the mock API's request log;
-    - **14 new run facts** (first call, loop growth, messages, history_grows, tools, run cost, API requests); the tutor sees the API requests too.
-  - **Checks:** 155 tests pass. `tools/browser_check.py` passes on `m02.lab02.s02` (8 steps, the three panels, Start over, flash cards) and on `m02.lab02.s01` (new panels hidden).
-- **Next first action:** in a fresh session, propose the s03 "Parallel tool calls" outline for Ashish's OK: guide-step titles, one line each, plus its experiment (a question that needs 3 lookups at once). The source is `docs/PLAN.md`, Module 02 outline, row 2 (several `tool_use` blocks in one turn; all results in one user message; `is_error`).
-  - After his OK, build the s03 content and the features it needs: parallel calls on the timeline, and an automatic check that all `tool_result`s went back in one user message.
-  - **Done when:** `tools/browser_check.py m02.lab02.s03` passes, then `/wrap`. Then re-estimate Module 02 from the cost log (s02 and s03).
+  - **s02 "The manual loop"** (9 steps, opening with "Meet Meridian") and **s03 "Parallel tool calls"** are built and ready at `/lab/m02.lab02.s02` and `/lab/m02.lab02.s03`.
+  - **Spaced review:** nothing still wrong. g3.c1 (s01: `tool_use` means "run the tools, then call again") was answered right on 2026-11-12, so it's fixed after retry.
+  - **Flash cards:** 20 in the deck (3 added on 2026-11-12), 1 reviewed (`cache-share`, known).
+- **Building:** s01, s02 and s03 are complete.
+  - **s03** (`content/m02-agent-loop/lab02-agent-loop/s03-parallel-tools/`): 6 guided steps (three lookups in one turn, match each result by id, all results in one user message, fewer round trips with E1 "turn parallel calls off", a lookup fails with E2 "an ID that doesn't exist", quiz q1–q3), written from measured runs (`docs/PLAN.md`, "s03 'Parallel tool calls': the end result").
+  - **New in the app for s03:**
+    - **the Meridian data page** (`/meridian`, in the top bar and linked from the Mock API panel): every opportunity, account and rate-card row the mock API serves, read from its seed files;
+    - **s02's first step, "Meet Meridian"**: the company, what OPP-, ACC- and R- IDs are, the three read endpoints;
+    - **timeline:** each tool row shows its input and the end of its id, and a call that asked for several shows "N tool_use";
+    - **the one message check**, under the timeline and as a pill in Messages, flags split or unanswered results; the same rule is the run fact `loop.results_in_one_message`;
+    - **8 new run facts:** `run.input_tokens`, `first.response.tool_uses`, `first.response.tool_inputs`, `loop.tool_results`, `loop.error_results`, `loop.results_in_one_message`, `prev.run.input_tokens`, `ratio.input_tokens`;
+    - the fake gateways (browser check and run tests) ask for every OPP- ID in the question in one turn, or one per turn under `disable_parallel_tool_use`.
+  - **Checks:** 161 tests pass, including s03's real starter end to end against the real mock API in three forms (as written, E1's change, E2's change), the split and missing results check, and the Meridian page. `tools/browser_check.py` passes on s03 (6 steps), s02 (9 steps) and s01, and now opens the Meridian page too.
+- **Next first action:** in a fresh session, propose the s04 "Gate and block" outline for Ashish's OK: guide-step titles, one line each, plus its experiment. The sources are `docs/PLAN.md`, Module 02 outline row 3 (policy enforced in code, not the prompt; a prompt-only "don't write" against a code gate; the request log proves zero writes), and the Lab 02 roadmap row for s04 (a block-tool toggle in `work/policy.json`, the mock API's write log, the "Why?" chain).
+  - The mock API's write endpoint is `PATCH /opportunities/{id}`: it accepts the call and stores nothing. Measure live what a prompt-only rule does before writing the steps.
+  - **Done when:** `tools/browser_check.py m02.lab02.s04` passes, then `/wrap`.
 
 ## Last session
-- **Date:** 2026-11-11 (second session)
+- **Date:** 2026-11-12
 - **Done:**
-  - **Spaced review:** g3.c1 asked again and missed again (`end_turn`), recorded with `labctl` (attempt #7).
-  - **s02 outline** approved as proposed (8 steps, E1 and E2), then built.
-  - **Measured live** through the relay with a throwaway home (learner data untouched): 3 normal runs alike (Call 1: 469 input tokens and only a `tool_use` block; Call 2: 3 messages, 724 input tokens, `end_turn`; about $0.008–0.009 a run), the dropped `tool_result` (400, not retried, 2 calls), and `count_tokens` for where the tokens go (question 33, tool 436, tool result about 190).
-  - **Built:** the fixture, the three panels, the new facts, tool-aware fake gateways (browser check and run tests), and tests: `tests/test_fixtures.py` (including a check that the vendored copy matches Projects/04), the real s02 starter run end to end against the real mock API, and loop facts.
-  - **Docs:** CLAUDE.md layout (`fixtures/`), `docs/PLAN.md` (Architecture: fixtures and panels; s02 end result).
-  - **Flash cards:** `tool-tokens`, `no-tool-result` and `record-before-send` added.
+  - **Unwrapped work** from 2026-11-11 (Start over sets lessons back to Not started) was committed and pushed on its own (`fc2ca72`), after the tests and the s02 browser check passed.
+  - **Spaced review:** g3.c1 answered right (`tool_use`), recorded with `labctl` (attempt #8).
+  - **s03 outline** approved, with "split the results" kept only if the API returned a 400. It doesn't, so that experiment was cut and the missing-ID experiment became E2.
+  - **Lessons now introduce Meridian before using its IDs:** s02's "Meet Meridian" step and the Meridian data page.
+  - **Measured live** with a scratch script against the gateway (learner data untouched): 6 runs (parallel twice, parallel off, results split, results reversed, OPP-1099), about $0.10. Then one `tools/run_live.py m02.lab02.s03` run of the real starter: 3 `tool_use` blocks, one results message, the right answer (OPP-1046, 22%).
+  - **Built:** the s03 content, s02's g1, `/meridian`, the timeline and messages changes, the new facts, the fake gateways and the tests.
+  - **Docs:** `docs/PLAN.md` (Architecture: the Meridian data page and the one message check; the s02 table; the s03 end result; the Lab 02 roadmap), CLAUDE.md layout (`/meridian`).
+  - **Flash cards:** `parallel-saves-calls`, `cache-miss-big-context` and `split-tool-results` added.
+  - **Module 02 re-estimated** from the cost log (below).
 - **Open questions:**
   - **1-hour TTL:** does the gateway pass `ttl: "1h"` through? Still unverified. It can be measured for cents: ask a first question after the cache has expired, and look for `ephemeral_1h_input_tokens` > 0 in "Show request".
   - **Module 02 projects:** set aside. The choice between the Claude Agent SDK and LangGraph for them is undecided and gets discussed after the 17 lessons.
@@ -52,8 +58,8 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s01 content: guided steps g1–g9 with experiments E2–E5 and quiz q1–q3
   - [ ] Ashish does s01 in the UI (at his own pace; not a gate for the next build)
 - [ ] Lessons 1–17 of the Module 02 outline (`docs/PLAN.md`, proposed). Lab 02 first:
-  - [x] s02 Manual loop: content g1–g8 with E1, E2 and q1–q3; the Meridian fixture, timeline, messages and mock API panels
-  - [ ] s03 Parallel tool calls
+  - [x] s02 Manual loop: content g1–g9 (g1 "Meet Meridian") with E1, E2 and q1–q3; the Meridian fixture, timeline, messages and mock API panels
+  - [x] s03 Parallel tool calls: content g1–g6 with E1, E2 and q1–q3; several tool calls per turn on the timeline, the one message check, the Meridian data page
   - [ ] s04 Gate and block
   - [ ] s05 Tool runner and approval
   - [ ] s06 Strict schema
@@ -65,7 +71,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02, s03 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 and s03 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -80,8 +86,10 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-09 (2nd) | `/today` review, s01 g1 content fix, tutor (stage 3) built and measured | $4.87 | $0.010 learner + $0.033 tutor measurement |
 | 2026-11-11 | `/today` review; learner tools Start over and flash cards built and browser-checked | $7.09 | $0.00 (browser checks use a fake gateway) |
 | 2026-11-11 (2nd) | `/today` review; s02 "The manual loop" outlined, measured, built and browser-checked | $10.07 | $0.00 learner + about $0.032 measurement (5 runs; `count_tokens` is free) |
+| 2026-11-12 | `/today` review; the 2026-11-11 Start-over fix committed; s03 "Parallel tool calls" outlined, measured, built and browser-checked; s02 "Meet Meridian"; the Meridian data page | $12.02 | $0.00 learner + about $0.12 measurement (6 runs, plus one live run of the starter) |
 
-- **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87. Re-estimate Module 02 after s03, from the s02 and s03 rows.
+- **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.
+- **Module 02 re-estimate** (from the s02 and s03 rows): a lesson session costs about $10–12 in Claude Code ($10.07 for s02; $12.02 for s03, which also built s02's new step and the Meridian page). 15 lessons are left (s04–s06, then lessons 6–17), so about $150–180, plus the two guided projects. Gateway measurement stays under $0.15 a lesson.
 - **Where the 2026-11-11 cost went:**
   - 97% of input came from the cache (12.4M tokens read, 323K written), over 79 requests;
   - one cache miss after an idle past the 1-hour TTL re-cached 37.7K tokens, and the context compaction forced one rebuild;
@@ -91,6 +99,12 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
   - output, 126.2K tokens (the lesson, the code, the tests): about $2.52;
   - cache writes, 314.6K tokens at the 1-hour price: about $2.52;
   - reading `lab.html` whole (about 24K tokens) put it in every later turn's context; read large files in parts.
+- **Where the 2026-11-12 cost went** ($12.02 over 106 requests, 97% of input from the cache):
+  - cache writes, 665.8K tokens at the 1-hour price: about $5.33 (44%). One cache miss re-cached 260K tokens (about $2.08); `/cost` reported it as likely server-side, with the prompt unchanged;
+  - cache reads, 21.9M tokens: about $4.38;
+  - output, 115.6K tokens: about $2.31;
+  - the context averaged about 207K tokens per request (21.9M ÷ 106): the `/claude-api` skill text, whole-file reads and the long build stayed in every later turn;
+  - `/wrap` was about 10% of usage and `/today` about 4%.
 
 ## Decisions log
 - 2026-11-06:
@@ -140,3 +154,7 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
   - **Fixtures run in the server, one per run:** the mock Meridian API starts on a free port with a fresh token, and its requests are run events, so the timeline orders model calls and API requests on one clock. The vendored copy stays byte-identical to Projects/04, and a test checks it.
   - **Lab panels are per step** (`panels:` in `step.yaml`): s01 keeps the console only; s02 adds the timeline, the messages view and the mock API log, built on the design system's trace and messages-diff styles.
   - **Measurement runs** use a throwaway home through the real relay, so the learner's runs, spend and history stay his own.
+- 2026-11-12:
+  - **s03 outline** approved, with "split the results" kept only if it returned a 400. Measured, the API accepts split results (it joins consecutive user messages), so it was cut: s03 has 6 steps, E1 (parallel calls off) and E2 (an ID that doesn't exist).
+  - **Lessons introduce the scenario before using its IDs:** s02 opens with "Meet Meridian", and the Meridian data page (`/meridian`) shows every record the mock API serves, linked from the top bar and the Mock API panel.
+  - **The one message check is the lab's**, because the API won't flag split results: on the timeline, in the messages view, and as the run fact `loop.results_in_one_message`.

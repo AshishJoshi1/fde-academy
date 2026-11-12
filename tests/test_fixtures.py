@@ -67,3 +67,21 @@ def test_vendored_copy_is_unchanged():
     for name in ("accounts", "opportunities", "rate_card"):
         assert (VENDORED / "seed" / f"{name}.json").read_bytes() == \
             (PROJECT_COPY / "samples" / "seed" / f"{name}.json").read_bytes()
+
+
+def test_the_meridian_data_page_lists_every_record_the_mock_api_serves(make_client):
+    seed = fixtures.load_seed()
+    r = make_client().get("/meridian")
+    assert r.status_code == 200
+    page = r.text
+    assert '<a href="/meridian" aria-current="page">Meridian data</a>' in page      # in the top bar, current
+    assert all(f'id="{o["opportunity_id"]}"' in page for o in seed["opportunities"])
+    assert all(f'id="{a["account_id"]}"' in page for a in seed["accounts"])
+    assert page.count("<tr>") == 4 + 4 + len(seed["opportunities"]) + len(seed["accounts"]) + len(seed["rate_card"]) + 5
+    assert "Müller Logistik GmbH" in page and "Łódź Freight Sp. z o.o." in page   # UTF-8 seed, read as UTF-8
+    assert "Harrow &amp; Finch Insurance plc" in page                                # every value escaped
+    assert "GET /opportunities/{id}" in page and "{{" not in page                    # no f-string escapes leak through
+
+
+def test_the_meridian_data_page_needs_a_session(make_client):
+    assert make_client(authed=False).get("/meridian").status_code == 401
