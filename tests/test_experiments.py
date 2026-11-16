@@ -605,3 +605,12 @@ def test_request_strict_is_off_unless_every_tool_says_true():
     loose = {k: v for k, v in TOOL.items() if k != "strict"}
     assert run_facts(fuzz_events(loose, [None]))["request.strict"] == "off"
     assert run_facts(fuzz_events(TOOL, [None]))["fuzz.invalid"] == 0
+
+
+def test_tally_counts_tool_uses_by_name_and_request_counts_tools():
+    events = fuzz_events(TOOL, [{"x": 1}, {"x": 2}, {"x": 3}, None])
+    third = [e for e in events if e["type"] == "llm.response"][2]
+    third["data"]["body"]["content"][0]["name"] = "get_account"      # the model picked another tool
+    f = run_facts(events)
+    assert f["tally.by_tool"] == "update_opportunity x2, get_account x1" and f["tally.tools_used"] == 2
+    assert f["request.tool_count"] == 1

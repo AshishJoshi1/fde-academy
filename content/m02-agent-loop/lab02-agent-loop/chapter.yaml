@@ -10,3 +10,4 @@ steps:
   - s04-gate-and-block
   - s05-tool-runner
   - s06-strict-schema
+  - s07-designing-tools

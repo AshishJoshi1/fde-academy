@@ -395,3 +395,24 @@ cards:
       Opus 5.5 and Haiku 4.5, so the lesson was rebuilt around the measured result. Content written
       first would have taught something false.
     source: "docs/PLAN.md (s06 end result)"
+
+  - id: definition-text-is-all-the-model-sees
+    tag: engineering
+    front: |
+      What does the model see of a tool, and how do you stop it picking the wrong one of two look-alikes?
+    back: |
+      Only the definition as text: name, description and argument names. Measured on Opus 5.5 with
+      three vague tools (get_info, get_details, lookup), 8 of 12 first picks were wrong, with the same
+      wrong tool each time. Clear names alone gave 0 of 12 wrong, and so did clear descriptions alone.
+      The model needs some signal: write the object in the name, what it returns, and a "Not for X" line.
+    source: "docs/PLAN.md (s07 row, measured 2026-11-16)"
+
+  - id: error-text-is-an-instruction
+    tag: engineering
+    front: |
+      A tool returns an error after a wrong pick. Why does the wording of that error matter?
+    back: |
+      The error text is the only way the model learns what each tool covers. After a wrong pick, "Error:
+      not found." recovered 1 of 4 times, while an error that named the right tool recovered 4 of 4.
+      Write errors for the model: what failed and what to call instead.
+    source: "docs/PLAN.md (s07 row, measured 2026-11-16)"

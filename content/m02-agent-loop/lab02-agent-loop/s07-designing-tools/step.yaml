@@ -1,0 +1,334 @@
+id: s07
+title: "Designing tools"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages]
+run:
+  timeout_s: 300
+hints:
+  - "A run makes 12 calls (3 asks x REPEAT 4), one after another, about 3 seconds each. REPEAT = 10 is 30 calls: about 90 seconds."
+  - "The settings are lines 9 to 13. The tools are lines 22 to 45, the hidden wiring is lines 50 to 52, and the loop that counts is lines 78 to 91."
+
+guide:
+  - id: g1
+    title: "The model only sees text"
+    code: ["16-19", "22-25", "46-48", "73"]
+    teach: |
+      Your tool is a Python function. The model has never seen it. What reaches the API is **text**:
+      each tool's `name`, its `description` and its `input_schema` (with the description of each
+      argument). Nothing else. The model chooses a tool by reading those words.
+
+      **Lines 16 to 19** build a tool dict from a name, a description and some string arguments.
+      **Lines 22 to 25** are three tools that say almost nothing: `get_info` "Gets information.",
+      `get_details` "Gets details.", `lookup` "Looks things up.". **Line 46** picks this set, because
+      `CLEAR` on line 9 is `False`. **Line 73** sends the set with every question.
+
+      This step asks three Meridian questions (about an opportunity, an account and a day rate), each
+      `REPEAT` times, and keeps only the **first tool the model picks**. No tool is run.
+    do: "Press **Run**. 12 calls, about 40 seconds. Then open the Timeline, click Call 1, and find `tools` in the request body: that is all the model gets."
+    show: [run.calls, request.tool_count, request.tool_names]
+    notice: |
+      The request holds three tools and nothing about what they hold. Your code knows (g2). The
+      model has only the words `info`, `details` and `lookup`.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the run make?"
+        answer_from: run.calls
+        explanation: "3 asks x REPEAT 4 = 12. Each is a single call: no tool is run, so there is nothing to send back."
+      - id: c2
+        type: mcq
+        prompt: "What does the model see of your tool?"
+        options:
+          - "Its name, description and input schema, as text"
+          - "The Python function and its body"
+          - "The table MEANS that says what each name does"
+          - "The API route your code calls"
+        answer: 0
+        explanation: "Only the definition you send. Everything your code knows about the tool (what it calls, what it returns) is invisible unless you write it into the description."
+
+  - id: g2
+    title: "Three tools that say nothing"
+    code: ["22-25", "50-57", "85-88"]
+    teach: |
+      **Lines 50 to 52** are what **your code** means by each name: `get_info` reads an opportunity,
+      `get_details` an account, `lookup` a day rate. **The model never sees this table.** **Lines 53
+      to 57** are the asks, each with the kind of tool it needs. **Lines 85 to 88** count a pick as
+      wrong when the tool it names means a different kind.
+
+      So the model is asked to choose between `get_info`, `get_details` and `lookup` for
+      "What stage is opportunity OPP-1042 in?", with nothing to tell them apart. It guesses, and
+      the guess is rarely random. Read the picks in the Console: for one ask it tends to pick the
+      same tool every time.
+    do: "Read the Console from g1: for each ask, which tools did it pick, and how often?"
+    show: [tally.by_tool, tally.tools_used]
+    notice: |
+      `tally.by_tool` is the lab's own count of every tool the model called. Compare it with
+      the "wrong tool" line your code printed. Measured on Opus 5.5 at effort low: 8 of 12 wrong,
+      and a consistent pick per ask (all four "account" calls went to `get_info`). **A consistent
+      wrong answer looks like confidence.**
+    check:
+      - id: c1
+        type: mcq
+        prompt: "How does the model know that get_details reads accounts?"
+        options:
+          - "It doesn't: nothing in the definition says so, so it guesses from the words"
+          - "From the MEANS table in your code"
+          - "From the arguments' names"
+          - "The gateway tells it"
+        answer: 0
+        explanation: "MEANS never leaves your process. A name and a description are the only signal, and here they carry none."
+
+  - id: g3
+    title: "Predict: what would guessing score?"
+    code: ["22-25", "53-57"]
+    teach: |
+      Before measuring more, work out a baseline. With three tools that look alike and no signal,
+      a pure guess is right **1 time in 3**, so wrong **2 times in 3**. Your 12 calls had 8 wrong:
+      about that. A model is not a random guesser (it leans on words like "info"), but with no
+      signal that is the right reference point.
+
+      One run of 12 is a small sample. To trust a number, run the same ask many times and **tally**.
+      That is the next step.
+    do: "Write down your guess for the wrong-tool rate with 10 repeats, before you run it."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Three tools, nothing in their definitions to tell them apart. What does a pure guess score?"
+        options:
+          - "Right 1 in 3, wrong 2 in 3"
+          - "Right 3 in 3: the model infers it"
+          - "Right 1 in 2"
+          - "Wrong 1 in 3"
+        answer: 0
+        explanation: "Three equally likely picks, one of them right. The model beat this baseline only if its words (info, details, lookup) happened to line up with your table."
+
+  - id: g4
+    title: "Run it N times and tally"
+    code: [10, "78-91"]
+    teach: |
+      **Line 10** is `REPEAT`. **Lines 78 to 88** run each ask that many times, count the picks per
+      ask (`picks`, a `Counter`) and collect every wrong pick in `wrong`. **Lines 90 and 91** print
+      the rate. The lab counts the same picks independently in `tally.by_tool`, from the requests
+      and responses themselves.
+
+      One call can be luck; a tally is a measurement. Change `REPEAT` to **10** and run: 30 calls,
+      one after another (the gateway allows 60 requests a minute, so a loop that fires them
+      all at once would hit 429).
+    do: "Set `REPEAT = 10` (line 10) and press **Run**. About 90 seconds."
+    show: [run.calls, tally.by_tool, tally.tools_used, run.cost_usd]
+    notice: |
+      Compare "wrong tool: X of 30" with your guess. Expect most of the 30 wrong, and the same
+      wrong tool repeated for each ask.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the run make?"
+        answer_from: run.calls
+        explanation: "3 asks x 10 repeats = 30."
+      - id: c2
+        type: mcq
+        prompt: "Why run each ask 10 times rather than once?"
+        options:
+          - "One call can be luck: a rate over many runs is a measurement"
+          - "The API requires it"
+          - "To fill the context window"
+          - "So the model learns the right tool"
+        answer: 0
+        explanation: "Each call is independent: the model doesn't learn between them. Repeating measures how often a design works, and it is how you tell a better description from a lucky one."
+
+  - id: g5
+    title: "Rewrite the descriptions"
+    code: ["27-34", "46"]
+    teach: |
+      Set `CLEAR = True` (line 9): **line 46** now picks `CLEAR_TOOLS` (**lines 27 to 34**). What
+      changed:
+
+      - **A name for the object**, not the action: `get_opportunity`, `get_account`, `get_day_rate`.
+      - **What it returns**: "stage, start date, requested discount, notes".
+      - **What it is not for**: "Not for company data." This line separates look-alike tools.
+      - **An example in each argument**: `e.g. OPP-1042`. The argument is named for what it holds
+        (`opportunity_id`), not `id`.
+
+      Nothing else changed: same model, same asks, same MEANS table.
+    do: "Set `CLEAR = True` (line 9), keep `REPEAT = 10`, and press **Run**."
+    show: [tally.by_tool, tally.tools_used, run.cost_usd]
+    notice: |
+      Measured: 0 of 12 wrong, and the picks are `get_opportunity`, `get_account`, `get_day_rate`, one
+      per ask. The 8-of-12 to 0 change cost nothing: the descriptions are a few tokens each.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many different tools did the model call in this run?"
+        answer_from: tally.tools_used
+        explanation: "Three, one per kind of ask. Before the rewrite the model's picks didn't line up with the asks."
+      - id: c2
+        type: mcq
+        prompt: "Which line in a description does most to separate two look-alike tools?"
+        options:
+          - "A 'Not for X' line: what the tool does NOT hold"
+          - "A longer first sentence"
+          - "The word 'important'"
+          - "Capital letters in the name"
+        answer: 0
+        explanation: "When two tools sound alike, the model needs the boundary between them. 'Not for company data' tells it where one stops and the other starts."
+
+  - id: g6
+    title: "Errors steer too"
+    code: [11, 12, "60-65", "93-106"]
+    teach: |
+      A wrong pick does not end the run: the tool result goes back to the model, and **what the result
+      says** decides the next call. **Lines 60 to 65** build two error texts. `Error: not found.`
+      says only that it failed. With `HELPFUL = True` the text says **what the tool does hold and
+      which one to use**. **Lines 93 to 106** take the first four wrong picks, answer each with the
+      error (`is_error: True`, as in s02) and let the model try again.
+
+      This needs wrong picks to recover from, so set `CLEAR = False` again.
+    do: "Set `CLEAR = False` and `RECOVERY = True`, and Run: that is the terse error. Then set `HELPFUL = True` and Run again. Compare the two `recovered:` lines."
+    show: [loop.error_results, tally.by_tool, run.calls]
+    notice: |
+      Measured on Opus 5.5 (a small sample, so yours will differ): with the terse error 1 of 4
+      recovered, with the helpful error 4 of 4. **An error message is an instruction to the model**:
+      it can only act on what the text tells it.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which error is more likely to get the model to the right tool?"
+        options:
+          - "\"get_info does not hold that. An account question goes to get_details.\""
+          - "\"Error: not found.\""
+          - "\"Failed.\""
+          - "A Python traceback"
+        answer: 0
+        explanation: "It names what the tool covers and where to go instead. The model has no other way to learn the wiring."
+
+  - id: g7
+    title: "Few tools or many"
+    code: [13, "35-48"]
+    teach: |
+      **Lines 35 to 45** are nine more well described tools (contracts, invoices, forecasts...) and
+      **lines 47 and 48** add them when `MORE_TOOLS` is `True`. Every tool you define is sent on
+      **every call**, so more tools mean more input tokens each time, and more neighbours for the
+      model to confuse each tool with.
+
+      Measured: with clear descriptions, 12 tools picked as accurately as 3 (0 of 12 wrong in both).
+      What grew was the **input**: the definitions are repeated in each request. Clear descriptions
+      let the tool count grow; vague ones would not.
+    do: "Set `RECOVERY = False` and `CLEAR = True`, and Run (3 tools). Then set `MORE_TOOLS = True` and Run again (12 tools). Compare `ratio.input_tokens` and the wrong count."
+    show: [request.tool_count, run.input_tokens, ratio.input_tokens, tally.by_tool]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many tools did the last request define?"
+        answer_from: request.tool_count
+        explanation: "3 tools plus 9 decoys is 12, in every one of the run's requests."
+      - id: c2
+        type: mcq
+        prompt: "What is the cost of adding nine well described tools that no ask needs?"
+        options:
+          - "More input tokens on every call (their definitions are re-sent each time)"
+          - "None: unused tools are free"
+          - "A fixed fee per tool"
+          - "The model slows down only on calls that use them"
+        answer: 0
+        explanation: "The tool list is part of the request every time. Unused tools still cost input tokens, and more look-alike neighbours give the model more ways to pick wrong."
+
+  - id: g8
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments take the rewrite apart: which carries the signal, the **names** or the
+      **descriptions**? Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Names alone"
+    question: "If the descriptions say nothing but the names are clear, does the model still pick the right tool?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many different tools will the model call?"
+        hint: "Three kinds of ask. If it picks right, one tool per kind."
+        answer_from: tally.tools_used
+      - id: p2
+        type: text
+        prompt: "Predict the wrong-tool count out of 12, and say why."
+    change: |
+      Set `CLEAR = True`, `MORE_TOOLS = False`, `RECOVERY = False`. Then add one line after line 48:
+      `TOOLS = [dict(t, description="Fetches a record.") for t in TOOLS]`
+      and Run.
+    observe:
+      - "Console: wrong tool: 0 of 12"
+      - "The picks are get_opportunity, get_account and get_day_rate"
+    explain: |
+      Measured: **0 of 12 wrong**. The names (and the argument names `opportunity_id`, `account_id`,
+      `role`) were enough. The model reads **every word of the definition**, not only the
+      description. In g1 all three were empty: names, descriptions and arguments. Remove your line.
+
+  - id: e2
+    title: "Descriptions alone"
+    question: "If the names say nothing but the descriptions are clear, does the model still pick the right tool?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many different tools will the model call?"
+        answer_from: tally.tools_used
+      - id: p2
+        type: text
+        prompt: "Predict the wrong-tool count out of 12, and say why."
+    change: |
+      Set `CLEAR = True`, `MORE_TOOLS = False`, `RECOVERY = False`. Then add one line after line 48:
+      `TOOLS = [dict(t, name=n) for t, n in zip(TOOLS, ["get_info", "get_details", "lookup"])]`
+      and Run. (MEANS already maps those names to the same three kinds.)
+    observe:
+      - "Console: wrong tool: 0 of 12"
+      - "The picks are get_info, get_details and lookup, each for the ask its description fits"
+    explain: |
+      Measured: **0 of 12 wrong**, with the vague names `get_info`, `get_details` and `lookup`. The
+      descriptions carried the signal. Either one is enough; the g1 set failed because it gave the
+      model **neither**. Write both, and the argument names too. Remove your line.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "A model keeps calling the wrong one of two look-alike tools. What do you change first?"
+    options:
+      - "The definitions: names, descriptions and a 'not for' line"
+      - "The Python function bodies"
+      - "The temperature"
+      - "The max_tokens"
+    answer: 0
+    concepts: [tool-design, tool-schemas]
+    explanation: "The model chooses from the definition text alone. The function body is invisible, and temperature is a 400 on these models."
+  - id: q2
+    type: mcq
+    prompt: "A tool returns 'Error: not found.' after a wrong pick. How do you make recovery likelier?"
+    options:
+      - "Say in the error what the tool covers and which tool to use instead"
+      - "Return nothing"
+      - "Retry the same call in code"
+      - "Raise the effort"
+    answer: 0
+    concepts: [tool-design, error-results]
+    explanation: "The error text is the only thing the model learns the wiring from (measured: 4 of 4 recovered with it, 1 of 4 without)."
+  - id: q3
+    type: mcq
+    prompt: "What does adding nine unused but well described tools cost?"
+    options:
+      - "Input tokens on every call, because every definition is re-sent"
+      - "Nothing"
+      - "Accuracy, always"
+      - "A one-time setup fee"
+    answer: 0
+    concepts: [tool-design, tool-count]
+    explanation: "Measured: accuracy held at 0 of 12 wrong with 12 clear tools, and the input grew with the definitions. Vague neighbours are what hurt accuracy."
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, REPEAT 4, single runs): vague tools (get_info, get_details, lookup)
+  8 of 12 wrong with a consistent wrong pick per ask; clear tools 0 of 12; names alone 0 of 12; descriptions alone 0 of 12;
+  12 clear tools 0 of 12; after a wrong pick a terse error recovered 1 of 4, a helpful one 4 of 4. Don't tell the
+  learner that more tools hurt accuracy: with clear descriptions it didn't, only the input grew. Misconceptions:
+  the model sees the function body or MEANS (no); the description is the only signal (no: names and argument
+  names count, and either is enough); a consistent pick means a correct one (no). The vague-tool wrong count
+  varies a lot run to run.

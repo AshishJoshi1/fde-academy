@@ -66,6 +66,11 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - **Approval channel:** `labkit.approve()` posts to the server (`/approvals/<run token>`) and blocks until the lab page answers, the limit passes or the run ends; both of the last two deny. The gate sits inside the tool, not in the `for ... in runner` body.
   - **`thread=False`** on the SDK tool runner: its default (server-held threads) failed through the gateway; recorded in CLAUDE.md.
 
+- 2026-11-16:
+  - **s07 outline** approved as proposed (8 guide steps, E1 and E2). Experiments were changed after measuring: names alone and descriptions alone each gave 0 of 12 wrong, so they teach that either signal is enough. Extra tools cost input tokens, not accuracy, so g7 teaches the cost.
+  - **"Run N times and tally"** is done in the lesson code (a `REPEAT` loop, sequential because of the gateway's 60 requests a minute); the lab only adds the independent count `tally.by_tool`. It doesn't judge "wrong", because it can't know which tool an ask needs.
+  - **Outline gate hook** (blocking Write and Edit under `content/` until Ashish approves an outline): proposed, not set up. Ashish will decide later.
+
 ## Cost analysis
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.
 - **Module 02 re-estimate** (from the s02 and s03 rows): a lesson session costs about $10–12 in Claude Code ($10.07 for s02; $12.02 for s03, which also built s02's new step and the Meridian page). 15 lessons are left (s04–s06, then lessons 6–17), so about $150–180, plus the two guided projects. Gateway measurement stays under $0.15 a lesson.

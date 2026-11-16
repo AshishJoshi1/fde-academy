@@ -190,6 +190,7 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         tools = body.get("tools") if isinstance(body.get("tools"), list) else []
         f["request.strict"] = ("on, every tool" if tools and all(isinstance(t, dict) and t.get("strict") is True for t in tools)
                                else "off")
+        f["request.tool_count"] = len([t for t in tools if isinstance(t, dict)])
         f["request.tool_names"] = ", ".join(str(t.get("name", "?")) for t in tools if isinstance(t, dict)) or "(none)"
         msgs = body.get("messages")
         if isinstance(msgs, list):
@@ -262,6 +263,7 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
 
     if requests:      # the tool inputs the model wrote, judged against the schema of the request that got them
         uses = invalid = no_tool = 0
+        by_tool: dict[str, int] = {}
         for req, res in zip(requests, results):
             body = req["data"].get("body") if isinstance(req["data"].get("body"), dict) else {}
             schemas = {t.get("name"): t.get("input_schema") for t in body.get("tools") or [] if isinstance(t, dict)}
@@ -270,8 +272,12 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             if msg is not None and not blocks:
                 no_tool += 1
             uses += len(blocks)
+            for b in blocks:
+                by_tool[str(b.get("name"))] = by_tool.get(str(b.get("name")), 0) + 1
             invalid += sum(1 for b in blocks if input_problems(schemas.get(b.get("name")), b.get("input")))
         f["fuzz.tool_uses"], f["fuzz.invalid"], f["fuzz.no_tool"] = uses, invalid, no_tool
+        f["tally.by_tool"] = ", ".join(f"{n} x{c}" for n, c in sorted(by_tool.items(), key=lambda kv: (-kv[1], kv[0]))) or "(none)"
+        f["tally.tools_used"] = len(by_tool)
 
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]

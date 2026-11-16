@@ -294,6 +294,7 @@ A fuzzer: 8 messy asks, one model call each (`messages.create`, one tool `update
 | s04 Gate and block | A "block tool X" toggle (`work/policy.json`); the mock API's write log proving zero writes; the "Why?" chain from outcome back to the code line, shown as a highlighted snippet |
 | s05 Tool runner and approval | `labkit.approve`: the run pauses for Approve or Deny in a card on the lab page (`/approvals/<token>`, `approval.*` events and facts) |
 | s06 Strict schema | A malformed-call fuzzer and its results |
+| s07 Designing tools | "Run N times and tally": facts `tally.by_tool`, `tally.tools_used`, `request.tool_count`. Measured (Opus 5.5, low): vague tools 8 of 12 wrong, clear 0, names alone 0, descriptions alone 0, 12 clear tools 0; terse error recovered 1 of 4, helpful 4 of 4 |
 
 ## Module 02 outline (proposed: awaiting Ashish's OK)
 Seventeen lessons after s01, then the two guided projects. Each lesson's guide-step titles are approved before it is built.
