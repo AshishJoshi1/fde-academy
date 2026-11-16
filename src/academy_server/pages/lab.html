@@ -85,6 +85,10 @@
           <button class="btn" id="memory-reset" type="button" title="Delete every memory file (the model forgets)">Reset memory</button></div>
         <div class="pane-body stack" id="memory-files"><p class="small muted">The files your memory tool wrote. They stay between runs: that is the point.</p></div>
       </div>
+      <div class="pane" data-panel="chain" hidden>
+        <div class="pane-head"><h3 class="card-title">Chain · input, output and validation per step</h3><span class="spacer"></span><span class="small muted" id="chain-count"></span></div>
+        <div class="pane-body stack" id="chain-steps"><p class="small muted">Run the chain: every step of every ticket appears here with what went in, what came out and whether it passed.</p></div>
+      </div>
       <div class="pane" data-panel="fixture" hidden>
         <div class="pane-head"><h3 class="card-title">Mock API · request log</h3><span class="spacer"></span><span class="small muted" id="api-count"></span>
           <a class="small" href="/meridian" target="_blank" rel="noopener" title="Every record the mock Meridian API serves">Meridian data</a></div>

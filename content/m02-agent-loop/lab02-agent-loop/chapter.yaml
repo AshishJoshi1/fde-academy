@@ -14,3 +14,4 @@ steps:
   - s08-memory
   - s09-mcp
   - s10-agent-sdk
+  - s11-prompt-chains

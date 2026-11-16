@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ID = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]*$", max_length=40)]
 
 PanelName = Literal["console", "timeline", "trace", "messages", "tokens", "flow", "fixture",
-                    "why", "variables", "compare", "memory"]
+                    "why", "variables", "compare", "memory", "chain"]
 
 
 class Strict(BaseModel):
@@ -182,6 +182,10 @@ FACTS: dict[str, str] = {
     "tally.tools_used": "how many different tools the model called across the run",
     "memory.commands": "the memory tool's commands the model sent across the run, counted (view, create, str_replace, insert, delete, rename)",
     "memory.files": "how many different memory files the model created, edited or renamed to across the run",
+    "chain.tickets": "how many tickets the chain started (a step trace line with step classify)",
+    "chain.replied": "how many tickets reached a validated reply",
+    "chain.retries": "how many step attempts were retries (attempt 2 or later)",
+    "chain.failed_at": "the steps where tickets ended, counted (none when every ticket got a reply)",
     "approval.asked": "how many times your code paused to ask for Approve or Deny (labkit.approve)",
     "approval.approved": "of those, how many you approved",
     "approval.denied": "of those, how many were denied, timed out or cut off by the run ending",

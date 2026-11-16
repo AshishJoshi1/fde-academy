@@ -10,24 +10,18 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s04` "Gate and block" in the UI (s01 was started over on 2026-11-11; s01 steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done).
-  - **s02 "The manual loop"** to **s10 "The Claude Agent SDK"** are built and ready at `/lab/m02.lab02.s02` to `.s10`.
+  - **s02 "The manual loop"** to **s11 "Prompt chains"** are built and ready at `/lab/m02.lab02.s02` to `.s11`.
   - **Spaced review:** none outstanding.
-  - **Flash cards:** 43 in the deck (3 added on 2026-11-17), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s10 are complete. s10 needed no runner or panel change (the Claude Code subprocess inherits the relay URL and dummy key); `claude-agent-sdk` 0.2.182 was added to `pyproject.toml`. The s11 outline is approved (`docs/PLAN.md`, "Approved outlines"). All tests pass; `tools/browser_check.py m02.lab02.s10` passes (looser timeline and messages checks for the SDK's call pattern).
-- **Next first action:** in a fresh session (`/clear` first), build **s11 "Prompt chains"** from its approved outline in `docs/PLAN.md` (g1–g8, E1 break a step, E2 plain-code vs model-driven enrich on the same 3 tickets, q1–q3; app: a step view showing input, output and validation per step). Done when `tools/browser_check.py m02.lab02.s11` passes. Then 02-B to 02-D lessons need outlines.
+  - **Flash cards:** 46 in the deck (3 added on 2026-11-17, 3 more later that day), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s11 are complete. s11 added the `chain` panel (reads `@@step` lines from the console) and `chain.*` facts. All tests pass; `tools/browser_check.py m02.lab02.s11` passes. Lesson 11 (routing and early exit) needs an outline first.
+- **Next first action:** in a fresh session (`/clear` first), propose the guide-step titles for **lesson 11 "Routing and early exit"** (`docs/PLAN.md`, Module 02 outline: classify once, route map and precedence as data, a cheap exit; mixed and spam tickets; decision view) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes.
 
 ## Last session
-- **Date:** 2026-11-17 (Sonnet 5.5)
-- **Done:** `/today`; Agent SDK docs researched by a subagent; **s10 "The Claude Agent SDK" built:** g1–g9, E1 (block a write with a hook), q1–q3, one file `main.py` with `BLOCK`, `SUBAGENT` and `WRITE` switches. Measured live through the relay (Opus 5.5, low): a plain run makes 4 calls (call 1 is a hidden session-title call); loop calls carry 4 tools (3 plus a tool-search placeholder), adaptive thinking and a cached prompt; with the hook, 0 writes reached the API; without it the agent wrote without reading first; the subagent made its own calls (3 tools, 2-message history) and the `Agent` tool added about 2,300 cached tokens when unused.
-- **App:** no new panel; `claude-agent-sdk>=0.2.182,<0.3` dependency (about 160 MB wheel); `tools/browser_check.py` has s10-specific timeline and messages checks; `CLAUDE.md` and `docs/PLAN.md` record the SDK facts.
-- **Cards:** 3 added (`sdk-hidden-title-call`, `hook-beats-prompt`, `unused-feature-costs-tokens`).
-- **Open questions:**
-  - **Outline gate:** a PreToolUse hook that blocks Write and Edit under `content/` until `.outline-approved` exists was proposed; Ashish will decide later.
-  - **Gateway limit:** 60 requests a minute: a loop of many calls must run one or two at a time.
-  - **Browser check flake:** s04 and s05 each failed once and passed on rerun; on 2026-11-17 the s10 check's Meridian data page step failed once with a JavaScript `TypeError` (reading `textContent` of null) and passed on two reruns. Look into these.
-  - **Windows async noise:** one unblocked s10 `WRITE` run printed a harmless `ConnectionResetError` traceback from the async HTTP client closing.
-  - **Write pill unseen:** no s04 screenshot was inspected for the write pill.
-  - **1-hour TTL** and **Module 02 projects:** as before (see `docs/DECISIONS.md` and `docs/PLAN.md`).
+- **Date:** 2026-11-17 (2nd session, Sonnet 5.5)
+- **Done:** `/today`; **s11 "Prompt chains" built:** g1–g9, E1 (loosen the classify schema), E2 (plain vs model-driven enrich), q1–q3; `main.py` with `LOOSE_CLASSIFY`, `MODEL_ENRICH` and `BAD_TICKET` switches. Measured (Opus 5.5, low, 3 tickets): plain 6 calls, $0.017; model enrich 12 calls, $0.046, same facts; loose classify crashes `respond`; bad ticket fails at enrich after one retry.
+- **App:** `chain` panel, `chain.*` facts, browser_check s11 branch and a structured-output answer in its fake gateway. The first Run is in g4, not g8 as outlined.
+- **Cards:** 3 added (`loose-type-moves-blame`, `retry-only-random-faults`, `plain-code-for-fixed-lookups`).
+- **Open questions:** as before (outline gate hook, gateway 60 requests a minute, browser check flakes, Windows async noise, write pill unseen). The Chain panel was not inspected on screen: it sits below the fold in the screenshot.
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
@@ -51,7 +45,8 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s08 Memory (lesson 7): content g1–g9 with E1, E2 and q1–q3; memory panel, Reset memory, `memory.*` facts
   - [x] s09 MCP (lesson 8): content g1–g9 with E1, E2 and q1–q3; no new app feature
   - [x] s10 The Claude Agent SDK (lesson 9): content g1–g9 with E1 and q1–q3; no new app feature
-  - [ ] Lessons 10–17: s11 outline approved; 02-B to 02-D
+  - [x] s11 Prompt chains (lesson 10): content g1–g9 with E1, E2 and q1–q3; chain panel, `chain.*` facts
+  - [ ] Lessons 11–17: 02-B to 02-D need outlines
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
 
 ## Curriculum progress
@@ -59,7 +54,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 to s10 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s11 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -84,5 +79,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-16 (3rd) | `/today`; s08 "Memory" outline approved, built and browser-checked; 3 cards | $1.25 | about $0.10 (live runs, not itemized) |
 | 2026-11-16 (4th) | `/today`; s09, s10, s11 outlines approved; s09 "MCP" built and browser-checked; 3 cards | $0.80 (Sonnet 5.5; target $8) | about $0.10 (live runs, not itemized) |
 | 2026-11-17 | `/today`; s10 "The Claude Agent SDK" researched, measured live through the relay, built and browser-checked; 3 cards | $1.51 (Sonnet 5.5) | about $0.15 (measurement runs; `labctl status` shows $0.04 learner today) |
+| 2026-11-17 (2nd) | `/today`; s11 "Prompt chains" built, measured and browser-checked; chain panel; 3 cards | $1.25 | about $0.10 measurement (not itemized; `labctl status` shows learner spend only) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.

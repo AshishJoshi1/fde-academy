@@ -1,0 +1,343 @@
+id: s11
+title: "Prompt chains"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, chain, timeline, messages, fixture]
+run:
+  fixture: meridian
+  timeout_s: 240
+hints:
+  - "main.py: the settings are lines 15 to 18, the tickets are lines 20 to 26, the typed hand-offs are lines 30 to 45, the three steps are lines 60 to 118 and the chain is lines 122 to 150."
+  - "The Chain panel shows every step of every ticket: what went in, what came out, and whether it passed. The Console shows only what the code prints for you."
+
+guide:
+  - id: g1
+    title: "Why chain"
+    teach: |
+      So far one call, or one loop, did the whole job. A **prompt chain** splits a job into **fixed steps**, each
+      a small, separate piece of work, and hands the result of one step to the next. Your code decides the
+      order. The model does not decide what runs next, as it does in an agent loop.
+
+      Why bother, when one big prompt could do it all?
+
+      - **Each step is small**, so its prompt is short and its answer is easy to check.
+      - **Each hand-off is checked in code.** If a step's output is wrong, the chain stops *there* and tells you
+        which step failed. One big prompt fails as a whole, and you have to guess where.
+      - **Not every step needs a model.** Fetching a record is plain code: free, instant and the same every time.
+
+      The price: more calls (more tokens, more time) and more code to own. A chain is the right tool when the
+      steps are known in advance. If the model must choose the steps, that is an agent loop, as in s02.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In a prompt chain, who decides which step runs next?"
+        options:
+          - "Your code: the order is fixed"
+          - "The model, after each step"
+          - "The user, at each step"
+          - "The gateway"
+        answer: 0
+        explanation: "That is the difference from an agent loop. The chain's order is code, so it is predictable, testable and cheap to reason about."
+
+  - id: g2
+    title: "The task: three tickets"
+    code: ["20-26", 140]
+    teach: |
+      The chain answers customer **tickets** about sales opportunities in the Meridian CRM. Open `main.py`:
+      the three tickets are on **lines 20 to 26**. Each names an opportunity ID:
+
+      1. asks what discount is on file and when the work starts;
+      2. asks whether an opportunity is still at the proposal stage;
+      3. **asks us to change the discount**: a write request. This chain never writes. Its reply must say a
+         person will follow up.
+
+      Every ticket goes through three steps (the loop on **line 140**):
+
+      | Step | Does | Uses a model? |
+      |---|---|---|
+      | **classify** | Reads the ticket: what kind is it, and which opportunity? | yes |
+      | **enrich** | Fetches the facts of that opportunity from Meridian | no (plain code) |
+      | **respond** | Writes the reply from the ticket and the facts | yes |
+    do: "Read the tickets and the table, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Ticket 3 asks the chain to change a discount. What must the chain do?"
+        options:
+          - "Never write: the reply says a person will follow up, and states what is on file"
+          - "Change the discount, since the customer asked"
+          - "Refuse without replying"
+          - "Ask the model to decide"
+        answer: 0
+        explanation: "The chain has no write tool at all. A request to change data is classified, then answered with what is on file and a promise of follow-up."
+
+  - id: g3
+    title: "Typed hand-offs"
+    code: ["30-45", "51-57"]
+    teach: |
+      A hand-off is the data one step gives the next. In a chain it should be **typed**, not free text. **Lines 30
+      to 45** declare three Pydantic classes: `Classification` (a category and an opportunity ID), `Facts` (the
+      only data a reply may use) and `Reply`.
+
+      The `category` on **line 31** is a `Literal` of three values. That is a **closed list**: nothing else is a
+      valid category.
+
+      **Line 53** is the call: `client.messages.parse(..., output_format=Classification)`. The SDK turns the class
+      into a JSON Schema, sends it with the request, and parses the answer back into a `Classification` object.
+      If the answer doesn't fit, you get an error, not a half-valid string. You will see the schema in the
+      request when you Run, in the next step.
+    do: "Read lines 30 to 57, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What does output_format=Classification do?"
+        options:
+          - "Sends the class as a JSON Schema and parses the model's answer into an object of that class"
+          - "Makes the model run faster"
+          - "Forces the model to call a tool"
+          - "Stores the answer in a database"
+        answer: 0
+        explanation: "The schema travels in the request (output_config), and the SDK validates the reply into the Pydantic object, so the next step receives typed data."
+
+  - id: g4
+    title: "Classify, and your first run"
+    code: ["60-69"]
+    teach: |
+      `classify` (**lines 60 to 69**) asks the model for a `Classification`: the category and the opportunity ID the
+      ticket names. The schema checks the *shape*. But some rules a schema can't say: **line 67** adds one in
+      code: the ID the model returns **must literally appear in the ticket**. A model that invents an ID is
+      stopped here, at the hand-off, not three steps later.
+
+      Press **Run** now. The whole chain runs once, for all three tickets. In this step, look only at **classify**:
+      open the **Chain** panel, and for each ticket read its `classify` row. The **input** is the ticket text, the
+      **output** is the typed result. Then open the **Messages** panel, click a classify call and find
+      `output_config` in the request: the schema is there.
+    do: "Press **Run**. In the Chain panel, read each ticket's `classify` row. Then open a classify call in the Messages panel and find the schema."
+    show: [run.calls, chain.tickets, chain.replied]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Line 67 rejects an opportunity_id that is not in the ticket. Why is that a code check and not a schema rule?"
+        options:
+          - "A JSON Schema can describe a shape, not 'this string must appear in that other text'"
+          - "Schemas don't support strings"
+          - "Python is faster than the model"
+          - "It is only for logging"
+        answer: 0
+        explanation: "A schema constrains the shape of one output. A rule that relates the output to the input needs code, and it belongs at the hand-off."
+
+  - id: g5
+    title: "Enrich is plain code"
+    code: ["72-78", "81-98"]
+    teach: |
+      `enrich_plain` (**lines 72 to 78**) is an ordinary HTTP request to Meridian and a `Facts` built from the answer.
+      **No model**, so no tokens and no cost. A missing record (a 404) raises an error on **line 75**, and the chain
+      reports it.
+
+      Now check your run: the Timeline lists the model calls and, between them, the Meridian requests. The model
+      made calls only in `classify` and `respond`.
+
+      `enrich_model` (**lines 81 to 98**) is the alternative: the model decides what to fetch, in a tool loop like
+      s02. Same facts, but more calls. You compare the two in experiment 2. The question to carry
+      forward: *when the fetch is the same every time, why ask a model to do it?*
+    do: "Open the Timeline panel and look at where the Meridian requests sit between the model calls."
+    show: [run.calls, run.cost_usd]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the chain make for the three tickets?"
+        answer_from: run.calls
+        explanation: "Six: classify and respond for each of the three tickets. Enrich made none, because it is plain code."
+
+  - id: g6
+    title: "Respond from validated facts only"
+    code: ["101-118"]
+    teach: |
+      `respond` (**lines 108 to 118**) writes the reply. Look at what it is given: the ticket, the category and the
+      `Facts`. It is **not** given the raw CRM record. Meridian's record also holds `crm_notes`, which are internal
+      text, and `enrich` copied only five fields into `Facts`. A step can't leak what it never received.
+
+      The model is told to use only those facts (**line 111**) and is guided by the category (the `GUIDE`
+      table on **line 101**: for a change request it says a person will follow up).
+
+      Telling a model to use only the facts is a request. **Lines 114 to 117** make it a rule: every percentage
+      in the reply must be the one in the facts, or one the customer wrote in the ticket. A reply that invents a
+      number is rejected.
+    do: "Read lines 101 to 118. In the Chain panel, open one `respond` row: its input is the category and the facts, nothing more."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why does enrich copy five fields into Facts instead of passing the whole CRM record to respond?"
+        options:
+          - "A step can't leak or use data it was never given, and the hand-off stays small and typed"
+          - "The record is too big for any model"
+          - "Pydantic cannot parse nested JSON"
+          - "It makes the run cost zero"
+        answer: 0
+        explanation: "Passing less is a control: the internal crm_notes never reach the model that writes to the customer."
+
+  - id: g7
+    title: "Validate, retry once, fail naming the step"
+    code: ["127-137", 17, 25]
+    teach: |
+      `run_step` (**lines 127 to 137**) wraps every step. It runs the step; if a check fails (a parse error, a
+      `ValueError`, an HTTP error) it logs the failure and **tries once more**; if the retry fails too it raises
+      `ChainError` naming the step. The loop in the chain catches it and moves on to the next ticket: one bad ticket
+      doesn't stop the others.
+
+      Why a retry at all? A model's answer can vary: a second try may pass. But a retry only helps when the
+      failure is **random**. Set `BAD_TICKET = True` (**line 17**) and Run. A fourth ticket asks about `OPP-1999`,
+      which doesn't exist. Watch the Chain panel: the `enrich` step fails twice for the same reason. The data is
+      wrong, so trying again can't fix it.
+    do: "Set `BAD_TICKET = True` and press **Run**. In the Chain panel, open ticket 4. Then set it back to `False`."
+    show: [chain.tickets, chain.replied, chain.retries, chain.failed_at]
+    notice: |
+      Ticket 4 failed at **enrich**, and the error names the step and the reason (a 404 from Meridian). Tickets 1
+      to 3 were not affected. A retry is for flaky steps; a fault in the data is a *failure to report*, and the
+      chain reports it by step.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Ticket 4 failed at enrich after the retry. Why did the retry not help?"
+        options:
+          - "Meridian has no OPP-1999, so the same request gets the same 404 every time"
+          - "The model was too slow"
+          - "The retry never ran"
+          - "The schema was wrong"
+        answer: 0
+        explanation: "The failure was in the data, not in the model's luck. A retry is for steps that can vary, such as a model call; it can't fix a missing record."
+
+  - id: g8
+    title: "Your run, as a bill"
+    teach: |
+      Make sure `BAD_TICKET` is `False` and Run once more, or reopen your earlier plain run. The chain made
+      **six model calls** for three tickets, and the cost is on the Timeline and in the run's total.
+
+      Read it per step: the two model steps share all the tokens. The step in the middle cost nothing. That is
+      what plain code in a chain buys you, and the next experiments make it concrete: first what a loose hand-off
+      costs you, then what it costs to give the model the fetch.
+    do: "Press **Run** with `BAD_TICKET = False`. Note the total cost and the number of calls. You will compare against them in experiment 2."
+    show: [run.calls, run.cost_usd, run.input_tokens, chain.replied]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many of the three tickets got a validated reply?"
+        answer_from: chain.replied
+        explanation: "All three, each on its first attempt: every step passed its check."
+
+  - id: g9
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments. First: what happens when a hand-off is **loose**: a category that may be any string. Second:
+      the same three tickets with the model doing the fetch, against plain code. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Break a step: loosen the schema"
+    question: "The category may now be any string. Where does the chain break, and does the step that is wrong report it?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "With LOOSE_CLASSIFY = True, how many of the 3 tickets will get a validated reply?"
+        options: ["None or one", "Two", "All three"]
+        bins: [1.5, 2.5]
+        answer_from: chain.replied
+      - id: p2
+        type: text
+        prompt: "Which step will report the problem, and which step will actually be the cause?"
+    change: |
+      Set `LOOSE_CLASSIFY = True` (line 15) and Run. Read the Console and the Chain panel. Then put it back
+      to `False`.
+    observe:
+      - "The Console prints `CRASHED in respond: no guidance for category ...` with the model's own words"
+      - "In the Chain panel `classify` shows valid for every ticket: it passed, because any string is valid now"
+    explain: |
+      Measured (Opus 5.5, effort low): with a loose category, **`classify` passed every time** (a string is a string),
+      and the model wrote its own wording, such as `question about the requested discount`. The crash came **two
+      steps later**, in `respond`, where `GUIDE[c.category]` has no entry for that wording. In my runs, none or one
+      of the three tickets got a reply; which ticket happened to use a known wording varied between runs.
+
+      Two lessons. A loose type moves the failure to a step that is **not the cause**, and a failure that varies
+      from run to run is the hardest kind to debug. A `Literal` closes the list at the hand-off, and the step that
+      gets it wrong is the step that reports it. The blame lands where the fault is.
+
+  - id: e2
+    title: "Plain-code enrich against model-driven enrich"
+    question: "Same tickets, same facts: what does it cost to let the model do the fetch?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many model calls will the chain make with MODEL_ENRICH = True? (Plain code made 6.)"
+        answer_from: run.calls
+        tol: 3
+        unit: "calls"
+      - id: p2
+        type: text
+        prompt: "Will the replies be more accurate, less accurate or the same? Why?"
+    change: |
+      Run once with `MODEL_ENRICH = False` (line 16) if you have not already, and note the calls, the input
+      tokens and the cost. Then set `MODEL_ENRICH = True` and Run again. Compare. Put it back afterwards.
+    observe:
+      - "Timeline: extra model calls between classify and respond, each followed by a Meridian request"
+      - "Chain panel: the `enrich` row's output is the same facts as before"
+    explain: |
+      Measured (Opus 5.5, effort low, 3 tickets): plain-code enrich made **6 calls**, **2,202 input tokens** and cost
+      about **$0.017**. Model-driven enrich made **12 calls**, **7,798 input tokens** and cost about **$0.046**: double
+      the calls and nearly **three times** the cost, for **the same facts** on every ticket.
+
+      - **Tokens and cost:** every fetch became two extra calls (ask for the tool, then read the result), and each
+        call resends the history.
+      - **Predictability:** plain code does the same thing every time. The model could choose a different call, or
+        fetch twice. It happened to fetch once per ticket here.
+      - **Accuracy:** nothing gained. The facts came from the same API either way. The model adds nothing the
+        code didn't already have.
+
+      The rule that falls out: use a model where the step needs **judgment** (classify, respond), and plain code
+      where the step is a fixed lookup. Use a loop only when the model must decide *what* to fetch.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "What is a good reason to make enrich plain code instead of a model call?"
+    options:
+      - "The lookup is the same every time, so code is free, fast and predictable"
+      - "Models cannot call HTTP APIs"
+      - "Plain code is always more accurate at everything"
+      - "It lets you skip validation"
+    answer: 0
+    explanation: "Where there is no judgment to make, a model adds cost and variance and no accuracy. Plain code does a fixed lookup perfectly."
+  - id: q2
+    type: mcq
+    prompt: "A chain step's output passes its check but is wrong for the next step, and the crash appears two steps later. What is the most likely cause?"
+    options:
+      - "A hand-off typed too loosely, so the check passed on data the next step can't use"
+      - "The gateway dropped a call"
+      - "The model was out of tokens"
+      - "The retry ran twice"
+    answer: 0
+    explanation: "A loose type lets bad data through and moves the failure downstream. Closing the type (a Literal, a rule in code) makes the faulty step fail at its own hand-off."
+  - id: q3
+    type: mcq
+    prompt: "A step fails, and the retry fails the same way. What should the chain do?"
+    options:
+      - "Raise an error that names the step and the reason, and carry on with the other tickets"
+      - "Retry until it passes"
+      - "Skip the step and continue as if it passed"
+      - "Ask the model to fix its own error forever"
+    answer: 0
+    explanation: "One retry covers random failures. After that the chain reports the step and the reason: a loop that hides a fault is worse than a clear failure."
+
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, through the relay). Plain run: 6 calls (classify and respond for each of 3 tickets), 2,202 input tokens,
+  about $0.0167. Each classify and respond call uses client.messages.parse with output_format set to a Pydantic class; the request carries the schema in
+  output_config.format. Enrich in plain code makes no model call. BAD_TICKET adds ticket 4 (OPP-1999): enrich fails twice (404), "FAILED: step 'enrich'
+  failed after 2 attempts", tickets 1 to 3 unaffected. LOOSE_CLASSIFY: category is a free string; classify always passes; GUIDE[c.category] raises KeyError in
+  respond, with wordings like "question about the requested discount"; one run had ticket 1 replied and tickets 2 and 3 crashed, another had all 3 crash
+  (so it varies). MODEL_ENRICH: 12 calls, 7,798 input tokens, about $0.046, same facts. The percent check compares floats (the facts hold 4.0 for 4).
+  Facts: run.calls, run.cost_usd, run.input_tokens, chain.tickets, chain.replied, chain.retries, chain.failed_at (parsed from the @@step lines that
+  main.py prints; the Chain panel draws them and hides them from the Console). Misconceptions: a chain and an agent loop are the same (no: order is
+  code); retries fix everything (no: only random faults); a model should do every step (no); a schema can express every rule (no).

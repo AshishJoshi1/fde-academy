@@ -290,6 +290,27 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["memory.commands"] = ", ".join(f"{c} x{n}" for c, n in sorted(mem_cmds.items(), key=lambda kv: (-kv[1], kv[0]))) or "(none)"
         f["memory.files"] = len(mem_written)
 
+    recs = []   # the chain lessons print one `@@step {json}` line per attempt of each step
+    for e in _events(events, "console.out"):
+        text = str(e["data"].get("text", ""))
+        if text.startswith("@@step "):
+            try:
+                recs.append(json.loads(text[7:]))
+            except ValueError:
+                pass
+    if recs:
+        last: dict[Any, dict[str, Any]] = {}      # the last record of each ticket
+        for r in recs:
+            last[r.get("ticket")] = r
+        f["chain.tickets"] = len(last)
+        f["chain.replied"] = sum(1 for r in last.values() if r.get("step") == "respond" and not r.get("error"))
+        f["chain.retries"] = sum(1 for r in recs if (r.get("attempt") or 1) > 1)
+        ends: dict[str, int] = {}
+        for r in last.values():
+            if r.get("error"):
+                ends[str(r.get("step"))] = ends.get(str(r.get("step")), 0) + 1
+        f["chain.failed_at"] = ", ".join(f"{k} x{v}" for k, v in sorted(ends.items())) or "none"
+
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]
     f["approval.asked"] = len(asked)

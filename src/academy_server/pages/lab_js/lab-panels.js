@@ -2,6 +2,7 @@
 //   timeline  every model call, every tool your code ran and every mock API request, on one clock;
 //   messages  the messages list each call sent: what it carried over, and what it added;
 //   fixture   the mock API's request log;
+//   chain     the steps of a prompt chain, from the `@@step {json}` lines the lesson code prints;
 //   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
 // Built from the run's events alone, so a reopened run looks exactly as it did live.
 (function () {
@@ -387,15 +388,52 @@
     loadMemory();
   }
 
+  // ------------------------------------------------------------ the chain: input, output, validation per step
+  var chain = [];
+  function renderChain() {
+    var box = $("chain-steps"), tickets = {}, order = [];
+    box.textContent = "";
+    chain.forEach(function (r) {
+      if (!tickets[r.ticket]) { tickets[r.ticket] = []; order.push(r.ticket); }
+      tickets[r.ticket].push(r);
+    });
+    $("chain-count").textContent = order.length ? order.length + " ticket" + (order.length === 1 ? "" : "s") : "";
+    if (!order.length) { box.append(el("p", "small muted", "Run the chain: every step of every ticket appears here with what went in, what came out and whether it passed.")); return; }
+    order.forEach(function (n) {
+      var recs = tickets[n], last = recs[recs.length - 1], done = last.step === "respond" && !last.error;
+      var det = el("details", "disclosure"), sum = el("summary", null, "Ticket " + n + " · ");
+      sum.append(done ? pill("pill-good", "replied") : pill("pill-critical", "failed at " + last.step));
+      det.open = true;
+      det.append(sum);
+      recs.forEach(function (r) {
+        var head = el("div", "row"), body = el("div", "stack");
+        head.append(el("strong", null, r.step + (r.attempt > 1 ? " · attempt " + r.attempt : "")),
+                    r.error ? pill("pill-critical", "rejected") : pill("pill-good", "valid"));
+        body.append(head);
+        body.append(el("div", "small muted", "input"), el("pre", "json-view", json(r.input)));
+        if (r.error) body.append(el("div", "small muted", "validation"), el("pre", "json-view", r.error));
+        else body.append(el("div", "small muted", "output"), el("pre", "json-view", JSON.stringify(r.output, null, 2)));
+        det.append(body);
+      });
+      box.append(det);
+    });
+  }
+
   function render() {
     if (on("timeline")) renderTimeline();
     if (on("messages")) renderMessages();
     if (on("fixture")) renderApi();
+    if (on("chain")) renderChain();
   }
   window.labViews = {
-    reset: function () { evs = []; shownCall = null; render(); },
+    reset: function () { evs = []; chain = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
       if (ev.type === "run.exit" && on("memory")) loadMemory();
+      if (on("chain") && ev.type === "console.out" && String(ev.data.text).indexOf("@@step ") === 0) {
+        try { chain.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
+        if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
+        return;
+      }
       if (!ANY || ["llm.request", "llm.response", "llm.error", "api.request", "run.exit"].indexOf(ev.type) < 0) return;
       evs.push(ev);
       if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);

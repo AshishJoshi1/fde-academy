@@ -502,3 +502,27 @@ cards:
     back: |
       About 2,300 more cached prompt tokens on every call: its definition rides along each time. A feature you switch on is paid for per call, like the extra tools in s09.
     source: "docs/PLAN.md (s10 row, measured 2026-11-17)"
+
+  - id: loose-type-moves-blame
+    tag: engineering
+    front: |
+      In a prompt chain, why type a hand-off as a closed Literal instead of a free string?
+    back: |
+      A loose type passes the faulty step's check, so the failure shows up two steps later, in a step that is not the cause (s11: classify passed, respond crashed on a missing GUIDE entry). A closed type makes the step that is wrong report it.
+    source: "docs/PLAN.md (s11 row, measured 2026-11-17)"
+
+  - id: retry-only-random-faults
+    tag: engineering
+    front: |
+      When does a retry help in a chain step, and when doesn't it?
+    back: |
+      It helps when the failure is random, such as a model answer that can vary. It can't fix a fault in the data: OPP-1999 gets the same 404 on every try. After one retry, fail naming the step and the reason.
+    source: "content/m02-agent-loop/lab02-agent-loop/s11-prompt-chains/step.yaml (g7)"
+
+  - id: plain-code-for-fixed-lookups
+    tag: cost
+    front: |
+      What did letting the model do the fixed Meridian fetch cost in s11, compared with plain code?
+    back: |
+      Twice the calls (12 against 6) and about 2.75 times the cost ($0.046 against $0.017) for the same facts. Use a model where a step needs judgment, and code for a fixed lookup.
+    source: "docs/PLAN.md (s11 row, measured 2026-11-17)"
