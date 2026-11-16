@@ -91,3 +91,4 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - output, 151.9K tokens: about $3.04;
   - the context averaged about 235K tokens per request (30.8M ÷ 131): the `/claude-api` skill text, whole-file reads and the long build stayed in every later turn;
   - building the glossary after the first wrap, in the same session, cost $2.97, because every turn carried the whole day's context. Two `/wrap`s made `/wrap` about 14% of usage; `/today` was about 3%.
+- 2026-11-16: s09 uses the stdio transport, so the lesson's client starts the server and the runner needs no MCP support; the planned runner start and inspector rows were dropped. Outlines for s09–s11 approved together; s10 keeps subagents as a short intro and defers the token comparison to lesson 13; s11 enrich stays plain code with a model-driven comparison as E2.

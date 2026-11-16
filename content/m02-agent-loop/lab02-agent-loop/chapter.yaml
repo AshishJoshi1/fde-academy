@@ -12,3 +12,4 @@ steps:
   - s06-strict-schema
   - s07-designing-tools
   - s08-memory
+  - s09-mcp

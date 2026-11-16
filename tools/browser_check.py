@@ -331,7 +331,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
     b.js("document.getElementById('run').click()")
     b.wait("document.getElementById('status').textContent.startsWith('ok')", "the first run", timeout=90)
     b.wait(f"!{STEP_TEXT}.includes('No run yet')", "your run's values")
-    check_panels(b, panels, check)
+    check_panels(b, panels, check, step_id)
 
     for i, g in enumerate(steps):
         print(f"  step {i + 1}: {g['title']}")
@@ -386,11 +386,16 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
     return fails
 
 
-def check_panels(b: Browser, panels: list[str], check) -> None:
+def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
     for name in ("timeline", "messages", "fixture", "memory"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
+    if "timeline" in panels and step_id.endswith("s09"):   # s09's starter only lists the MCP server's tools: no model call
+        b.wait("document.getElementById('console').textContent.includes('input_schema')", "the tool listing")
+        check("console lists the MCP server's tools and their input schemas",
+              b.js("document.getElementById('console').textContent.includes('get_opportunity')"))
+        return
     if "timeline" in panels:
         b.wait("document.querySelectorAll('#timeline .trace-row').length > 0", "the timeline")
         rows = b.js("[...document.querySelectorAll('#timeline .trace-label')].map(l => l.textContent)")

@@ -447,3 +447,32 @@ cards:
       Nothing in the model or your code checks a memory against the world, so one wrong save is trusted
       every time until the file is fixed (memory poisoning, lesson 15).
     source: "docs/PLAN.md (s08 row, measured 2026-11-16)"
+
+  - id: mcp-crash-vs-error
+    tag: engineering
+    front: |
+      An MCP server's tool fails. What does your client get if the tool raised an error, and what if the server process died?
+    back: |
+      A caught error comes back as a result with `is_error: true` and only generic text ("Error executing tool ..."); the real
+      reason stays in the server's log, and the model can retry or explain. A crash leaves no result at all, so the client
+      raises `MCPError: Connection closed` and your code must handle it.
+    source: "docs/PLAN.md (s09 row, measured 2026-11-16)"
+
+  - id: mcp-descriptions-are-prompt
+    tag: security
+    front: |
+      Why is connecting to a third-party MCP server a trust decision?
+    back: |
+      Its tool descriptions go into the model's prompt, and the model follows them: a line saying "always start your answer
+      with ..." was obeyed. Descriptions are instructions you did not write, so treat the server like third-party code and keep
+      dangerous actions behind gates in your own code.
+    source: "docs/PLAN.md (s09 row, measured 2026-11-16)"
+
+  - id: tools-cost-every-call
+    tag: cost
+    front: |
+      What does each extra tool a server offers cost, and when?
+    back: |
+      About 125 input tokens, on every call, whether or not the model uses it (last-call input 1,519 with 2 tools, 5,269 with 32).
+      The answer and the tools used stayed the same, so the extra tools were pure cost. Keep tool lists short or filter them.
+    source: "docs/PLAN.md (s09 row, measured 2026-11-16)"

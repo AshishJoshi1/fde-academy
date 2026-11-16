@@ -10,17 +10,17 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s04` "Gate and block" in the UI (s01 was started over on 2026-11-11; s01 steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done).
-  - **s02 "The manual loop"** to **s08 "Memory"** are built and ready at `/lab/m02.lab02.s02` to `.s08`.
+  - **s02 "The manual loop"** to **s09 "MCP"** are built and ready at `/lab/m02.lab02.s02` to `.s09`.
   - **Spaced review:** none outstanding.
-  - **Flash cards:** 37 in the deck (3 added on 2026-11-16, 2nd), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s08 are complete. s08 added the Memory panel and Reset memory (`/api/steps/<id>/memory`), and the facts `memory.commands` and `memory.files`. All tests pass; `tools/browser_check.py m02.lab02.s08` passes. `docs/PLAN.md` records s08's measured runs. The browser check does not run the memory tool (its fake gateway has no memory script): s08's g4 to g8 and E2 were measured live only.
-- **Next first action:** in a fresh session (`/clear` first), propose the guide-step outline for the next Module 02 lesson (lesson 8 in `docs/PLAN.md`'s Module 02 outline) and get Ashish's OK; no content or features before it. Then build it. Done when `tools/browser_check.py <step-id>` passes.
+  - **Flash cards:** 40 in the deck (3 added on 2026-11-16, 4th), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s09 are complete. s09 needed no runner or panel change (stdio: `main.py` starts `server.py`); `mcp` 2.3.0 was added to `pyproject.toml`. s10 and s11 outlines are approved (`docs/PLAN.md`, "Approved outlines"). All tests pass; `tools/browser_check.py m02.lab02.s09` passes (its starter only lists tools; the check handles that).
+- **Next first action:** in a fresh session (`/clear` first), build **s10 "The Claude Agent SDK"** from its approved outline in `docs/PLAN.md` (g7 subagents is a short intro only; no subagent experiment). First read code.claude.com/docs/en/agent-sdk (send it to a subagent) and verify that the SDK's calls can go through the relay. Done when `tools/browser_check.py m02.lab02.s10` passes. s11 "Prompt chains" follows in the next session.
 
 ## Last session
-- **Date:** 2026-11-16 (3rd session, Sonnet 5.5)
-- **Done:** `/today`; Ashish approved the s08 outline; **s08 "Memory" built:** g1–g9, E1 (break the path), E2 (bad memory), q1–q3. Measured on Opus 5.5 at effort low: no-memory ask 1 call, 74 input tokens, "I don't know"; recall in a fresh conversation 3 calls, 5,777 input tokens, UK law and GBP; an update run edited the same file; a planted wrong note was answered as fact (German law, EUR); the path guard blocked `../` and, off, let the file land beside the memory folder.
-- **App:** `memory` panel, `GET /api/steps/<id>/memory`, `POST .../memory/reset`, facts `memory.commands` and `memory.files`, two tests, browser check handles the panel.
-- **Cards:** 3 added (`memory-tool-is-client-side`, `memory-costs-input-tokens`, `wrong-note-is-trusted`).
+- **Date:** 2026-11-16 (4th session, Sonnet 5.5)
+- **Done:** `/today`; outlines for s09, s10 and s11 approved together (s10 subagents cut to a short intro; s11 enrich is plain code, with a model-driven enrich as E2); **s09 "MCP" built:** g1–g9, E1 (break the server), E2 (many tools), q1–q3, files `main.py` and `server.py`. Measured on Opus 5.5 at effort low: listing 0 model calls; agent 3 calls, 1,519 input tokens; `error` gave `is_error` with generic text and one retry; `crash` gave `MCPError: Connection closed`; 5/15/30 extra tools 2,144/3,394/5,269 input tokens; a description line was obeyed.
+- **App:** no new panel; `mcp>=2.3,<3` dependency; `tools/browser_check.py` handles s09's list-only starter.
+- **Cards:** 3 added (`mcp-crash-vs-error`, `mcp-descriptions-are-prompt`, `tools-cost-every-call`).
 - **Open questions:**
   - **Outline gate:** a PreToolUse hook that blocks Write and Edit under `content/` until `.outline-approved` exists was proposed; Ashish will decide later.
   - **Gateway limit:** 60 requests a minute: a loop of many calls must run one or two at a time.
@@ -48,7 +48,8 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s06 Strict schema: content g1–g8 with E1, E2 and q1–q3; `request.strict`, `fuzz.*` facts
   - [x] s07 Designing tools (02-A lesson 6): content g1–g8 with E1, E2 and q1–q3; `tally.*` and `request.tool_count` facts
   - [x] s08 Memory (lesson 7): content g1–g9 with E1, E2 and q1–q3; memory panel, Reset memory, `memory.*` facts
-  - [ ] Lessons 8–17: 02-A to 02-D
+  - [x] s09 MCP (lesson 8): content g1–g9 with E1, E2 and q1–q3; no new app feature
+  - [ ] Lessons 9–17: s10 and s11 outlines approved; 02-B to 02-D
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
 
 ## Curriculum progress
@@ -56,7 +57,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 to s08 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s09 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -79,5 +80,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-16 | `/today`; s07 "Designing tools" outlined, premise tested live (8 of 12 wrong with vague tools), built and browser-checked; 2 cards | $1.34 | $0.00 learner + about $0.15 (about 100 live calls, not itemized) |
 | 2026-11-16 (2nd) | `/today`; s08 "Memory" premise tested live and outline proposed (not yet approved) | $0.28 | about $0.03 (one probe, two runs) |
 | 2026-11-16 (3rd) | `/today`; s08 "Memory" outline approved, built and browser-checked; 3 cards | $1.25 | about $0.10 (live runs, not itemized) |
+| 2026-11-16 (4th) | `/today`; s09, s10, s11 outlines approved; s09 "MCP" built and browser-checked; 3 cards | $0.80 (Sonnet 5.5; target $8) | about $0.10 (live runs, not itemized) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.

@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6",
     "markdown-it-py>=3",      # lesson text (step.md) on the lab page; raw HTML disabled
     "truststore>=0.9",        # corporate TLS interception (Windows cert store)
+    "mcp>=2.3,<3",            # s09: the MCP client and server the lesson code uses (v2: MCPServer, Client)
 ]
 
 [project.optional-dependencies]
