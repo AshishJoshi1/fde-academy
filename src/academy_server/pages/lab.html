@@ -80,6 +80,11 @@
           <div class="stack" id="calls"><p class="small muted">Each call your code makes appears here: the exact request, then the exact response.</p></div>
         </div>
       </div>
+      <div class="pane" data-panel="memory" hidden>
+        <div class="pane-head"><h3 class="card-title">Memory · files in /memories</h3><span class="spacer"></span><span class="small muted" id="memory-count"></span>
+          <button class="btn" id="memory-reset" type="button" title="Delete every memory file (the model forgets)">Reset memory</button></div>
+        <div class="pane-body stack" id="memory-files"><p class="small muted">The files your memory tool wrote. They stay between runs: that is the point.</p></div>
+      </div>
       <div class="pane" data-panel="fixture" hidden>
         <div class="pane-head"><h3 class="card-title">Mock API · request log</h3><span class="spacer"></span><span class="small muted" id="api-count"></span>
           <a class="small" href="/meridian" target="_blank" rel="noopener" title="Every record the mock Meridian API serves">Meridian data</a></div>

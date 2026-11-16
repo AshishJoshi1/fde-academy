@@ -11,3 +11,4 @@ steps:
   - s05-tool-runner
   - s06-strict-schema
   - s07-designing-tools
+  - s08-memory

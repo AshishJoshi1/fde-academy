@@ -614,3 +614,14 @@ def test_tally_counts_tool_uses_by_name_and_request_counts_tools():
     f = run_facts(events)
     assert f["tally.by_tool"] == "update_opportunity x2, get_account x1" and f["tally.tools_used"] == 2
     assert f["request.tool_count"] == 1
+
+
+def test_memory_facts_count_commands_and_files_written():
+    events = fuzz_events(TOOL, [{}, {}, {}, None])
+    uses = [e["data"]["body"]["content"][0] for e in events if e["type"] == "llm.response"]
+    uses[0].update(name="memory", input={"command": "view", "path": "/memories"})
+    uses[1].update(name="memory", input={"command": "create", "path": "/memories/a.md", "file_text": "x"})
+    uses[2].update(name="memory", input={"command": "str_replace", "path": "/memories/a.md", "old_str": "x", "new_str": "y"})
+    f = run_facts(events)
+    assert f["memory.commands"] == "create x1, str_replace x1, view x1" and f["memory.files"] == 1
+    assert run_facts(fuzz_events(TOOL, [None]))["memory.commands"] == "(none)"

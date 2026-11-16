@@ -416,3 +416,34 @@ cards:
       not found." recovered 1 of 4 times, while an error that named the right tool recovered 4 of 4.
       Write errors for the model: what failed and what to call instead.
     source: "docs/PLAN.md (s07 row, measured 2026-11-16)"
+
+  - id: memory-tool-is-client-side
+    tag: engineering
+    front: |
+      Where do the memory tool's notes live, and who must reject a path like `/memories/../x`?
+    back: |
+      On your disk. The memory tool is client-side: the model only sends a command (view, create,
+      str_replace, insert, delete, rename) with a path as text, and your handler runs it. With the guard
+      off, `ROOT / "../escape.txt"` wrote a file next to the memory folder. The path check is code in
+      your handler, never a line in a prompt.
+    source: "docs/PLAN.md (s08 row, measured 2026-11-16)"
+
+  - id: memory-costs-input-tokens
+    tag: engineering
+    front: |
+      Does giving the model memory make a call cheaper? What does it cost?
+    back: |
+      No, it adds input. The same question took 1 call and 74 input tokens without memory, and 3 calls
+      and 5,777 input tokens with it: every `view` result re-enters the context and is resent on the
+      next call. Memory makes a fact available; keep notes short and split by topic.
+    source: "docs/PLAN.md (s08 row, measured 2026-11-16)"
+
+  - id: wrong-note-is-trusted
+    tag: engineering
+    front: |
+      A saved memory note is wrong. What does the model do with it in a later conversation?
+    back: |
+      It states it as fact. A planted note saying German law and EUR was answered with no hedging.
+      Nothing in the model or your code checks a memory against the world, so one wrong save is trusted
+      every time until the file is fixed (memory poisoning, lesson 15).
+    source: "docs/PLAN.md (s08 row, measured 2026-11-16)"

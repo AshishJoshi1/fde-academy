@@ -1,0 +1,384 @@
+id: s08
+title: "Memory"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages, memory]
+run:
+  timeout_s: 180
+hints:
+  - "The settings are lines 10 to 13. The memory class is lines 23 to 74, the path check is lines 26 to 32, the self-test is lines 76 to 84 and the model call is lines 86 to 93."
+  - "The Memory panel shows the files on disk after each run. Reset memory deletes them. Memory persists between runs on purpose: reset it when a step says so."
+
+guide:
+  - id: g1
+    title: "Context forgets"
+    code: [10, "18-20", "86-87", "92-93"]
+    teach: |
+      Every call so far started from nothing but the messages you sent. A **new conversation has no
+      memory of an old one**: the model is stateless, and the history you resend is the only past it has.
+
+      **Lines 18 and 19** are two messages from the same working day. `TELL` is the morning: Acme
+      says their contracts must use UK law and their invoices must be in GBP. `ASK` is the afternoon,
+      a fresh conversation that needs that fact. **Line 10** picks which one runs (`PHASE`).
+      **Lines 92 and 93** are the plain call, with no tools, because `USE_MEMORY` on line 11 is `False`.
+      **Line 86** builds the request.
+
+      Nothing in the afternoon message mentions the morning. So what can the model say?
+    do: "Press **Run** as it is (`PHASE = \"ask\"`, no memory). One call."
+    show: [run.calls, run.input_tokens, memory.commands]
+    notice: |
+      The model says it doesn't know and tells you where to look. That's the honest answer: the
+      fact isn't in the request. It also costs almost nothing, about 74 input tokens. Keep that number.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the run make?"
+        answer_from: run.calls
+        explanation: "One. No tools, so nothing to send back."
+      - id: c2
+        type: mcq
+        prompt: "The morning conversation told the model Acme's law. Why can't the afternoon one use it?"
+        options:
+          - "Each conversation starts empty: the model keeps nothing between calls"
+          - "The model deleted it for privacy"
+          - "The gateway clears the cache at noon"
+          - "The max_tokens was too low"
+        answer: 0
+        explanation: "Nothing carries over except what you put in `messages`. To remember across conversations, your code has to store the fact somewhere and bring it back."
+
+  - id: g2
+    title: "The memory tool"
+    code: [11, 23, "89-91"]
+    teach: |
+      Anthropic gives you a tool for exactly this, named **`memory`**. It differs from tools you
+      wrote in two ways.
+
+      - **Its definition is fixed by Anthropic.** You send `{"type": "memory_20250818", "name":
+        "memory"}`: no description or schema from you. The model was trained on it, so it already knows
+        how to use it. The SDK builds this from the class on **line 23**
+        (`BetaAbstractMemoryTool`).
+      - **It runs on your side.** The model only *asks*: `view`, `create`, `str_replace`, `insert`,
+        `delete` or `rename`, each with a path under `/memories`. **Your code** decides what happens on disk.
+        Anthropic stores nothing.
+
+      **Lines 89 to 91** hand the tool to the runner you met in s05 (`thread=False`, as before). The
+      runner calls your class for each command, then calls the model again. **Line 11**,
+      `USE_MEMORY = True`, switches this on.
+
+      The model also learns when to use it: with the tool present, it checks `/memories` first
+      thing in a conversation, and saves what it learns as it goes.
+    do: "Read lines 23 to 33 and 86 to 93. Don't run anything yet."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "The memory tool saves a note. Where does the note live?"
+        options:
+          - "On your disk, in the folder your own handler writes to"
+          - "On Anthropic's servers"
+          - "Inside the model's weights"
+          - "In the gateway's database"
+        answer: 0
+        explanation: "The tool is client-side: the model sends a command, your class runs it. If your handler wrote nothing, nothing would be remembered."
+
+  - id: g3
+    title: "Your store"
+    code: ["23-74"]
+    teach: |
+      **Lines 23 to 74** are the store: six handlers over a folder (`ROOT`, line 15, `memories/`
+      next to your code).
+
+      - `view` (**34**): a directory lists its files, a file shows its numbered lines.
+      - `create` (**44**): writes a new file, and refuses if it exists, so the model has to *update* a
+        note instead of piling a second one beside it.
+      - `str_replace` (**52**): swaps one exact passage, and refuses unless it appears **exactly once**.
+      - `insert`, `delete`, `rename` (**60** to **73**): the rest.
+
+      A refusal is a `ToolError`: the runner sends it back as an `is_error` result (s05), and the
+      model reads it and tries something else. That is where the text on **lines 47 and 56** matters:
+      an error that says what to do instead is an instruction (s07).
+
+      The first line of each handler runs `self.path(...)` (**26**). It turns the model's `/memories/...`
+      string into a real path. Step g6 is about that function.
+    do: "Read `create` and `str_replace`. What happens when the model calls `create` on a path that already exists?"
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why does `create` refuse an existing file?"
+        options:
+          - "So the model has to edit the old note instead of overwriting or duplicating it"
+          - "Because files cannot be overwritten on Windows"
+          - "To save disk space"
+          - "The API forbids it"
+        answer: 0
+        explanation: "It is your design choice, and the error text tells the model what to do next. A store that silently overwrote would let one careless save erase a good note."
+
+  - id: g4
+    title: "Run 1: save"
+    code: [10, 11, 18, "89-91"]
+    teach: |
+      Now the morning. Set `PHASE = "tell"` (**line 10**) and `USE_MEMORY = True` (**line 11**), then Run.
+      The model gets `TELL` (**line 18**) and the memory tool. Watch the **Timeline**: the first thing it does
+      is `view /memories`, before it answers anything, because that is how it was trained to start.
+      Finding nothing, it saves the fact with `create`.
+
+      One user message turns into **several model calls**: each memory command is a tool call, and the
+      runner calls the model again with the result, exactly the loop from s02. The **Memory panel**
+      will show the file the model wrote.
+    do: "Set `PHASE = \"tell\"` and `USE_MEMORY = True`, then press **Run**. Open the Timeline and read each call's tool_use, then look at the Memory panel."
+    show: [run.calls, memory.commands, memory.files, run.input_tokens]
+    notice: |
+      Measured (Opus 5.5, effort low): a `view` of the memory folder, then a `create` of one account
+      note, then a one-line answer. The note's wording, its filename and its folder are the **model's**
+      choice (for example `accounts/ACC-001_acme.md`): yours may differ, and that is normal.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many different memory files did the model create or edit?"
+        answer_from: memory.files
+        explanation: "One note: the fact is small and the model wrote it in one file. Your code only said where files may live; the structure is the model's."
+      - id: c2
+        type: mcq
+        prompt: "What does the model do before it answers or saves anything?"
+        options:
+          - "A `view` of /memories, to see what it already knows"
+          - "A `create` of an empty file"
+          - "A `delete` of old notes"
+          - "Nothing: it answers straight away"
+        answer: 0
+        explanation: "With the memory tool present, the model looks first. On the first run the folder is empty, so it saves."
+
+  - id: g5
+    title: "Run 2: recall"
+    code: [10, 19, "89-91"]
+    teach: |
+      Now the afternoon. Set `PHASE = "ask"` (**line 10**) and leave `USE_MEMORY = True`. **Line 19** is the
+      question, a **fresh conversation**: no history, none of the morning's messages. The only thing that
+      connects the two runs is the file on disk.
+
+      Watch it go: `view /memories` (it sees `accounts/`), `view` of the file, then the answer, with the law and
+      the currency. Three calls for one question.
+    do: "Set `PHASE = \"ask\"`, keep `USE_MEMORY = True`, and press **Run**. Compare the answer with g1's \"I don't know\"."
+    show: [run.calls, memory.commands, run.input_tokens, run.cost_usd]
+    notice: |
+      Same question as g1, but now it answers: UK law, GBP. The model didn't remember anything. It
+      **read a note it had written**. Memory here is files plus a model that checks them.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did this run make?"
+        answer_from: run.calls
+        explanation: "Typically 3: view the folder, view the note, answer. Each command needs its own call, because the model needs the result before the next step."
+      - id: c2
+        type: mcq
+        prompt: "What made the afternoon answer possible?"
+        options:
+          - "A file on your disk that the model read through the memory tool"
+          - "The model's own memory of the morning"
+          - "The conversation history, resent"
+          - "A larger context window"
+        answer: 0
+        explanation: "The two conversations share nothing but the file. If you reset memory and ask again, you are back at g1."
+
+  - id: g6
+    title: "Path safety"
+    code: ["26-32", "76-84", 12, 13]
+    teach: |
+      The model sends a path as **text**: `/memories/accounts/acme.md`. Your code turns it into a real
+      file path. If it trusts the text, a path like `/memories/../escape.txt` climbs out of the memory
+      folder and writes **anywhere your process can write**. The model wouldn't usually choose that path
+      itself, but a message that talks it into one is an *injection* (lesson 15), and your code must hold
+      the line either way.
+
+      **Lines 26 to 32** are the guard: the path must start with `/memories` (**27**), and after
+      resolving it, the result must still be `ROOT` or inside it (**30**). **Lines 76 to 84** test that
+      without the model: your code calls the handler directly with `/memories/../escape.txt`.
+    do: "Set `SELF_TEST = True` (line 13) and press **Run**: no model call, free. Read the line it prints."
+    show: [run.calls]
+    notice: |
+      `BLOCKED: Path /memories/../escape.txt would escape /memories`. The check is plain code: it doesn't
+      depend on the model behaving. Set `SELF_TEST` back to `False` before the next step.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the self-test make?"
+        answer_from: run.calls
+        explanation: "None. It calls your handler directly, which is why a safety check like this can be tested for free."
+      - id: c2
+        type: mcq
+        prompt: "Who must reject `/memories/../escape.txt`?"
+        options:
+          - "Your code: the model only sends text"
+          - "The model, by being careful"
+          - "Anthropic's API"
+          - "The gateway"
+        answer: 0
+        explanation: "The memory tool is client-side, so the disk is your responsibility. A refusal belongs in the handler, as code, never in a prompt."
+
+  - id: g7
+    title: "Update, not append"
+    code: [18, "52-58", 60, "89-91"]
+    teach: |
+      Facts change. Replace line 18 with:
+      `TELL = "Update on Acme (ACC-001): their contracts must now use Irish law, not UK law. Invoices are still GBP. Fix your note. Reply in one line."`
+
+      With `PHASE = "tell"` and `USE_MEMORY = True` the model views the folder, views the note, then edits
+      it with **`str_replace`** (**line 52**): swap the one passage that changed. Because `create`
+      refuses an existing file, an *append* of a second note has no easy route, and the note stays one
+      file with one truth. Your handler refuses unless the old text appears exactly once
+      (**line 55 to 56**), so a vague edit comes back as an error, not a silent mess.
+    do: "Reset the settings (`SELF_TEST = False`, `PHASE = \"tell\"`, `USE_MEMORY = True`), replace line 18 as above, and Run. Check the Memory panel: the same file, with the new law."
+    show: [memory.commands, memory.files, run.calls]
+    notice: |
+      One file, edited in place (`str_replace` shows in `memory.commands`). Run it as the afternoon
+      question (`PHASE = "ask"`) and the answer is now Irish law. Memory that isn't updated becomes wrong
+      memory, which is E2.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Which memory command changes one passage of an existing note?"
+        options:
+          - "`str_replace`"
+          - "`create`"
+          - "`rename`"
+          - "`view`"
+        answer: 0
+        explanation: "`str_replace` swaps a passage that appears exactly once. `create` is for new files, which your handler refuses to overwrite."
+
+  - id: g8
+    title: "Memory costs input tokens"
+    code: [11, "34-42", "86-93"]
+    teach: |
+      Compare g1 and g5. The same question cost **about 74 input tokens** without memory, and about
+      **5,800 across 3 calls** with it. What happened:
+
+      - the memory tool adds Anthropic's instructions on how to use it to every call;
+      - each `view` result **re-enters the context**, and the next call resends it;
+      - so a note you read in call 2 is paid for again in call 3.
+
+      Memory doesn't make a call cheaper. It makes a **fact available**, and the price is input tokens
+      on every conversation that checks memory. That is fine for a few small notes. It is why real memory
+      stores stay short, are split into files by topic, and are cleaned up (lesson 15).
+    do: "Set `USE_MEMORY = False`, `PHASE = \"ask\"` and Run, then `USE_MEMORY = True` and Run again. Compare `run.input_tokens`."
+    show: [run.calls, run.input_tokens, run.cost_usd]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "About how many input tokens did your last run (with memory) use, added up over its calls?"
+        answer_from: run.input_tokens
+        tol_pct: 25
+        explanation: "Around 5,800: three calls, each carrying the memory instructions and the earlier `view` results. Without memory the same question was a single call of about 74 tokens."
+      - id: c2
+        type: mcq
+        prompt: "Why do the later calls in a memory run cost more input?"
+        options:
+          - "Each `view` result stays in the messages and is resent with every later call"
+          - "The model charges more for reading memory"
+          - "The context window shrinks"
+          - "Memory files are re-uploaded each time"
+        answer: 0
+        explanation: "History only grows (s02): a result added in call 2 is input again in call 3."
+
+  - id: g9
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments: first, what happens to the disk when the guard is off, then what happens when a
+      saved note is **wrong**. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Break the path"
+    question: "With the path guard off, what does a path that climbs out of /memories do to your disk?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many model calls will the run make?"
+        hint: "The self-test never calls the model."
+        answer_from: run.calls
+      - id: p2
+        type: text
+        prompt: "Predict what is printed with GUARD = False, and where the file ends up."
+    change: |
+      Set `SELF_TEST = True` and `GUARD = False` (lines 13 and 12), then Run.
+      Run it once more with `GUARD = True` to compare.
+    observe:
+      - "Console with GUARD = False: WROTE OUTSIDE the memory folder: ...escape.txt exists = True"
+      - "Console with GUARD = True: BLOCKED: Path /memories/../escape.txt would escape /memories"
+    explain: |
+      With the guard off, `ROOT / "../escape.txt"` is a perfectly valid path: the file landed **next to**
+      the memory folder, and your handler said nothing. The text was the model's; the disk was yours.
+      The self-test removes the file after it prints, but a real one would stay. Turn `GUARD` back on and
+      `SELF_TEST` off.
+
+  - id: e2
+    title: "Bad memory"
+    question: "If a saved note is wrong, does the model check it against anything before using it?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many model calls will the run make?"
+        hint: "It views the folder, then the note, then answers."
+        answer_from: run.calls
+      - id: p2
+        type: text
+        prompt: "Which law and currency will the model give, and will it hesitate?"
+    change: |
+      Set `PHASE = "ask"`, `USE_MEMORY = True`, `SELF_TEST = False`. Then add this line after line 16, which
+      writes a **wrong** note straight to disk:
+      `Path("memories/accounts").mkdir(parents=True, exist_ok=True); Path("memories/accounts/ACC-001_acme.md").write_text("# Acme (ACC-001)\n- Contracts: German law\n- Invoices: EUR\n")`
+      Reset memory first in the panel so the file is the only note, then Run.
+    observe:
+      - "Answer: German law and EUR, stated as fact"
+      - "memory.commands: view x2 (the folder, then the note)"
+    explain: |
+      Measured: the model answered **German law, EUR** with no hesitation. It wasn't lying: it read the note,
+      and a note in `/memories` reads like something it wrote itself. Nothing in your code or in the
+      model checks a memory against the world. A wrong fact saved once is trusted every time after, until
+      someone fixes the file. This is memory *poisoning* (lesson 15). Remove your line and click
+      Reset memory.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "Where is the model's memory stored when you use the memory tool?"
+    options:
+      - "In your own store: the model only sends commands and your code runs them"
+      - "On Anthropic's servers, per API key"
+      - "In the model's weights"
+      - "In the conversation history"
+    answer: 0
+    concepts: [memory-tool, client-side-tools]
+    explanation: "The tool is client-side. You decide where the files live and what a command is allowed to do."
+  - id: q2
+    type: mcq
+    prompt: "The model sends `view` with the path `/memories/../../etc/passwd`. What stops it reading outside the folder?"
+    options:
+      - "Your handler's path check, resolved against the memory root"
+      - "The model's training"
+      - "A line in the system prompt asking it not to"
+      - "Nothing is needed: memory is sandboxed by Anthropic"
+    answer: 0
+    concepts: [memory-tool, path-safety]
+    explanation: "The model only sends text, and the memory tool runs on your machine. Rejecting a bad path is plain code in your handler, never a prompt."
+  - id: q3
+    type: mcq
+    prompt: "A saved note is wrong. What does the model do with it in a later conversation?"
+    options:
+      - "Trusts it and answers from it, because nothing checks memory against the world"
+      - "Cross-checks it with the web"
+      - "Ignores it if it is more than a day old"
+      - "Marks it as unverified"
+    answer: 0
+    concepts: [memory-tool, memory-poisoning]
+    explanation: "Measured: it gave a wrong note's German law and EUR as fact. Memory is text you must keep correct."
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, one run each): the no-memory ask answered "I don't know" in one call,
+  74 input tokens. Tell run: view /memories, create accounts/ACC-001_acme.md, one-line answer. Ask run on a fresh conversation
+  with memory: 3 calls (view folder, view file, answer), 5,777 input tokens in total, answer UK law and GBP. Update run (Irish
+  law): the same file edited in place, answer confirmed. Wrong note planted by code: the model answered German law and EUR with no
+  hedging (5,754 input tokens). Self-test with GUARD on: BLOCKED; off: the file landed beside the memory folder.
+  The file name, folder and wording of the note are the model's own choice and vary per run. Misconceptions: the model remembers
+  across conversations (no: it reads files); Anthropic stores the notes (no: your disk); the model polices paths (no: your handler does);
+  memory makes calls cheaper (no: it adds input). The guide step "Run 1" calls `view` first: that is trained behaviour, not code of yours.

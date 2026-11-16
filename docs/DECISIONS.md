@@ -70,6 +70,8 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - **s07 outline** approved as proposed (8 guide steps, E1 and E2). Experiments were changed after measuring: names alone and descriptions alone each gave 0 of 12 wrong, so they teach that either signal is enough. Extra tools cost input tokens, not accuracy, so g7 teaches the cost.
   - **"Run N times and tally"** is done in the lesson code (a `REPEAT` loop, sequential because of the gateway's 60 requests a minute); the lab only adds the independent count `tally.by_tool`. It doesn't judge "wrong", because it can't know which tool an ask needs.
   - **Outline gate hook** (blocking Write and Edit under `content/` until Ashish approves an outline): proposed, not set up. Ashish will decide later.
+  - **s08 outline** approved as proposed. The lesson subclasses the SDK's `BetaAbstractMemoryTool` with six handlers over `memories/` in the step's playground folder; `create` refuses an existing file so the model must edit (`str_replace`). The path-safety test is a no-model `SELF_TEST` (free, deterministic) rather than asking the model to attack itself.
+  - **Memory panel** reads the folder from disk after each run (not from run events), because memory must persist between runs; Reset memory deletes only `memories/`. The facts `memory.commands` and `memory.files` come from the run's events.
 
 ## Cost analysis
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.

@@ -1,7 +1,8 @@
 // Views of a run that makes several calls, for the steps that turn them on (panels: in step.yaml):
 //   timeline  every model call, every tool your code ran and every mock API request, on one clock;
 //   messages  the messages list each call sent: what it carried over, and what it added;
-//   fixture   the mock API's request log.
+//   fixture   the mock API's request log;
+//   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
 // Built from the run's events alone, so a reopened run looks exactly as it did live.
 (function () {
   var PANELS = LAB.panels;
@@ -363,6 +364,29 @@
     });
   }
 
+  // ------------------------------------------------------------ the memory folder
+  function renderMemory(files) {
+    var box = $("memory-files");
+    box.textContent = "";
+    $("memory-count").textContent = files.length ? files.length + " file" + (files.length === 1 ? "" : "s") : "";
+    if (!files.length) { box.append(el("p", "small muted", "No memory files yet. Memory is empty: a run that asks will find nothing.")); return; }
+    files.forEach(function (f) {
+      var det = el("details", "disclosure"), s = el("summary", null, f.path + "  (" + f.size + " bytes)");
+      det.open = true;
+      det.append(s, el("pre", "json-view", f.text));
+      box.append(det);
+    });
+  }
+  function loadMemory() {
+    fetch("/api/steps/" + LAB.step + "/memory").then(function (r) { return r.json(); }).then(function (d) { renderMemory(d.files || []); });
+  }
+  if (on("memory")) {
+    $("memory-reset").addEventListener("click", function () {
+      fetch("/api/steps/" + LAB.step + "/memory/reset", {method: "POST"}).then(function (r) { return r.json(); }).then(function (d) { renderMemory(d.files || []); });
+    });
+    loadMemory();
+  }
+
   function render() {
     if (on("timeline")) renderTimeline();
     if (on("messages")) renderMessages();
@@ -371,6 +395,7 @@
   window.labViews = {
     reset: function () { evs = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
+      if (ev.type === "run.exit" && on("memory")) loadMemory();
       if (!ANY || ["llm.request", "llm.response", "llm.error", "api.request", "run.exit"].indexOf(ev.type) < 0) return;
       evs.push(ev);
       if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);

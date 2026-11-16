@@ -264,6 +264,8 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
     if requests:      # the tool inputs the model wrote, judged against the schema of the request that got them
         uses = invalid = no_tool = 0
         by_tool: dict[str, int] = {}
+        mem_cmds: dict[str, int] = {}
+        mem_written: set[str] = set()
         for req, res in zip(requests, results):
             body = req["data"].get("body") if isinstance(req["data"].get("body"), dict) else {}
             schemas = {t.get("name"): t.get("input_schema") for t in body.get("tools") or [] if isinstance(t, dict)}
@@ -274,10 +276,19 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
             uses += len(blocks)
             for b in blocks:
                 by_tool[str(b.get("name"))] = by_tool.get(str(b.get("name")), 0) + 1
+                inp = b.get("input") if isinstance(b.get("input"), dict) else {}
+                if b.get("name") == "memory" and inp.get("command"):    # the memory tool: one name, six commands
+                    cmd = str(inp["command"])
+                    mem_cmds[cmd] = mem_cmds.get(cmd, 0) + 1
+                    target = inp.get("new_path") if cmd == "rename" else inp.get("path")
+                    if cmd in ("create", "str_replace", "insert", "rename") and target:
+                        mem_written.add(str(target))
             invalid += sum(1 for b in blocks if input_problems(schemas.get(b.get("name")), b.get("input")))
         f["fuzz.tool_uses"], f["fuzz.invalid"], f["fuzz.no_tool"] = uses, invalid, no_tool
         f["tally.by_tool"] = ", ".join(f"{n} x{c}" for n, c in sorted(by_tool.items(), key=lambda kv: (-kv[1], kv[0]))) or "(none)"
         f["tally.tools_used"] = len(by_tool)
+        f["memory.commands"] = ", ".join(f"{c} x{n}" for c, n in sorted(mem_cmds.items(), key=lambda kv: (-kv[1], kv[0]))) or "(none)"
+        f["memory.files"] = len(mem_written)
 
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]

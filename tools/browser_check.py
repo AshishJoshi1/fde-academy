@@ -388,7 +388,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
 
 def check_panels(b: Browser, panels: list[str], check) -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
-    for name in ("timeline", "messages", "fixture"):
+    for name in ("timeline", "messages", "fixture", "memory"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
     if "timeline" in panels:
@@ -402,6 +402,8 @@ def check_panels(b: Browser, panels: list[str], check) -> None:
                 "get_opportunity" in r and re.search(r"OPP-\d+ · id …", r) for r in rows))
             check("timeline: the one message check passes",
                   b.js("document.getElementById('timeline').textContent.includes('went back in one user message')"))
+        elif "memory" in panels:     # s08: the starter asks once with no memory tool
+            check("timeline: the one call", len(rows) >= 1)
         else:                        # s06's fuzzer: independent calls, no tool results
             check("timeline: one row per call", len(rows) >= 8)
     if "messages" in panels and "fixture" in panels:
@@ -418,6 +420,12 @@ def check_panels(b: Browser, panels: list[str], check) -> None:
         check("mock API log lists the tool's request", b.js("document.querySelectorAll('#api-log tbody tr').length") > 0)
         check("mock API panel links the Meridian data page",
               b.js("!!document.querySelector('.pane[data-panel=fixture] a[href=\"/meridian\"]')"))
+
+
+    if "memory" in panels:       # s08: no memory yet; the reset button works and leaves the panel empty
+        b.wait("document.getElementById('memory-files').textContent.includes('No memory files')", "the empty memory panel")
+        b.js("document.getElementById('memory-reset').click()")
+        check("memory panel: empty after Reset memory", b.js("document.getElementById('memory-files').textContent.includes('No memory files')"))
 
 
 def walk_meridian(b: Browser, base: str, out: Path) -> list[str]:

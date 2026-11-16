@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shutil
 import re
 import time
 from contextlib import asynccontextmanager
@@ -281,6 +282,27 @@ def create_app(settings: AppSettings) -> FastAPI:
         if not step.spec.solution:
             raise HTTPException(404, "this step has no solution file")
         return {"files": step.solution_files()}
+
+    # ------------------------------------------------------------------ memory folder (s08)
+    def memory_dir(step_id: str) -> Path:
+        return settings.playground_root / get_step(step_id).full_id / "memories"
+
+    @app.get("/api/steps/{step_id}/memory")
+    def memory_files(step_id: str) -> dict[str, Any]:
+        """The files the lesson's memory tool wrote into the step's playground folder."""
+        root = memory_dir(step_id)
+        files = [{"path": "/memories/" + f.relative_to(root).as_posix(), "size": f.stat().st_size,
+                  "text": f.read_text(encoding="utf-8", errors="replace")[:20000]}
+                 for f in sorted(root.rglob("*")) if f.is_file()] if root.is_dir() else []
+        return {"files": files}
+
+    @app.post("/api/steps/{step_id}/memory/reset")
+    def memory_reset(step_id: str) -> dict[str, Any]:
+        """Forget everything: delete the step's memory folder (never anything else)."""
+        root = memory_dir(step_id)
+        if root.is_dir():
+            shutil.rmtree(root)
+        return {"files": []}
 
     # ------------------------------------------------------------------ runs
     @app.post("/api/steps/{step_id}/runs", status_code=201)

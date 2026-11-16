@@ -60,3 +60,17 @@ def test_lab_page_has_the_editor(make_client):
     for marker in ('id="code"', 'id="gutter"', 'id="save"', 'id="reset"', "window.labEditor.saveAll()",
                    '<option>claude-haiku-4-5</option>', 'rejects output_config.effort with a 400'):
         assert marker in html, marker
+
+
+def test_memory_panel_lists_the_memory_folder_and_reset_deletes_only_it(make_client, home):
+    c, step = make_client(), "m02.lab02.s08"
+    assert c.get(f"/api/steps/{step}/memory").json() == {"files": []}
+    c.get(f"/api/steps/{step}/files")                       # first open copies the starter
+    note = home / "playground" / step / "memories" / "accounts" / "acme.md"
+    note.parent.mkdir(parents=True)
+    text = "# Acme\n- UK law\n"
+    note.write_text(text, encoding="utf-8")
+    files = c.get(f"/api/steps/{step}/memory").json()["files"]
+    assert [(f["path"], f["text"]) for f in files] == [("/memories/accounts/acme.md", text)]
+    assert c.post(f"/api/steps/{step}/memory/reset").json() == {"files": []}
+    assert not note.exists() and (home / "playground" / step / "main.py").is_file()
