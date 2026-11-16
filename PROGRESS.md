@@ -14,11 +14,14 @@ This file is the single source of truth for where the build and the teaching sta
   - **Spaced review:** none outstanding.
   - **Flash cards:** 34 in the deck (2 added on 2026-11-16), 1 reviewed (`cache-share`, known).
 - **Building:** s01 to s07 are complete. s07 added the facts `tally.by_tool`, `tally.tools_used` and `request.tool_count`. All tests pass; `tools/browser_check.py m02.lab02.s07` passes. `docs/PLAN.md` records s07's measured runs.
-- **Next first action:** in a fresh session (`/clear` first), pick **02-A lesson 7 "Memory"** from the Module 02 outline in `docs/PLAN.md` (context against a memory store; the memory tool; notes that last across runs; memory-file viewer). Do a cheap live test of the lesson's premise first, then propose its guide-step titles and get Ashish's OK before building. Done when the outline is approved.
+- **Next first action:** in a fresh session (`/clear` first), if Ashish has approved the s08 "Memory" outline below (or edits it), build **s08 "Memory"** (content under `content/m02-agent-loop/lab02-agent-loop/`, plus the app features). Done when `tools/browser_check.py m02.lab02.s08` passes. If not yet approved, ask for the OK first; no content or features before it.
+  - **Proposed outline (awaiting OK):** g1 Context forgets (two runs, no memory) · g2 The memory tool (client-side, definition fixed by Anthropic) · g3 Your store (six handlers over a folder) · g4 Run 1: save (`view` first, then `create`) · g5 Run 2: recall (fresh conversation, no history) · g6 Path safety (reject `../` in code) · g7 Update, not append (`str_replace`) · g8 Memory costs input tokens (`view` results re-enter context). E1 Break the path (guard off, then on); E2 Bad memory (a wrong saved fact is trusted later; leads to lesson 15). Quiz q1–q3. App: memory-file viewer panel, reset-memory button, facts `memory.commands` and `memory.files`.
+  - **Premise verified live (Sonnet 5.5, via the gateway):** `anthropic.lib.tools.BetaAbstractMemoryTool` (`memory_20250818`) works with `tool_runner(..., thread=False)`. Run 1 did `view /memories` then `create /memories/customers/acme.md`; run 2 (fresh conversation) walked `/memories`, `/memories/customers`, `acme.md` and answered from the note. About $0.03.
 
 ## Last session
-- **Date:** 2026-11-16 (Sonnet 5.5)
-- **Done:**
+- **Date:** 2026-11-16 (2nd session, Sonnet 5.5)
+- **Done:** `/today`; tested the memory-tool premise live (see Next first action) and proposed the s08 outline. No content or code changed.
+- **Previous session (2026-11-16):**
   - **s07 "Designing tools" built:** g1–g8, E1 (names alone), E2 (descriptions alone), q1–q3. Measured on Opus 5.5 at effort low: vague tools 8 of 12 wrong; clear tools, names alone, descriptions alone and 12 clear tools all 0 of 12; after a wrong pick a terse error recovered 1 of 4 and a helpful one 4 of 4. The lesson teaches that any clear signal is enough and that extra tools cost input tokens, not accuracy.
   - **App:** facts `tally.by_tool`, `tally.tools_used`, `request.tool_count`; one test.
   - **Cards:** 2 added (`definition-text-is-all-the-model-sees`, `error-text-is-an-instruction`).
@@ -77,5 +80,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-12 (5th) | `/today` review (2 right); s05 "Tool runner and approval" outlined, measured, built and browser-checked; 3 cards | $1.87 | 4 live measurement runs (not itemized) |
 | 2026-11-12 (6th) | `/today`; s06 "Strict tool schemas" outlined, premise tested live (0 of 8 broke), built and browser-checked | $0.90 | about $0.15 (live measurement runs, not itemized) |
 | 2026-11-16 | `/today`; s07 "Designing tools" outlined, premise tested live (8 of 12 wrong with vague tools), built and browser-checked; 2 cards | $1.34 | $0.00 learner + about $0.15 (about 100 live calls, not itemized) |
+| 2026-11-16 (2nd) | `/today`; s08 "Memory" premise tested live and outline proposed (not yet approved) | not given | about $0.03 (one probe, two runs) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
