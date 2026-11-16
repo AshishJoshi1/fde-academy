@@ -72,6 +72,9 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - **Outline gate hook** (blocking Write and Edit under `content/` until Ashish approves an outline): proposed, not set up. Ashish will decide later.
   - **s08 outline** approved as proposed. The lesson subclasses the SDK's `BetaAbstractMemoryTool` with six handlers over `memories/` in the step's playground folder; `create` refuses an existing file so the model must edit (`str_replace`). The path-safety test is a no-model `SELF_TEST` (free, deterministic) rather than asking the model to attack itself.
   - **Memory panel** reads the folder from disk after each run (not from run events), because memory must persist between runs; Reset memory deletes only `memories/`. The facts `memory.commands` and `memory.files` come from the run's events.
+  - **s10 outline** approved with s09 and s11 (subagents a short intro only). One `main.py` with three switches (`BLOCK`, `SUBAGENT`, `WRITE`) instead of separate starters. The lesson sets `tools=[]` and `setting_sources=[]` so only the Meridian tools exist and no local CLAUDE.md leaks in.
+  - **Agent SDK through the relay:** no relay or runner change. The SDK's CLI subprocess reads `ANTHROPIC_BASE_URL` and the key from the inherited environment; the gateway accepted its requests (streaming, adaptive thinking, caching) without extra settings. The hidden title call is taught as the cost of a packaged agent, and the claim that it can be switched off was left out because it was not tested.
+  - **browser_check for s10:** timeline and messages checks relaxed for s10 (the SDK's tool names are `mcp__meridian__*` and the title call comes first), as s09's list-only starter had its own branch.
 
 ## Cost analysis
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.

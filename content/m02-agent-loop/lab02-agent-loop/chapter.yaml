@@ -13,3 +13,4 @@ steps:
   - s07-designing-tools
   - s08-memory
   - s09-mcp
+  - s10-agent-sdk

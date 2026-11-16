@@ -18,6 +18,7 @@ dependencies = [
     "markdown-it-py>=3",      # lesson text (step.md) on the lab page; raw HTML disabled
     "truststore>=0.9",        # corporate TLS interception (Windows cert store)
     "mcp>=2.3,<3",            # s09: the MCP client and server the lesson code uses (v2: MCPServer, Client)
+    "claude-agent-sdk>=0.2.182,<0.3",  # s10: the Claude Agent SDK (bundles the Claude Code CLI, about 160 MB)
 ]
 
 [project.optional-dependencies]

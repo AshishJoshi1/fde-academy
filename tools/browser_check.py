@@ -400,7 +400,10 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
         b.wait("document.querySelectorAll('#timeline .trace-row').length > 0", "the timeline")
         rows = b.js("[...document.querySelectorAll('#timeline .trace-label')].map(l => l.textContent)")
         print(f"    timeline: {' | '.join(rows)}")
-        if "fixture" in panels:     # the tool-loop steps: calls, tool runs between them, the mock API
+        if "fixture" in panels and step_id.endswith("s10"):   # the Agent SDK: a title call and the loop, tool names are mcp__meridian__*
+            check("timeline: calls, an SDK tool row and its API request",
+                  len(rows) >= 4 and any("mcp__meridian__" in r for r in rows) and any(r.startswith("GET ") or "GET /" in r for r in rows))
+        elif "fixture" in panels:     # the tool-loop steps: calls, tool runs between them, the mock API
             check("timeline: calls, the tool run between them, and its API request",
                   len(rows) >= 4 and any("result sent" in r for r in rows))
             check("timeline: each tool row shows its input and id", any(
@@ -413,8 +416,9 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
             check("timeline: one row per call", len(rows) >= 8)
     if "messages" in panels and "fixture" in panels:
         b.wait("document.querySelectorAll('#messages-view .msg').length > 0", "the messages view")
+        # s10: the title call comes first and is unrelated to the loop, so call-to-call "added" marks vary
         check("messages: the last call's list, with what it added marked",
-              b.js("document.querySelectorAll('#messages-view .msg.is-added').length") > 0
+              (step_id.endswith("s10") or b.js("document.querySelectorAll('#messages-view .msg.is-added').length") > 0)
               and b.js("document.querySelectorAll('#messages-tabs .tab').length") > 1)
         check("messages: the results message is marked 'one message'",
               b.js("[...document.querySelectorAll('#messages-view .msg-head .pill')].some(p => p.textContent === 'one message')"))

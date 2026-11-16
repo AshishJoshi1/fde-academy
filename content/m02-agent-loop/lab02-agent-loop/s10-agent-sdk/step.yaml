@@ -1,0 +1,318 @@
+id: s10
+title: "The Claude Agent SDK"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, timeline, messages, fixture]
+run:
+  fixture: meridian
+  timeout_s: 240
+hints:
+  - "main.py: the settings are lines 15 to 17, your tools start at line 24, the hook is line 56, the options are lines 65 to 80 and the loop over messages is lines 83 to 97."
+  - "The first Run takes a few seconds longer: the SDK starts the Claude Code program as a subprocess, and that program makes the model calls."
+
+guide:
+  - id: g1
+    title: "Same loop, packaged"
+    teach: |
+      Since s02 you have written the agent loop by hand: call the model, append the response, run every
+      `tool_use`, send the results in one message, stop on `end_turn`. s05 let the SDK's tool runner do the
+      looping. The **Claude Agent SDK** goes one step further: it packages the whole loop **plus** a set of
+      production features around it: permissions, hooks that can stop a tool call, subagents, sessions.
+
+      It is **a different product** from the `anthropic` package you have used so far. You don't call the
+      Messages API. You call `query()` with a prompt and some options, and you get back a stream of messages
+      describing what the agent did. Under the hood the SDK starts the **Claude Code program** (the same
+      engine as the `claude` command you type in your terminal) as a subprocess. *That* program runs the
+      loop and makes the model calls.
+
+      Nothing about the loop is new. What's new is how much you no longer write, and how much you can no
+      longer see unless you look. This lesson does both.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Who makes the model calls when your code runs `query()`?"
+        options:
+          - "The Claude Code program the SDK starts as a subprocess"
+          - "Your Python process, with the anthropic package"
+          - "The Anthropic website"
+          - "Nobody: query() only prints a plan"
+        answer: 0
+        explanation: "The SDK is a thin wrapper that starts the Claude Code program and streams its messages back. That program holds the loop and talks to the model."
+
+  - id: g2
+    title: "The s02 agent in a few lines"
+    code: ["65-68", 84]
+    teach: |
+      Open `main.py`. The agent itself is small. **Lines 65 to 68** are the options: the model, the effort
+      (the same `low` you set in `output_config` before) and a system prompt. **Line 84** is the entire loop:
+      `query(prompt=..., options=...)` runs the agent until it is done and yields messages as it goes.
+
+      Compare with s02: there you wrote the `for turn in range(...)`, the `stop_reason` check, the
+      `tool_result` list, the append of every response. Here none of that is in your file. The SDK does it.
+
+      The options also say what the agent can and cannot do. `tools=[]` on **line 70** removes every
+      built-in tool (reading files, running shell commands, and so on): Claude Code ships with many, and
+      this agent should only have your Meridian ones.
+    do: "Read lines 65 to 80 once, then go on. The next step is the tools."
+
+  - id: g3
+    title: "Your tools: @tool"
+    code: ["24-28", 63, 69, 71]
+    teach: |
+      In s02 a tool was two things: a JSON Schema you wrote by hand and a function that ran it. Here the
+      `@tool` decorator on **line 24** takes a name, a description and a short schema (`{"opportunity_id": str}`)
+      and turns the function under it into one tool. The function is the s02 `get_opportunity`, as an async
+      function: it returns a `content` list, the same shape an MCP tool returns, and `is_error: True` marks a
+      failure.
+
+      **Line 63** bundles the three tools into an **in-process MCP server**: the same protocol as s09, but the
+      server lives inside your Python process, so there is nothing to start. **Line 69** hands it to the agent.
+
+      The SDK names every MCP tool `mcp__<server>__<tool>`, so yours are `mcp__meridian__get_opportunity` and
+      so on. **Line 71** lists the ones that may **run without asking**. `allowed_tools` is permission, not
+      availability: a tool outside that list still exists, it just needs approval first.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What does allowed_tools=[\"mcp__meridian__*\"] do?"
+        options:
+          - "Lets those tools run without asking for permission"
+          - "Is the only way to make those tools exist"
+          - "Hides every other tool from the model"
+          - "Makes the tools free of charge"
+        answer: 0
+        explanation: "It is a pre-approval list. The tools exist because of mcp_servers (line 69); allowed_tools only says which calls need no approval."
+
+  - id: g4
+    title: "Your run, compared with s02"
+    code: [84, 85, 88, 92, 96]
+    teach: |
+      Press **Run**. The loop at **line 84** yields different kinds of message, and the code prints each:
+
+      | Message | What it is | Line |
+      |---|---|---|
+      | `AssistantMessage` | What the model said: text and `tool_use` blocks | 85 |
+      | `UserMessage` | Carries the `tool_result` blocks back | 92 |
+      | `ResultMessage` | The last message: how it ended, turns, the SDK's cost estimate | 96 |
+
+      Read the Console. The agent called the two lookup tools, in the order the model chose, and answered.
+      The Timeline shows the calls to the model. **Count them**: s02 made 3 calls for the same question.
+    do: "Press **Run**. Read the Console and count the model calls on the Timeline."
+    show: [run.calls, loop.tool_results, run.cost_usd]
+    notice: |
+      One more call than s02 needed. You didn't write that call, and your code never made it. The Messages
+      panel will show you what it was in step g8.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did this run make?"
+        answer_from: run.calls
+        explanation: "Four: three for the agent loop (one per tool turn, plus the final answer), as in s02, and one extra that the Claude Code program makes by itself."
+
+  - id: g5
+    title: "What the SDK sends"
+    teach: |
+      The `ResultMessage` printed a cost, but it is the SDK's **own estimate**. The lab's numbers (the Timeline
+      and the Messages panel) are measured from the real requests that went through the relay.
+
+      Open the **Messages** panel and click the **second** call. Look at the tools and the system prompt:
+
+      - **Tools:** your three tools are there, under their `mcp__meridian__` names, **plus one more** that you
+        didn't write, a placeholder for tool search: the Claude Code program defers some tools until the model
+        asks for them.
+      - **System prompt:** a short one: yours, nothing more. With `system_prompt` set, the SDK doesn't add
+        Claude Code's long default prompt.
+      - **Thinking and caching:** the program asks for adaptive thinking and caches the prompt itself:
+        look at the `cache_creation_input_tokens` and `cache_read_input_tokens` on the next calls. The `input_tokens`
+        field is only a few tokens, because the cache holds the rest.
+
+      None of this is in your file. It is **the SDK's defaults**, and you can only change them if you know
+      they exist.
+    do: "Open the **Messages** panel, click call 2, and find the extra tool. Then look at the usage on calls 3 and 4."
+    show: [request.tool_count, request.tool_names]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "You defined 3 tools. How many did the last request define?"
+        answer_from: request.tool_count
+        explanation: "Four: your three plus the tool-search placeholder that the Claude Code program adds."
+
+  - id: g6
+    title: "A hook that refuses a write"
+    code: [15, 56, 76]
+    teach: |
+      A hook is **your code that the SDK runs at a fixed point in the loop**. A `PreToolUse` hook runs
+      **before** a tool call, and it can stop it. You built this idea by hand in s04: a gate in your own
+      loop. Here the SDK offers the same place.
+
+      The hook function is on **line 56**. It receives the tool's name and input, and its return value is the
+      decision: `"permissionDecision": "deny"` with a reason. **Line 76** installs it with a `matcher` that
+      says which tool it applies to: `mcp__meridian__update_opportunity`, your writing tool.
+
+      When a hook denies, the tool function **never runs**. The model gets an error result carrying your
+      reason and decides what to do next. `BLOCK` on **line 15** switches the hook on; `WRITE` on **line 17**
+      changes the question into one that needs the write. You will use both in the experiment.
+    do: "Read it. You will try it in the experiment at the end."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A PreToolUse hook returns permissionDecision \"deny\". What happens to the tool call?"
+        options:
+          - "The tool never runs, and the model gets an error result with your reason"
+          - "The tool runs, and the hook only logs a warning"
+          - "The whole agent crashes"
+          - "The SDK retries the call until the hook allows it"
+        answer: 0
+        explanation: "The hook decides before the function runs. A deny becomes a tool_result with is_error, so the model can react."
+
+  - id: g7
+    title: "Subagents, a first look"
+    code: [16, 72, 84]
+    teach: |
+      A **subagent** is a second agent that the first one can hand a task to. You define it with
+      `AgentDefinition` (**line 72**): a description of when to use it, its own prompt and **the tools it may
+      use**. The main agent gets a built-in tool called `Agent` and calls it, like any tool.
+
+      The point is **context**. The subagent starts with a **fresh conversation**: only its own prompt and
+      the task text the main agent wrote. It doesn't see the main agent's history. When it finishes, the main
+      agent gets **only its final message**. All its tool calls stay inside it.
+
+      Set `SUBAGENT = True` on **line 16** and Run. The question now asks the agent to use the subagent for the
+      account lookup. In the Console, the lines marked `[subagent]` are the subagent's own calls. In the Messages
+      panel, find the call whose request has only 3 tools and a different system prompt: that is the subagent's
+      conversation, a separate request with its own short history.
+
+      We don't measure what subagents save here. Lesson 13 does that. This step only shows the shape.
+    do: "Set `SUBAGENT = True` and press **Run**. Find the `[subagent]` lines, and the separate request in the Messages panel. Then set it back to `False`."
+    show: [run.calls, request.tool_count]
+    notice: |
+      Offering the `Agent` tool made every request bigger, even for a question that needed no subagent:
+      the tool's definition is long. A feature you switch on is paid for on every call, as with the many
+      tools in s09.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What does the main agent receive when the subagent finishes?"
+        options:
+          - "Only the subagent's final message"
+          - "Every tool call and result the subagent made"
+          - "The subagent's whole context window"
+          - "Nothing: it must read the subagent's log"
+        answer: 0
+        explanation: "That is the point of a subagent: its working context stays out of the main agent's window."
+
+  - id: g8
+    title: "The call you didn't write"
+    teach: |
+      Back to the extra call from g4. In the Messages panel, open **call 1** of any run (with `SUBAGENT = False`).
+
+      - It has **no tools**, and a system prompt of about 3,300 characters.
+      - It asks for a JSON answer with one field, `title`, and it runs at effort `medium`.
+
+      The Claude Code program is **naming the session**. That call is made for every run, in parallel with the
+      first real turn, and you pay for it. You can't see it unless you look at the traffic. This is the cost of a packaged agent: it
+      makes decisions on your behalf, and the only way to see them is the request log. **When you debug an SDK
+      agent, read the real requests, not just the messages `query()` yields.**
+
+      So the trade: the SDK hands you the loop, permissions, hooks and subagents, for the price of a few hidden
+      calls and defaults you did not choose. For a lesson-sized agent, the loop you wrote in s02 is shorter to
+      reason about. For a long-running agent that needs a gate and a subagent, the SDK is less code to own.
+    do: "Open call 1 in the Messages panel and read its system prompt and its output format."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What was the extra call in your run?"
+        options:
+          - "A call with no tools that names the session, made by the Claude Code program"
+          - "A retry after a failed call"
+          - "The first tool call"
+          - "A count_tokens call"
+        answer: 0
+        explanation: "It has no tools and asks for a title. You didn't write it: the packaged agent made it."
+
+  - id: g9
+    title: "Experiment, then the quiz"
+    teach: |
+      One experiment: what happens when a hook refuses the write the agent was asked to do. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Block a write with a hook"
+    question: "The agent is asked to change a CRM record. What does a hook do to the write and to the answer?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "With BLOCK = True and WRITE = True, how many writes will reach the Meridian API?"
+        options: ["None", "One", "Two or more"]
+        bins: [0.5, 1.5]
+        answer_from: api.writes
+      - id: p2
+        type: text
+        prompt: "What will the agent tell you at the end?"
+    change: |
+      Set `WRITE = True` (line 17) and `BLOCK = True` (line 15), then Run. Note the writes and read the answer.
+      Then set `BLOCK = False` and Run again to compare. Put both back to `False` afterwards.
+    observe:
+      - "BLOCK True: a `hook: ... -> deny` line, a tool_result with is_error=True, and no write on the Meridian panel"
+      - "BLOCK False: the write reaches the API and the agent says it changed the record"
+    explain: |
+      Measured (Opus 5.5, effort low): with the hook, **no write** reached the API. The Console printed the
+      hook's `deny`, the tool result came back as an error carrying the reason, and the agent **did not give up
+      silently**: it re-read the record to confirm it was unchanged and told you a hook blocks CRM writes,
+      with the 22% still in place. Without the hook the agent patched the record straight away and answered
+      "I set it to 15%", **without even reading the record first**.
+
+      Two points. A deny is information for the model, so a good reason text is part of the design. And the
+      hook is **your code**, outside the model: unlike a line in the prompt ("never change records", as in
+      s04), the model can't talk its way past it.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "What is the Claude Agent SDK, compared with the anthropic package you used in s01 to s09?"
+    options:
+      - "A package that runs the Claude Code program, which holds the loop, permissions, hooks and subagents"
+      - "The same package with a new name"
+      - "A faster Messages API"
+      - "A package that stores your prompts"
+    answer: 0
+    explanation: "query() starts the Claude Code program as a subprocess and streams back what the agent did. It is a separate product, not a different way to call the Messages API."
+  - id: q2
+    type: mcq
+    prompt: "Your Agent SDK run made one more model call than the same agent in s02. Where do you find out what that call was?"
+    options:
+      - "In the real requests (the Messages panel): the messages query() yields don't include it"
+      - "In the ResultMessage"
+      - "In the SDK's source code only"
+      - "You can't: it is never sent"
+    answer: 0
+    explanation: "The program names the session in a call your code never made. Only the request log shows it, which is why you read the real requests when you debug a packaged agent."
+  - id: q3
+    type: mcq
+    prompt: "You need the agent to NEVER change a CRM record, even if a user begs. Which is the stronger control?"
+    options:
+      - "A PreToolUse hook that denies the write tool"
+      - "A line in the system prompt saying never to change records"
+      - "A polite note in the tool description"
+      - "Asking the model to double-check first"
+    answer: 0
+    explanation: "A hook is your code and runs outside the model, so the model can't be persuaded around it. A prompt line is only a request, and the model can be talked out of it."
+
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, through the relay, one run each). Plain run: 4 calls. Call 1 is the CLI naming the session:
+  no tools, system prompt about 3,300 characters, output_config format json_schema {title}, effort medium. Calls 2 to 4 are the loop: 4 tools (your
+  3 plus DeferredToolPlaceholder), a 374-character system prompt (yours), thinking adaptive, max_tokens 128000, cached prompt (cache_creation 1,652
+  then 263 and 514; input_tokens only 2 per call because the cache holds the rest). The SDK's cost estimate was about $0.024. BLOCK and WRITE: the
+  hook printed deny, is_error=True came back, the model re-read OPP-1046 and said a hook blocks writes; api.writes 0. BLOCK False: PATCH reached
+  the API, the model answered "set to 15%" without reading the record first. SUBAGENT True with an explicit prompt: the main agent called Agent
+  (subagent_type lookup), the subagent made its own 2 calls with 3 tools, a 2,072-character system prompt and a 2-message history; the parent got only
+  its final message; offering the Agent tool added about 2,300 cached tokens even when unused. Facts: run.calls, request.tool_count (4), api.writes.
+  Package: claude-agent-sdk 0.2.182 (bundles the CLI, a 160 MB wheel); the options env merges onto the inherited environment, and in the lab the
+  relay URL and dummy key arrive as ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY. Misconceptions: the SDK is the Messages API (no, a subprocess); allowed_tools
+  makes tools exist or hides others (no, it is pre-approval; tools=[] removes the built-ins); a prompt line is as strong as a hook (no). Not covered here:
+  sessions and resume, can_use_tool, plugins and skills, and the subagent token comparison (lesson 13).

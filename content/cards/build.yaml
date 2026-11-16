@@ -476,3 +476,29 @@ cards:
       About 125 input tokens, on every call, whether or not the model uses it (last-call input 1,519 with 2 tools, 5,269 with 32).
       The answer and the tools used stayed the same, so the extra tools were pure cost. Keep tool lists short or filter them.
     source: "docs/PLAN.md (s09 row, measured 2026-11-16)"
+
+  - id: sdk-hidden-title-call
+    tag: engineering
+    front: |
+      Your Agent SDK agent made one more model call than the same agent in s02. What was it, and how do you find it?
+    back: |
+      The Claude Code program names the session with a call your code never wrote: no tools, a 3,331-character system prompt, a JSON `title` answer, effort medium.
+      `query()` doesn't yield it, so only the request log (the lab's Messages panel) shows it. When you debug a packaged agent, read the real requests.
+    source: "docs/PLAN.md (s10 row, measured 2026-11-17)"
+
+  - id: hook-beats-prompt
+    tag: security
+    front: |
+      Why is a PreToolUse hook a stronger control than a prompt line like "never change records"?
+    back: |
+      The hook is your code and runs outside the model, so it can't be talked around. A deny comes back as an `is_error` result with your reason: no write reached the API, and the agent reported the block.
+      Without the hook the agent patched the record at once, without reading it first.
+    source: "docs/PLAN.md (s10 row, measured 2026-11-17)"
+
+  - id: unused-feature-costs-tokens
+    tag: cost
+    front: |
+      What did offering the Agent (subagent) tool cost on a question that never used it?
+    back: |
+      About 2,300 more cached prompt tokens on every call: its definition rides along each time. A feature you switch on is paid for per call, like the extra tools in s09.
+    source: "docs/PLAN.md (s10 row, measured 2026-11-17)"

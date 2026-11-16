@@ -87,6 +87,7 @@ FDE Academy is a local lab app, for Ashish only, that teaches GenAI and agent en
 - Token counting: `client.messages.count_tokens`, never tiktoken.
 - Usage fields: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`.
 - Tool runner: `@beta_tool` + `client.beta.messages.tool_runner(..., thread=False)`: SDK 2.6.0 defaults to server-held threads (beta header, only new messages), which the gateway rejects on call 2 with a 400. Its HTTP layer is `httpx2`. Approval gates go inside the tool, or in the `for message in runner:` body with `runner.set_messages_params()`.
+- **Agent SDK in the lab** (`claude-agent-sdk` 0.2.182): `query()` starts the bundled Claude Code CLI, which makes the model calls. `ClaudeAgentOptions.env` merges onto the inherited environment, so the relay URL and dummy key reach the CLI and the gateway key works. Every run adds a hidden session-title call (no tools). `tools=[]` and `setting_sources=[]` drop the built-in tools and any local CLAUDE.md. A hook deny arrives as an `is_error` result. s10 is the working example.
 - Projects in `C:\Users\AshishKumarJoshi\FDE\Projects` mandate the **Claude Agent SDK** (a separate product). Read code.claude.com/docs/en/agent-sdk before writing that code; never guess its API.
 
 ## Gateway (every live call goes through it)
