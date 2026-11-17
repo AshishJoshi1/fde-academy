@@ -14,10 +14,15 @@ This file is the single source of truth for where the build and the teaching sta
   - **Spaced review:** none outstanding.
   - **Flash cards:** 46 in the deck (3 added on 2026-11-17, 3 more later that day), 1 reviewed (`cache-share`, known).
 - **Building:** s01 to s11 are complete. s11 added the `chain` panel (reads `@@step` lines from the console) and `chain.*` facts. All tests pass; `tools/browser_check.py m02.lab02.s11` passes. Lesson 11 (routing and early exit) needs an outline first.
-- **Next first action:** in a fresh session (`/clear` first), propose the guide-step titles for **lesson 11 "Routing and early exit"** (`docs/PLAN.md`, Module 02 outline: classify once, route map and precedence as data, a cheap exit; mixed and spam tickets; decision view) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes.
+- **Trial-share work (decide first):** Ashish wants to share the lab with teammates. The approved-in-principle scope is in `C:\Users\AshishKumarJoshi\.claude\plans\how-much-effort-would-twinkly-origami.md` (copied into `docs/DECISIONS.md`): bring-your-own-key, per-user DB (already per-user), a zip builder with a test and an onboarding doc. **Opus 5.5 stays; no Sonnet-only change.** About 2 sessions. Open: Windows-only trial? Keep Haiku 4.5 in the picker?
+- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (propose its outline: zip builder and test first, then onboarding doc, then BYOK) or lesson 11. For lesson 11: propose the guide-step titles for **lesson 11 "Routing and early exit"** (`docs/PLAN.md`, Module 02 outline: classify once, route map and precedence as data, a cheap exit; mixed and spam tickets; decision view) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes.
 
 ## Last session
-- **Date:** 2026-11-17 (2nd session, Sonnet 5.5)
+- **Date:** 2026-11-18 (Sonnet 5.5). Planning only; no code changed.
+- **Done:** `/today`; estimated the trial-share work (BYOK, per-user DB, zip and onboarding doc) with one Explore pass; plan written and revised to drop the Opus removal (cost). Findings: per-user data dir and SQLite already exist; the relay works with api.anthropic.com once the base URL defaults and a key page exists; the gateway cost header needs a `pricing.yaml` fallback; `playground/` and `progress/learner-progress.json` are git-tracked with Ashish's paths, so the zip must exclude them.
+- **Open questions:** Windows-only trial? Keep Haiku 4.5? A teammate's key may lack `claude-opus-5-5`.
+
+## Previous session (2026-11-17, 2nd)
 - **Done:** `/today`; **s11 "Prompt chains" built:** g1–g9, E1 (loosen the classify schema), E2 (plain vs model-driven enrich), q1–q3; `main.py` with `LOOSE_CLASSIFY`, `MODEL_ENRICH` and `BAD_TICKET` switches. Measured (Opus 5.5, low, 3 tickets): plain 6 calls, $0.017; model enrich 12 calls, $0.046, same facts; loose classify crashes `respond`; bad ticket fails at enrich after one retry.
 - **App:** `chain` panel, `chain.*` facts, browser_check s11 branch and a structured-output answer in its fake gateway. The first Run is in g4, not g8 as outlined.
 - **Cards:** 3 added (`loose-type-moves-blame`, `retry-only-random-faults`, `plain-code-for-fixed-lookups`).
@@ -80,5 +85,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-16 (4th) | `/today`; s09, s10, s11 outlines approved; s09 "MCP" built and browser-checked; 3 cards | $0.80 (Sonnet 5.5; target $8) | about $0.10 (live runs, not itemized) |
 | 2026-11-17 | `/today`; s10 "The Claude Agent SDK" researched, measured live through the relay, built and browser-checked; 3 cards | $1.51 (Sonnet 5.5) | about $0.15 (measurement runs; `labctl status` shows $0.04 learner today) |
 | 2026-11-17 (2nd) | `/today`; s11 "Prompt chains" built, measured and browser-checked; chain panel; 3 cards | $1.25 | about $0.10 measurement (not itemized; `labctl status` shows learner spend only) |
+| 2026-11-18 | `/today`; trial-share (BYOK, zip, onboarding) estimated and planned; no code | $0.64 (Sonnet 5.5; target $8) | $0.00 |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
