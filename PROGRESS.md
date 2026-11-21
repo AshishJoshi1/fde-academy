@@ -22,7 +22,7 @@ This file is the single source of truth for where the build and the teaching sta
 - **Done:** `/today`; **s12 "Routing and early exit" built** (PLAN table lesson 11): g1–g9, E1 (reorder PRECEDENCE), E2 (early exit off), q1–q3; `main.py` with `EARLY_EXIT`, `VAGUE_TICKET` and `CONFIDENCE_GATE` switches and five tickets (a mixed one and a spam one). Measured live (Opus 5.5, low): 9 calls; E1 puts tickets 1, 2 and 4 on `status_question` and ticket 4's reply drops the follow-up promise; E2 makes 10 calls and a model writes to the spammer; ticket 6 (vague) goes to `human` in 1 call with the gate on, and to `status_question` in 2 calls with it off.
 - **App:** `route` panel (decision view), `route.*` facts, `@@route` hidden from the Console, browser_check s12 branch and a router answer in its fake gateway. Tests pass.
 - **Cards:** 2 added (`early-exit-is-a-boundary`, `confidence-is-self-reported`).
-- **Open questions:** Ashish still owes this session's `/cost`; the Route panel was not inspected on screen; the trial-share questions above.
+- **Open questions:** the Route panel was not inspected on screen; the trial-share questions above.
 
 ## Previous session (2026-11-18)
 - **Done:** planning only: the trial-share work (BYOK, per-user DB, zip and onboarding doc) estimated; no code changed.
@@ -86,6 +86,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-17 | `/today`; s10 "The Claude Agent SDK" researched, measured live through the relay, built and browser-checked; 3 cards | $1.51 (Sonnet 5.5) | about $0.15 (measurement runs; `labctl status` shows $0.04 learner today) |
 | 2026-11-17 (2nd) | `/today`; s11 "Prompt chains" built, measured and browser-checked; chain panel; 3 cards | $1.25 | about $0.10 measurement (not itemized; `labctl status` shows learner spend only) |
 | 2026-11-18 | `/today`; trial-share (BYOK, zip, onboarding) estimated and planned; no code | $0.64 (Sonnet 5.5; target $8) | $0.00 |
-| 2026-11-21 | `/today`; s12 "Routing and early exit" outlined, built, measured live and browser-checked; route panel; 2 cards | not given yet (Sonnet 5.5; target $8) | about $0.10 measurement (about 40 live calls, not itemized) |
+| 2026-11-21 | `/today`; s12 "Routing and early exit" outlined, built, measured live and browser-checked; route panel; 2 cards | $1.05 (Sonnet 5.5; target $8) | about $0.10 measurement (about 40 live calls, not itemized) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
