@@ -3,6 +3,7 @@
 //   messages  the messages list each call sent: what it carried over, and what it added;
 //   fixture   the mock API's request log;
 //   chain     the steps of a prompt chain, from the `@@step {json}` lines the lesson code prints;
+//   route     the router's decision per ticket, from the `@@route {json}` lines the lesson code prints;
 //   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
 // Built from the run's events alone, so a reopened run looks exactly as it did live.
 (function () {
@@ -419,18 +420,49 @@
     });
   }
 
+  // ------------------------------------------------------------ the router: one decision per ticket
+  var routes = [];
+  function renderRoutes() {
+    var box = $("route-decisions");
+    box.textContent = "";
+    $("route-count").textContent = routes.length ? routes.length + " ticket" + (routes.length === 1 ? "" : "s") : "";
+    if (!routes.length) { box.append(el("p", "small muted", "Run the router: each ticket shows what the model reported, the route your code chose and why, and which steps ran or were skipped.")); return; }
+    routes.forEach(function (r) {
+      var det = el("details", "disclosure"), sum = el("summary", null, "Ticket " + r.ticket + " · ");
+      sum.append(r.route === "failed" ? pill("pill-critical", "failed") : pill(r.exit ? "pill-warning" : "pill-good", r.route + (r.exit ? " · exit" : "")));
+      det.open = true;
+      det.append(sum, el("div", "small muted", r.text));
+      var body = el("div", "stack");
+      if (r.error) body.append(el("div", "small muted", "error"), el("pre", "json-view", r.error));
+      else {
+        body.append(el("div", "small muted", "the model reported"), el("pre", "json-view", JSON.stringify({categories: r.categories, confidence: r.confidence}, null, 2)));
+        body.append(el("div", "small muted", "your code chose"), el("pre", "json-view", r.route + " · " + r.rule));
+      }
+      body.append(el("div", "small muted", "ran: " + (r.ran || []).join(", ") + " · skipped: " + ((r.skipped || []).join(", ") || "none") + " · " + r.model_calls + " model call" + (r.model_calls === 1 ? "" : "s")));
+      if (r.reply) body.append(el("div", "small muted", "reply"), el("pre", "json-view", r.reply));
+      det.append(body);
+      box.append(det);
+    });
+  }
+
   function render() {
+    if (on("route")) renderRoutes();
     if (on("timeline")) renderTimeline();
     if (on("messages")) renderMessages();
     if (on("fixture")) renderApi();
     if (on("chain")) renderChain();
   }
   window.labViews = {
-    reset: function () { evs = []; chain = []; shownCall = null; render(); },
+    reset: function () { evs = []; chain = []; routes = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
       if (ev.type === "run.exit" && on("memory")) loadMemory();
       if (on("chain") && ev.type === "console.out" && String(ev.data.text).indexOf("@@step ") === 0) {
         try { chain.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
+        if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
+        return;
+      }
+      if (on("route") && ev.type === "console.out" && String(ev.data.text).indexOf("@@route ") === 0) {
+        try { routes.push(JSON.parse(ev.data.text.slice(8))); } catch (e) { return; }
         if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
         return;
       }

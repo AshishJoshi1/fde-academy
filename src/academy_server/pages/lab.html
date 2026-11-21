@@ -85,6 +85,10 @@
           <button class="btn" id="memory-reset" type="button" title="Delete every memory file (the model forgets)">Reset memory</button></div>
         <div class="pane-body stack" id="memory-files"><p class="small muted">The files your memory tool wrote. They stay between runs: that is the point.</p></div>
       </div>
+      <div class="pane" data-panel="route" hidden>
+        <div class="pane-head"><h3 class="card-title">Route · the decision for each ticket</h3><span class="spacer"></span><span class="small muted" id="route-count"></span></div>
+        <div class="pane-body stack" id="route-decisions"><p class="small muted">Run the router: each ticket shows what the model reported, the route your code chose and why, and which steps ran or were skipped.</p></div>
+      </div>
       <div class="pane" data-panel="chain" hidden>
         <div class="pane-head"><h3 class="card-title">Chain · input, output and validation per step</h3><span class="spacer"></span><span class="small muted" id="chain-count"></span></div>
         <div class="pane-body stack" id="chain-steps"><p class="small muted">Run the chain: every step of every ticket appears here with what went in, what came out and whether it passed.</p></div>

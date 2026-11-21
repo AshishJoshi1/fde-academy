@@ -66,7 +66,7 @@
         line("$ python -X utf8 -u " + d.entry + "   (model " + d.model + ", limit " + d.timeout_s + " s)", "meta");
         if (d.fixture) line("mock " + d.fixture.name + " API started for this run on " + d.fixture.url, "meta");
         break;
-      case "console.out": if (!(LAB.panels.indexOf("chain") >= 0 && d.text.indexOf("@@step ") === 0)) line(d.text); break;   // the chain panel shows the @@step lines
+      case "console.out": if (!((LAB.panels.indexOf("chain") >= 0 && d.text.indexOf("@@step ") === 0) || (LAB.panels.indexOf("route") >= 0 && d.text.indexOf("@@route ") === 0))) line(d.text); break;   // the chain and route panels show the @@step and @@route lines
       case "console.err": line(d.text, "stderr"); break;
       case "console.truncated": line("[output cut at " + d.cap_bytes + " bytes]", "meta"); break;
       case "llm.request":

@@ -10,23 +10,22 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s04` "Gate and block" in the UI (s01 was started over on 2026-11-11; s01 steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done).
-  - **s02 "The manual loop"** to **s11 "Prompt chains"** are built and ready at `/lab/m02.lab02.s02` to `.s11`.
+  - **s02 "The manual loop"** to **s12 "Routing and early exit"** are built and ready at `/lab/m02.lab02.s02` to `.s12`.
   - **Spaced review:** none outstanding.
-  - **Flash cards:** 46 in the deck (3 added on 2026-11-17, 3 more later that day), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s11 are complete. s11 added the `chain` panel (reads `@@step` lines from the console) and `chain.*` facts. All tests pass; `tools/browser_check.py m02.lab02.s11` passes. Lesson 11 (routing and early exit) needs an outline first.
+  - **Flash cards:** 48 in the deck (2 added on 2026-11-21), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s12 are complete. s12 added the `route` panel (reads `@@route` lines from the console) and `route.*` facts. All tests pass; `tools/browser_check.py m02.lab02.s12` passes. The next lesson in the table is **s13 "LangGraph basics"** (`docs/PLAN.md`, Module 02 outline, lesson 12), which needs an outline first.
 - **Trial-share work (decide first):** Ashish wants to share the lab with teammates. The approved-in-principle scope is in `C:\Users\AshishKumarJoshi\.claude\plans\how-much-effort-would-twinkly-origami.md` (copied into `docs/DECISIONS.md`): bring-your-own-key, per-user DB (already per-user), a zip builder with a test and an onboarding doc. **Opus 5.5 stays; no Sonnet-only change.** About 2 sessions. Open: Windows-only trial? Keep Haiku 4.5 in the picker?
-- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (propose its outline: zip builder and test first, then onboarding doc, then BYOK) or lesson 11. For lesson 11: propose the guide-step titles for **lesson 11 "Routing and early exit"** (`docs/PLAN.md`, Module 02 outline: classify once, route map and precedence as data, a cheap exit; mixed and spam tickets; decision view) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes.
+- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (propose its outline: zip builder and test first, then onboarding doc, then BYOK) or the next lesson. For the lesson: propose the guide-step titles for **lesson 12 "LangGraph basics"** (`docs/PLAN.md`: state, nodes, conditional edges, reducers; lesson 10's chain as a graph; graph view of nodes visited and state after each) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes. Read the LangGraph docs (subagent) before any code.
 
 ## Last session
-- **Date:** 2026-11-18 (Sonnet 5.5). Planning only; no code changed.
-- **Done:** `/today`; estimated the trial-share work (BYOK, per-user DB, zip and onboarding doc) with one Explore pass; plan written and revised to drop the Opus removal (cost). Findings: per-user data dir and SQLite already exist; the relay works with api.anthropic.com once the base URL defaults and a key page exists; the gateway cost header needs a `pricing.yaml` fallback; `playground/` and `progress/learner-progress.json` are git-tracked with Ashish's paths, so the zip must exclude them.
-- **Open questions:** Windows-only trial? Keep Haiku 4.5? A teammate's key may lack `claude-opus-5-5`.
+- **Date:** 2026-11-21 (Sonnet 5.5).
+- **Done:** `/today`; **s12 "Routing and early exit" built** (PLAN table lesson 11): g1–g9, E1 (reorder PRECEDENCE), E2 (early exit off), q1–q3; `main.py` with `EARLY_EXIT`, `VAGUE_TICKET` and `CONFIDENCE_GATE` switches and five tickets (a mixed one and a spam one). Measured live (Opus 5.5, low): 9 calls; E1 puts tickets 1, 2 and 4 on `status_question` and ticket 4's reply drops the follow-up promise; E2 makes 10 calls and a model writes to the spammer; ticket 6 (vague) goes to `human` in 1 call with the gate on, and to `status_question` in 2 calls with it off.
+- **App:** `route` panel (decision view), `route.*` facts, `@@route` hidden from the Console, browser_check s12 branch and a router answer in its fake gateway. Tests pass.
+- **Cards:** 2 added (`early-exit-is-a-boundary`, `confidence-is-self-reported`).
+- **Open questions:** Ashish still owes this session's `/cost`; the Route panel was not inspected on screen; the trial-share questions above.
 
-## Previous session (2026-11-17, 2nd)
-- **Done:** `/today`; **s11 "Prompt chains" built:** g1–g9, E1 (loosen the classify schema), E2 (plain vs model-driven enrich), q1–q3; `main.py` with `LOOSE_CLASSIFY`, `MODEL_ENRICH` and `BAD_TICKET` switches. Measured (Opus 5.5, low, 3 tickets): plain 6 calls, $0.017; model enrich 12 calls, $0.046, same facts; loose classify crashes `respond`; bad ticket fails at enrich after one retry.
-- **App:** `chain` panel, `chain.*` facts, browser_check s11 branch and a structured-output answer in its fake gateway. The first Run is in g4, not g8 as outlined.
-- **Cards:** 3 added (`loose-type-moves-blame`, `retry-only-random-faults`, `plain-code-for-fixed-lookups`).
-- **Open questions:** as before (outline gate hook, gateway 60 requests a minute, browser check flakes, Windows async noise, write pill unseen). The Chain panel was not inspected on screen: it sits below the fold in the screenshot.
+## Previous session (2026-11-18)
+- **Done:** planning only: the trial-share work (BYOK, per-user DB, zip and onboarding doc) estimated; no code changed.
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
@@ -51,7 +50,8 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s09 MCP (lesson 8): content g1–g9 with E1, E2 and q1–q3; no new app feature
   - [x] s10 The Claude Agent SDK (lesson 9): content g1–g9 with E1 and q1–q3; no new app feature
   - [x] s11 Prompt chains (lesson 10): content g1–g9 with E1, E2 and q1–q3; chain panel, `chain.*` facts
-  - [ ] Lessons 11–17: 02-B to 02-D need outlines
+  - [x] s12 Routing and early exit (lesson 11): content g1–g9 with E1, E2 and q1–q3; route panel, `route.*` facts
+  - [ ] Lessons 12–17: 02-B to 02-D need outlines
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
 
 ## Curriculum progress
@@ -59,7 +59,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 to s11 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s12 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -86,5 +86,6 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-17 | `/today`; s10 "The Claude Agent SDK" researched, measured live through the relay, built and browser-checked; 3 cards | $1.51 (Sonnet 5.5) | about $0.15 (measurement runs; `labctl status` shows $0.04 learner today) |
 | 2026-11-17 (2nd) | `/today`; s11 "Prompt chains" built, measured and browser-checked; chain panel; 3 cards | $1.25 | about $0.10 measurement (not itemized; `labctl status` shows learner spend only) |
 | 2026-11-18 | `/today`; trial-share (BYOK, zip, onboarding) estimated and planned; no code | $0.64 (Sonnet 5.5; target $8) | $0.00 |
+| 2026-11-21 | `/today`; s12 "Routing and early exit" outlined, built, measured live and browser-checked; route panel; 2 cards | not given yet (Sonnet 5.5; target $8) | about $0.10 measurement (about 40 live calls, not itemized) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.

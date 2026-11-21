@@ -526,3 +526,19 @@ cards:
     back: |
       Twice the calls (12 against 6) and about 2.75 times the cost ($0.046 against $0.017) for the same facts. Use a model where a step needs judgment, and code for a fixed lookup.
     source: "docs/PLAN.md (s11 row, measured 2026-11-17)"
+
+  - id: early-exit-is-a-boundary
+    tag: engineering
+    front: |
+      Besides the saved call, what does a router's cheap exit give you?
+    back: |
+      A boundary: the ticket never reaches the step that could say something you didn't intend. With the exit off (s12 E2) the run took 10 calls instead of 9, and a model wrote a reply to the spammer in the company's voice.
+    source: "content/m02-agent-loop/lab02-agent-loop/s12-routing/step.yaml (E2, measured 2026-11-21)"
+
+  - id: confidence-is-self-reported
+    tag: engineering
+    front: |
+      Why send a low-confidence ticket to a person, and what is the caveat about "confidence"?
+    back: |
+      A wrong route sends a wrong reply to a customer, and a person's check is the cheaper failure. But the model's confidence is its own report, not a measured probability: use it as a gate, not as a number to trust (s12: the vague ticket was `low` and took the human route in 1 call).
+    source: "content/m02-agent-loop/lab02-agent-loop/s12-routing/step.yaml (g8, measured 2026-11-21)"

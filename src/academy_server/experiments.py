@@ -311,6 +311,20 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
                 ends[str(r.get("step"))] = ends.get(str(r.get("step")), 0) + 1
         f["chain.failed_at"] = ", ".join(f"{k} x{v}" for k, v in sorted(ends.items())) or "none"
 
+    routes = []   # the routing lesson prints one `@@route {json}` line per ticket
+    for e in _events(events, "console.out"):
+        text = str(e["data"].get("text", ""))
+        if text.startswith("@@route "):
+            try:
+                routes.append(json.loads(text[8:]))
+            except ValueError:
+                pass
+    if routes:
+        f["route.tickets"] = len(routes)
+        f["route.exited"] = sum(1 for r in routes if r.get("exit"))
+        for name in ("human", "failed", "status_question", "change_request"):
+            f[f"route.{name}"] = sum(1 for r in routes if r.get("route") == name)
+
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]
     f["approval.asked"] = len(asked)

@@ -1,0 +1,344 @@
+id: s12
+title: "Routing and early exit"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, route, timeline, fixture]
+run:
+  fixture: meridian
+  timeout_s: 240
+hints:
+  - "main.py: the settings are lines 14 to 16, the tickets are lines 18 to 27, the route map and its precedence are lines 30 to 37, the typed hand-off is lines 41 to 45, classify and the router are lines 72 to 90, and the loop that runs one ticket is lines 109 to 143."
+  - "The Route panel shows one block per ticket: the categories the model found, the route your code chose and the rule that chose it, which steps ran and which were skipped. The Console shows only what the code prints for you."
+
+guide:
+  - id: g1
+    title: "Why route"
+    teach: |
+      In s11 every ticket went through the same three steps. That is wasteful when some tickets don't need
+      them. Look at what a support inbox really holds:
+
+      - a question the CRM can answer: the full chain, as before;
+      - a request to *change* a record: it needs a person, and the reply must say so;
+      - **spam**: it needs no reply that uses any facts. Fetching a record and asking a model to write to a
+        spammer is money for nothing.
+
+      A **router** sits in front of the steps. It looks at the ticket once, picks **one route**, and your code
+      runs only the steps that route needs. Two ideas make it work:
+
+      - **Classify once.** One call decides the route. Nothing downstream asks the model again.
+      - **Exit early.** A route that needs no more work stops right there, before any more tokens are spent.
+
+      Routing is still a chain: **your code** decides the path, not the model. The model only supplies the
+      label.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In a router, what does the model supply and what does your code decide?"
+        options:
+          - "The model supplies the label; your code decides the route and what runs"
+          - "The model decides the route and the steps"
+          - "Your code supplies the label; the model runs the steps"
+          - "The model does everything and your code only logs"
+        answer: 0
+        explanation: "The model reads the ticket and says what it is. What follows from that label is a rule you own, so it is testable and the same every time."
+
+  - id: g2
+    title: "Classify once"
+    code: ["41-45", "72-80"]
+    teach: |
+      **Lines 41 to 45** declare what the classifier must hand over. Three fields:
+
+      - `categories`: a **list** of closed values (`Literal`), because a ticket can be two things at once. "Is
+        OPP-1047 still at proposal stage? And please set its discount to 9%" is a status question *and* a change
+        request;
+      - `confidence`: `high` or `low`, the model's own signal that it is unsure;
+      - `opportunity_id`: the ID the ticket names, empty when it names none.
+
+      `classify` (**lines 72 to 80**) is one call. **Line 77** adds a rule in code that a schema can't say: an ID
+      the model returns must literally appear in the ticket, as in s11. An empty ID is allowed, since spam has
+      none.
+
+      The model lists **every** category that applies. It does not choose between them. Choosing is the next
+      step, and it is not the model's job.
+    do: "Read lines 41 to 45 and 72 to 80, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why is `categories` a list, not a single value?"
+        options:
+          - "A ticket can be more than one thing, and the model should report all of them"
+          - "Lists are cheaper than strings"
+          - "A single value cannot be a Literal"
+          - "The gateway needs a list"
+        answer: 0
+        explanation: "If the model had to pick one, it would hide the second request inside a guess. Listing all of them lets your code apply a rule you can read."
+
+  - id: g3
+    title: "The route map is data"
+    code: ["30-37", "82-90"]
+    teach: |
+      **Lines 30 to 37** hold the route map: a dict from route name to what that route does. A route either
+      has a `guide` (the instruction the reply step follows) or a `canned` answer (a fixed text, no model, no
+      more steps). `spam` and `human` have a canned answer. The three question routes have a guide.
+
+      `pick_route` (**lines 82 to 90**) is the whole router: a few lines that read this data. There is no
+      `if category == "spam"` anywhere in the steps. To add a route (a `complaint`, say) you add a category to
+      the `Literal`, a row to `ROUTES` and a name to `PRECEDENCE`. The code that runs a ticket does not change.
+
+      That is the point of keeping the map as **data**: the policy sits in one place you can read, diff and
+      test, and the steps stay plain.
+    do: "Read lines 30 to 37 and 82 to 90, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "You want a new `complaint` route that always goes to a person. What do you change?"
+        options:
+          - "Add the category to the Literal, a row to ROUTES with a canned answer, and a name to PRECEDENCE"
+          - "Rewrite classify to call a second model"
+          - "Add an if-branch to every step"
+          - "Nothing: the model will figure it out"
+        answer: 0
+        explanation: "The map and the precedence list are data, and the steps read them. A new route is a new row, not new control flow."
+
+  - id: g4
+    title: "Precedence on mixed tickets"
+    code: [37, "82-90"]
+    teach: |
+      A ticket can land in two categories, but it can take only **one route**. Something has to choose, and it
+      should not be the model. **Line 37** is `PRECEDENCE`, an ordered list: the first name that is among the
+      ticket's categories wins (**lines 86 to 88**).
+
+      Read the order: `spam`, then `change_request`, then `discount_question`, then `status_question`. The order
+      is a **policy**. Putting `change_request` ahead of the questions means a request that would write data
+      always reaches a person, even when the same ticket also asks a harmless question. Ticket 4 is that case:
+      it asks for a status *and* a change.
+
+      Put the order the other way and the policy changes: the ticket would get the status answer and the write
+      request would be dropped. You try exactly that in experiment 1.
+    do: "Read line 37. Which route will ticket 4 take, and which will ticket 1 take (it asks about the discount and the start date)? Go on and Run to find out."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why is PRECEDENCE a list in your code and not something the model decides?"
+        options:
+          - "It encodes a policy (what wins when a ticket is two things), which must be the same every time and reviewable"
+          - "Models cannot count"
+          - "Lists are faster than model calls"
+          - "The gateway forbids it"
+        answer: 0
+        explanation: "Which request wins is a business rule. In code it is visible and testable; left to the model it varies from run to run."
+
+  - id: g5
+    title: "The cheap exit"
+    code: ["120-122", "30-31"]
+    teach: |
+      Now the saving. **Line 120**: if the chosen route has a `canned` answer (and `EARLY_EXIT` is on), the ticket
+      is answered from the map and the function moves on. **No `enrich`, no `respond`.** For spam that is one model
+      call in total, the classify call, instead of two calls and a Meridian request.
+
+      Two things to see. The exit sits **after** classify, because only the model can tell spam from a real
+      ticket, so the first call is the price of knowing. And what the exit buys is not only money: the spam ticket
+      gets a fixed, safe text. A model asked to reply to a spammer will happily write to them.
+    do: "Read lines 120 to 122, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "With the early exit on, how many model calls does the spam ticket cost?"
+        options:
+          - "One: the classify call"
+          - "Two: classify and respond"
+          - "None: spam never reaches a model"
+          - "Three"
+        answer: 0
+        explanation: "The model must read the ticket to know it is spam, so classify runs. After that the route is canned and nothing else runs."
+
+  - id: g6
+    title: "Your run, five tickets"
+    teach: |
+      Press **Run**. The five tickets: the three from s11, a **mixed** one (ticket 4) and a **spam** one
+      (ticket 5). Watch the Console: it prints each ticket and its reply. Then look at the Timeline: the model
+      calls and, between them, the Meridian requests.
+
+      Before you look, count. Four tickets take the full path (classify and respond, with one Meridian fetch).
+      One takes the cheap exit.
+    do: "Press **Run**. Note the number of model calls and the cost."
+    show: [run.calls, run.cost_usd, route.tickets, route.exited]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the router make for the five tickets?"
+        answer_from: run.calls
+        explanation: "Nine: four tickets with classify and respond (8 calls), plus the spam ticket with classify only (1). The spam ticket's cheap exit saved its respond call."
+
+  - id: g7
+    title: "The decision view"
+    teach: |
+      Open the **Route** panel. Each ticket has a block. Read them as the router's reasoning:
+
+      - **categories** and **confidence**: what the model reported;
+      - **route** and **rule**: what your code chose, and the line of policy that chose it;
+      - **ran** and **skipped**: which steps ran, and which the exit skipped;
+      - the **reply** that went out.
+
+      Open ticket 4. Its categories include both a status question and a change request, and its route is the
+      one `PRECEDENCE` puts first. Open ticket 1 too: it is a mixed ticket as well, and the discount question wins.
+      The model never chose either route. Your list did.
+    do: "Open the Route panel. Read the rule of ticket 4, and the skipped steps of ticket 5."
+    show: [route.tickets, route.exited, route.change_request, route.status_question]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In the Route panel, which steps does ticket 5 (spam) show as skipped?"
+        options:
+          - "enrich and respond"
+          - "classify"
+          - "none"
+          - "respond only"
+        answer: 0
+        explanation: "The spam ticket stops after classify: no fetch, no reply written by a model."
+
+  - id: g8
+    title: "Unsure goes somewhere safe"
+    code: ["15-16", "82-90"]
+    teach: |
+      The router has one more exit. **Line 84**: when the classifier says `confidence: low`, the ticket doesn't
+      go down its best-guess route. It goes to the `human` route (a canned "a person will review your message").
+      A wrong route sends a customer a wrong reply. A person costs a minute.
+
+      Set `VAGUE_TICKET = True` (**line 15**) and Run. A sixth ticket says almost nothing: "any news on the thing
+      we talked about last week?" See which route it takes. Then set `CONFIDENCE_GATE = False` (**line 16**) and
+      Run again: the same ticket now takes its best-guess route, and a model writes to the customer about a
+      record that no one identified.
+
+      One caution: `confidence` is the model's **own report**, not a measurement. It is a useful signal for a
+      gate and a poor basis for anything that needs a number you can trust.
+    do: "Set `VAGUE_TICKET = True` and Run. Open ticket 6 in the Route panel. Then set `CONFIDENCE_GATE = False`, Run again and compare. Put both back to their first values afterwards."
+    show: [route.tickets, route.human, run.calls]
+    notice: |
+      Measured (Opus 5.5, effort low): with the gate on, ticket 6 was classified `low` and took the `human`
+      route with **one** model call. With the gate off it took `status_question`, made two calls, and the model
+      asked the customer which project they meant. No wrong facts, but a call spent to ask a question a person
+      should ask.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why send a low-confidence ticket to a person instead of its best-guess route?"
+        options:
+          - "A wrong route means a wrong reply to a customer; a person's check is cheaper than that"
+          - "Low confidence means the model is broken"
+          - "Persons are faster than models"
+          - "It reduces the number of tickets"
+        answer: 0
+        explanation: "The gate trades a little cost (a person's time) for not acting on a guess. It matters most where the next step writes or replies to a customer."
+
+  - id: g9
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments. First: change the precedence and watch ticket 4 change route. Second: switch the early
+      exit off and see what the spam ticket costs, and what it gets. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Reorder the precedence"
+    question: "The order of PRECEDENCE is a policy. What changes when status questions outrank change requests?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "With PRECEDENCE = [\"spam\", \"status_question\", \"change_request\", \"discount_question\"], how many tickets take the status_question route? (Before the change: 1.)"
+        answer_from: route.status_question
+        tol: 0
+        unit: "tickets"
+      - id: p2
+        type: text
+        prompt: "What will the reply to ticket 4 say about the discount change that the customer asked for?"
+    change: |
+      Edit line 37 so `status_question` comes right after `spam`. Run, and open tickets 1 and 4 in the Route panel.
+      Then put the order back.
+    observe:
+      - "Ticket 4's route changed from `change_request` to `status_question`, and so did ticket 1's"
+      - "Ticket 4's reply answers the status question and does not say a person will follow up on the change"
+    explain: |
+      Measured (Opus 5.5, effort low): **three** tickets took `status_question` (tickets 1, 2 and 4). Ticket 4's
+      reply gave the stage and the start date and said the model could not change the discount, so it stays at the
+      requested 10%. It did **not** hand the change to a person: the route was a status route, whose guide never
+      mentions follow-up. The write request was handled by the model's judgment, not by your policy.
+
+      The cost of the reorder was zero calls and a worse policy. Precedence decides what happens to the
+      part of a ticket that loses. Put the riskiest category first.
+
+  - id: e2
+    title: "Switch the early exit off"
+    question: "What does the cheap exit save, and what does the spam ticket get without it?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "How many model calls with EARLY_EXIT = False? (With it on: 9.)"
+        answer_from: run.calls
+        tol: 1
+        unit: "calls"
+      - id: p2
+        type: text
+        prompt: "What will the reply to the spam ticket say?"
+    change: |
+      Set `EARLY_EXIT = False` (line 14) and Run. Open ticket 5 in the Route panel and read its reply. Put it back.
+    observe:
+      - "Ticket 5's `skipped` list shrank to `enrich`, and its `ran` list now ends with `respond`"
+      - "The reply to the spam ticket is written by the model, not the fixed text"
+    explain: |
+      Measured (Opus 5.5, effort low): **10 calls** instead of 9. The spam ticket now ran `respond`, and the model
+      wrote to the spammer ("we are not interested and won't be clicking the link, please remove us from your
+      mailing list"). The extra call is small. What matters more is that your system now **sends** a reply to
+      spam, in the company's voice, written by a model that had no facts to use.
+
+      A cheap exit is not only a saving. It is a **boundary**: the ticket never reaches the step that could say
+      something you didn't intend. At a thousand spam tickets a day the call is also a thousand more calls.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "A ticket is both a status question and a change request. Who decides which route it takes?"
+    options:
+      - "A precedence list in your code, applied to the categories the model reported"
+      - "The model, in a second call"
+      - "The customer"
+      - "Whichever step runs first"
+    answer: 0
+    explanation: "The model reports every category. Your PRECEDENCE decides what wins, so the policy is code you can read and test."
+  - id: q2
+    type: mcq
+    prompt: "What does an early exit give you besides a smaller bill?"
+    options:
+      - "A boundary: the ticket never reaches the steps that could say something you didn't intend"
+      - "A faster model"
+      - "Better classification"
+      - "Longer prompts"
+    answer: 0
+    explanation: "The spam ticket with the exit off still ran fine, but a model wrote to a spammer. The exit stops that by construction."
+  - id: q3
+    type: mcq
+    prompt: "A router's model reports `confidence: low`. What should the router do?"
+    options:
+      - "Send the ticket to a person, not down its best-guess route"
+      - "Retry until confidence is high"
+      - "Pick the first category in PRECEDENCE anyway"
+      - "Discard the ticket"
+    answer: 0
+    explanation: "A guess costs a wrong reply to a customer. A person's review is the cheaper failure. Keep in mind that confidence is the model's own report, not a measured number."
+
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, through the relay). The router classifies once: Classification has categories (list of Literal), confidence
+  (high or low) and opportunity_id (empty for spam). pick_route applies the confidence gate, then the first PRECEDENCE name among the categories; ROUTES maps a
+  route to a guide or a canned answer; a canned route exits early (no enrich, no respond) when EARLY_EXIT is on. Default run, 5 tickets: 9 calls (tickets 1-4
+  take classify and respond, ticket 5 classify only). Ticket 1 is also a mixed ticket (discount and status): discount_question wins. Ticket 4 (status and change):
+  change_request wins; its reply gives the stage and says a person will follow up. E1 PRECEDENCE with status_question second: tickets 1, 2 and 4 take
+  status_question; ticket 4's reply answers the status and says it cannot change the discount, without a follow-up promise. E2 EARLY_EXIT False: 10 calls; spam
+  ticket's reply, written by the model: "Thank you for your message, but we are not interested ... remove us from your mailing list". VAGUE_TICKET adds ticket 6:
+  gate on: low confidence, route human, 1 call; gate off: status_question, 2 calls, the model asks which project. The model's self-reported confidence is a
+  signal, not a measurement. Facts: run.calls, run.cost_usd, route.tickets, route.exited, route.human, route.failed, route.status_question,
+  route.change_request (parsed from the @@route lines that main.py prints; the Route panel draws them and hides them from the Console). Misconceptions: the
+  model should choose the route when a ticket is two things (no: your precedence list); an early exit is only a cost saving (no: it is also a boundary);
+  confidence is a measured probability (no).

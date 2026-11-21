@@ -97,6 +97,14 @@ def fake_reply(body: dict) -> tuple[int, dict]:
     fmt = ((body.get("output_config") or {}).get("format") or {}).get("schema")
     if fmt:   # a structured answer (s11's messages.parse): the first enum value, the ticket's ID, 12 for a number
         props = fmt.get("properties") or {}
+        text = question if isinstance(question, str) else ""
+        if "categories" in props:   # s12's router: spam when the ticket names no opportunity, else its first category
+            spam = not re.search(r"OPP-\d+", text)
+            made = {"categories": ["spam"] if spam else [props["categories"]["items"]["enum"][0]],
+                    "confidence": "high", "opportunity_id": "" if spam else wanted[0]}
+            return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
+                         "content": [{"type": "text", "text": json.dumps(made)}], "stop_reason": "end_turn",
+                         "stop_sequence": None, "usage": {**usage, "output_tokens": 30}}
         made = {k: (v["enum"][0] if "enum" in v else wanted[0] if "id" in k else 12 if v.get("type") == "number"
                     else "Thanks, we have it on file." if k == "text" else "proposal" if k == "stage" else "2026-11-02"
                     if k == "start_date" else "EUR") for k, v in props.items()}
@@ -397,7 +405,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
 
 def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
-    for name in ("timeline", "messages", "fixture", "memory", "chain"):
+    for name in ("timeline", "messages", "fixture", "memory", "chain", "route"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
     if "chain" in panels:        # s11: every ticket's steps drawn from the @@step lines, which the console hides
@@ -407,6 +415,12 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
               b.js("document.getElementById('chain-steps').textContent.includes('replied')") and
               not b.js("document.getElementById('chain-steps').textContent.includes('rejected')"))
         check("console hides the @@step lines", not b.js("document.getElementById('console').textContent.includes('@@step')"))
+    if "route" in panels:        # s12: a decision block per ticket, drawn from the @@route lines, which the console hides
+        b.wait("document.querySelectorAll('#route-decisions details').length >= 5", "the route panel")
+        check("route panel: a block per ticket, the spam ticket exits early",
+              b.js("document.getElementById('route-decisions').textContent.includes('your code chose')") and
+              b.js("document.getElementById('route-decisions').textContent.includes('skipped: enrich, respond')"))
+        check("console hides the @@route lines", not b.js("document.getElementById('console').textContent.includes('@@route')"))
     if "timeline" in panels and step_id.endswith("s09"):   # s09's starter only lists the MCP server's tools: no model call
         b.wait("document.getElementById('console').textContent.includes('input_schema')", "the tool listing")
         check("console lists the MCP server's tools and their input schemas",
@@ -419,6 +433,9 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
         if "fixture" in panels and step_id.endswith("s10"):   # the Agent SDK: a title call and the loop, tool names are mcp__meridian__*
             check("timeline: calls, an SDK tool row and its API request",
                   len(rows) >= 4 and any("mcp__meridian__" in r for r in rows) and any(r.startswith("GET ") or "GET /" in r for r in rows))
+        elif "route" in panels:       # s12: classify and respond for four tickets, classify alone for the spam ticket
+            check("timeline: nine calls and the Meridian requests between them",
+                  sum(1 for r in rows if "Call " in r) >= 9 and sum(1 for r in rows if "GET /" in r) >= 4)
         elif "chain" in panels:       # s11: classify and respond calls per ticket, a Meridian request between them
             check("timeline: six calls and the Meridian requests between them",
                   sum(1 for r in rows if "Call " in r) >= 6 and sum(1 for r in rows if "GET /" in r) >= 3)

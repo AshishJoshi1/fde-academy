@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ID = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]*$", max_length=40)]
 
 PanelName = Literal["console", "timeline", "trace", "messages", "tokens", "flow", "fixture",
-                    "why", "variables", "compare", "memory", "chain"]
+                    "why", "variables", "compare", "memory", "chain", "route"]
 
 
 class Strict(BaseModel):
@@ -186,6 +186,12 @@ FACTS: dict[str, str] = {
     "chain.replied": "how many tickets reached a validated reply",
     "chain.retries": "how many step attempts were retries (attempt 2 or later)",
     "chain.failed_at": "the steps where tickets ended, counted (none when every ticket got a reply)",
+    "route.tickets": "how many tickets the router decided (a route record per ticket)",
+    "route.exited": "how many tickets took the cheap exit (no enrich, no respond)",
+    "route.human": "how many tickets went to the human route",
+    "route.failed": "how many tickets failed before a route was chosen",
+    "route.status_question": "how many tickets took the status_question route",
+    "route.change_request": "how many tickets took the change_request route",
     "approval.asked": "how many times your code paused to ask for Approve or Deny (labkit.approve)",
     "approval.approved": "of those, how many you approved",
     "approval.denied": "of those, how many were denied, timed out or cut off by the run ending",
