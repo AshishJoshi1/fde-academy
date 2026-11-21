@@ -590,3 +590,27 @@ cards:
     back: |
       LangGraph raises `InvalidUpdateError` ("Can receive only one value per step"), the opposite of s13's silent overwrite between sequential nodes. Give the key a reducer (s14: a dict merge, each worker returning `{its name: result}`). A worker that raises out of its node fails the whole step and cancels its siblings, so catch errors and timeouts inside the worker and return them as data.
     source: "content/m02-agent-loop/lab02-agent-loop/s14-fan-out/step.yaml (g3 and g6; clash tested against langgraph 1.2.24 on 2026-11-21)"
+
+  - id: interrupt-replays-the-node
+    tag: engineering
+    front: |
+      A LangGraph node sends a CRM write, then calls `interrupt()`. The person approves and the run resumes. How many writes were sent, and where should the write go?
+    back: |
+      Two. On resume the node runs again from its first line, and `interrupt()` returns the answer instead of stopping, so everything before it runs once per attempt. s15 E1 (`PATCH_FIRST = True`) sent 2 PATCHes for one approval, and would have sent one even on Deny. Put side effects after `interrupt()` (and only if approved), or make them idempotent. A node killed halfway is replayed the same way.
+    source: "content/m02-agent-loop/lab02-agent-loop/s15-checkpoints/step.yaml (g9 and E1, measured 2026-11-21)"
+
+  - id: checkpoint-saves-between-nodes
+    tag: engineering
+    front: |
+      A checkpointed graph's process is killed inside the third node. What does the next run with the same thread id do, and what must be true for that to work?
+    back: |
+      It resumes at the node that never finished; earlier nodes are not re-run (s15: ticket 1 killed at `respond` reran only `respond`, with no second approval and no second PATCH). A checkpoint is saved after each finished node, not mid-node, so the resumed node starts at its top. It needs a saver that outlives the process (SQLite or Postgres, not `InMemorySaver`) and the same thread id; a finished thread under the same id runs nothing.
+    source: "content/m02-agent-loop/lab02-agent-loop/s15-checkpoints/step.yaml (g4, g5, g6 and E2, measured 2026-11-21)"
+
+  - id: hidden-attribute-lost-to-display
+    tag: engineering
+    front: |
+      The lab's Approve/Deny card carries the `hidden` attribute, yet it showed on every page. Why, and why did the browser check not notice?
+    back: |
+      `.stack {display:flex}` (and `.card`) set `display`, which beats the `hidden` attribute's default `display:none`, and the old CSS fixed that only for tab panels. JavaScript read `hidden === true`, so any check of the attribute passed; only a screenshot showed the card. Fix: `[hidden] { display: none !important; }` in `academy.css`. Check what the user sees, not only the state the code sets.
+    source: "web/src/styles/academy.css (the [hidden] rule) and docs/DECISIONS.md (2026-11-21, 4th)"

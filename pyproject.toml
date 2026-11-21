@@ -23,7 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-graph = ["langgraph>=1.0"]
+graph = ["langgraph>=1.0", "langgraph-checkpoint-sqlite"]  # s15: the on-disk checkpointer
 rag = ["qdrant-client>=1.12"]
 data = ["numpy>=2.1", "pandas>=2.2"]
 obs = ["opentelemetry-sdk>=1.27", "opentelemetry-exporter-otlp>=1.27"]

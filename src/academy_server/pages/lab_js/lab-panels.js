@@ -5,6 +5,7 @@
 //   chain     the steps of a prompt chain, from the `@@step {json}` lines the lesson code prints;
 //   lanes     the parallel workers of a fan-out as bars on a shared time axis, from the `@@lane {json}` lines the lesson code prints;
 //   lanes     the parallel workers of a fan-out as bars on a shared time axis, from the `@@lane {json}` lines the lesson code prints;
+//   ckpt      what a checkpointed graph run did (nodes, stops, writes, saved checkpoints), from the `@@ckpt {json}` lines the lesson code prints;
 //   graph     the nodes a LangGraph run visited and the state after each, from the `@@graph {json}` lines the lesson code prints;
 //   route     the router's decision per ticket, from the `@@route {json}` lines the lesson code prints;
 //   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
@@ -521,7 +522,60 @@
     });
   }
 
+  // ------------------------------------------------------------ ckpt: nodes run, stops, writes and saved checkpoints
+  var ckptRecs = [];
+  function renderCkpt() {
+    var box = $("ckpt-view"), byN = {}, order = [];
+    box.textContent = "";
+    ckptRecs.forEach(function (r) {
+      if (!byN[r.n]) { byN[r.n] = { ev: [], saved: null }; order.push(r.n); }
+      if (r.e === "saved") byN[r.n].saved = r; else byN[r.n].ev.push(r);
+    });
+    $("ckpt-count").textContent = order.length ? order.length + " ticket" + (order.length === 1 ? "" : "s") : "";
+    if (!order.length) { box.append(el("p", "small muted", "Run the graph: each ticket shows the nodes that ran in this run, the moments the run stopped or wrote to the CRM, and the checkpoints saved on disk.")); return; }
+    order.forEach(function (n) {
+      var t = byN[n], det = el("details", "disclosure"), sum = el("summary", null, "Ticket " + n + " · ");
+      var crashed = t.ev.some(function (r) { return r.e === "crash"; });
+      var resumed = t.ev.some(function (r) { return r.e === "resume"; });
+      var seen = {};
+      sum.append(pill(crashed ? "pill-critical" : resumed ? "pill-warning" : "pill-good", crashed ? "process killed" : resumed ? "resumed" : "ran"));
+      if (t.saved) sum.append(document.createTextNode("  thread " + t.saved.thread));
+      det.open = true; det.append(sum);
+      var body = el("div", "stack"), line = el("div", "small");
+      line.append(document.createTextNode("this run: "));
+      t.ev.forEach(function (r) {
+        var cls = "pill-neutral", text;
+        if (r.e === "node") { seen[r.node] = (seen[r.node] || 0) + 1; text = r.node + (seen[r.node] > 1 ? " (again)" : ""); cls = seen[r.node] > 1 ? "pill-warning" : "pill-neutral"; }
+        else if (r.e === "interrupt") { text = "interrupt(): asked a person"; cls = "pill-warning"; }
+        else if (r.e === "answer") { text = r.approved ? "answer: approve" : "answer: deny"; cls = r.approved ? "pill-good" : "pill-critical"; }
+        else if (r.e === "patch") { text = "PATCH sent"; cls = "pill-critical"; }
+        else if (r.e === "crash") { text = "killed in " + r.node; cls = "pill-critical"; }
+        else if (r.e === "resume") { text = "resumed at " + r.next.join(", "); cls = "pill-warning"; }
+        else if (r.e === "done_before") { text = "already finished: nothing ran"; cls = "pill-good"; }
+        else return;
+        line.append(pill(cls, text), document.createTextNode(" "));
+      });
+      body.append(line);
+      if (t.saved) {
+        var tbl = el("table", "small"), head = el("tr");
+        ["step", "next node", "state holds"].forEach(function (h) { head.append(el("th", null, h)); });
+        tbl.append(head);
+        t.saved.checkpoints.forEach(function (c) {
+          var row = el("tr");
+          row.append(el("td", null, String(c.step)), el("td", null, c.next.join(", ") || "(end)"), el("td", null, c.has.join(", ") || "nothing yet"));
+          tbl.append(row);
+        });
+        body.append(el("div", "small muted", "saved checkpoints on disk, oldest first:"), tbl);
+      } else if (crashed) {
+        body.append(el("div", "small muted", "the process died before it could list its checkpoints: they are in checkpoints.db anyway, and the next run reads them."));
+      }
+      det.append(body);
+      box.append(det);
+    });
+  }
+
   function render() {
+    if (on("ckpt")) renderCkpt();
     if (on("lanes")) renderLanes();
     if (on("graph")) renderGraph();
     if (on("route")) renderRoutes();
@@ -531,11 +585,16 @@
     if (on("chain")) renderChain();
   }
   window.labViews = {
-    reset: function () { evs = []; chain = []; routes = []; visits = []; laneRecs = []; shownCall = null; render(); },
+    reset: function () { evs = []; chain = []; routes = []; visits = []; laneRecs = []; ckptRecs = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
       if (ev.type === "run.exit" && on("memory")) loadMemory();
       if (on("chain") && ev.type === "console.out" && String(ev.data.text).indexOf("@@step ") === 0) {
         try { chain.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
+        if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
+        return;
+      }
+      if (on("ckpt") && ev.type === "console.out" && String(ev.data.text).indexOf("@@ckpt ") === 0) {
+        try { ckptRecs.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
         if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
         return;
       }

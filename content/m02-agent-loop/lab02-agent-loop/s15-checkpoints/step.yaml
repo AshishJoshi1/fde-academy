@@ -1,0 +1,449 @@
+id: s15
+title: "Checkpoints and human-in-the-loop"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, ckpt, timeline, fixture]
+run:
+  fixture: meridian
+  timeout_s: 240
+hints:
+  - "main.py: the settings are lines 18 to 21, the state is lines 41 to 47, the helper that tells the panel what happened and can kill the process is lines 50 to 59, the nodes are lines 69 to 124, the graph is lines 127 to 138, the helper that runs, stops and resumes is lines 142 to 151, the saved-history helper is lines 154 to 159 and the loop over tickets is lines 162 to 178."
+  - "The Checkpoints panel shows one block per ticket: the nodes that ran in this run (a node marked `again` ran a second time), the moments it stopped or wrote to the CRM, and the checkpoints saved on disk. The Console shows only what the code prints for you."
+  - "A run only resumes if THREAD matches an earlier run's. THREAD is the name of the saved history, `checkpoints.db` is the file it lives in. Delete that file, or change THREAD, to start fresh."
+
+guide:
+  - id: g1
+    title: "Why a graph run needs a memory"
+    teach: |
+      Lesson 13's graph ran start to finish inside one process. If that process dies halfway (a deploy, a
+      crash, a closed laptop), everything it had worked out is gone, and the next run starts from the top:
+      the model calls are paid for again, and any **write** it already made is made again.
+
+      A **checkpointer** fixes that. After every node, LangGraph saves the graph's state to storage. A run is
+      given a **thread id**, the name of its saved history. Start a run with the same thread id later and the
+      graph does not start over: it **resumes** after the last node that finished.
+
+      The second half of this lesson uses the same saved history for another purpose. A graph can **stop on
+      purpose** at `interrupt()`, wait for a person, and carry on with the answer. Waiting for a person can
+      take an hour, so it has to survive a restart too. Both are the same mechanism.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A graph that is not checkpointed crashes in its third node. What does the next run do?"
+        options:
+          - "Starts again from the first node"
+          - "Resumes at the third node"
+          - "Resumes after the second node"
+          - "Refuses to run until the crash is fixed"
+        answer: 0
+        explanation: "Without saved state, nothing records how far the first run got. A checkpointer is what makes resuming possible."
+
+  - id: g2
+    title: "The task, and your first run"
+    teach: |
+      The graph is lesson 13's, trimmed to one path per ticket. Two tickets run, each as its own thread:
+
+      1. a **change request** for OPP-1044: set its requested discount to 15%;
+      2. a **status question** about OPP-1047.
+
+      The nodes: `classify` (a model call) → `enrich` (plain code, reads the CRM) → `apply` (sends the change
+      to the CRM, but only for a change request, and only after a person approves) → `respond` (a model call).
+      If the person says no, a conditional edge goes to `declined` instead, a fixed reply with no model call.
+
+      The graph is compiled with a checkpointer (line 163): `graph.compile(checkpointer=saver)`. Each ticket
+      runs under its own thread id, built from `THREAD` (line 18) and the ticket number, for example
+      `run-1-ticket-1` (line 165).
+
+      Press **Run**. The first ticket will **stop and ask you to Approve or Deny** a change to the CRM. Click
+      **Approve**. Step g7 explains how that pause works. The Checkpoints panel fills in as it goes.
+    code: [18, 163, 165]
+    do: "Run, click Approve when asked, then open the Checkpoints panel."
+    show: [ckpt.nodes_run, ckpt.interrupts, ckpt.patches, run.calls, run.cost_usd]
+    check:
+      - id: c1
+        type: mcq
+        prompt: "The status question (ticket 2) never touches the CRM. Does it still get saved checkpoints?"
+        options:
+          - "Yes: every node of every run is checkpointed, whether or not it has side effects"
+          - "No: only runs that stop at interrupt() are saved"
+          - "No: only the change request writes anything"
+          - "Only if it fails"
+        answer: 0
+        explanation: "The checkpointer saves after every node of every thread. It cannot know in advance which run you will need to resume."
+
+  - id: g3
+    title: "What a checkpoint holds"
+    teach: |
+      Open **Ticket 1** in the Checkpoints panel. The table lists the saved checkpoints, oldest first. Each has
+      three things worth reading:
+
+      - **step**: the number of the super-step. `-1` is the input, saved before any node ran.
+      - **next node**: what the graph will run next. The last row says `(end)`.
+      - **state holds**: which keys of the state are filled in at that moment. Read down the column and the
+        state grows: `classification`, then `facts`, then `approved`, then `reply`.
+
+      The code behind the table is `app.get_state_history(cfg)` (lines 154 to 159). One more call matters for
+      resuming: `app.get_state(cfg)` (line 167) returns the **latest** checkpoint, and its `next` field is the
+      list of nodes still to run. An empty `next` means the thread finished.
+
+      Notice that every key in the state is plain data (a `dict`, a string, a bool), lines 41 to 47. A
+      checkpoint is written to disk, so the state has to be something that can be written.
+    code: ["41-47", "154-159", 167]
+    do: "Open Ticket 1 and read the table from top to bottom."
+    show: [ckpt.checkpoints]
+    notice: |
+      There is one more checkpoint than there are nodes that ran, because the input itself is saved first. The
+      row whose `next node` is `respond` is the one a crash in `respond` resumes from: it already holds the
+      classification, the facts and the approval.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A crash happens inside `respond`. Which saved checkpoint does a resume start from?"
+        options:
+          - "The one whose next node is `respond`: the last one saved before the crash"
+          - "The one with step -1, the input"
+          - "None: a crash loses the checkpoints"
+          - "The one whose next node is `(end)`"
+        answer: 0
+        explanation: "A checkpoint is written when a node finishes. The crashed node never finished, so the last saved one is the state just before it."
+
+  - id: g4
+    title: "Kill it halfway"
+    teach: |
+      To see resuming you need a run that dies. `enter` (lines 54 to 59) is called first in every node. When
+      `CRASH_AT` names the node, it calls `os._exit(1)`: the process ends at once, with no cleanup and no
+      exception handler. That is what a killed process, a power cut or an out-of-memory kill looks like from
+      inside.
+
+      Two edits, then Run:
+
+      - `THREAD = "run-2"` (line 18). The first run used `run-1`, which is already finished. A new thread id
+        is a **new run**.
+      - `CRASH_AT = "respond"` (line 19). Ticket 1 will finish `classify`, `enrich` and `apply`, then the
+        process dies as it enters `respond`.
+
+      You will be asked to Approve again (it is a new run). Then the run stops, and the Run button shows it
+      failed. That is expected.
+    code: [18, 19, "54-59"]
+    do: "Set THREAD to \"run-2\" and CRASH_AT to \"respond\", Run, and click Approve."
+    show: [ckpt.crashes, ckpt.nodes_run, ckpt.patches, run.calls]
+    notice: |
+      Open Ticket 1: `respond` shows as `killed in respond`, and the panel has no saved table because the
+      process died before it could print one. The checkpoints are still in `checkpoints.db`, written (line 143,
+      `durability="sync"`) before each next node started.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Why is THREAD changed to a new name for this run?"
+        options:
+          - "The old name's history is finished, so a run under it would only report that nothing is left to do"
+          - "A thread id can only be used once, ever"
+          - "The checkpoint file is deleted after every run"
+          - "Changing it makes the process crash"
+        answer: 0
+        explanation: "A thread id names a saved history. Under `run-1` the graph already ended, so nothing would run. A new id starts a new history."
+
+  - id: g5
+    title: "Resume"
+    teach: |
+      Now bring the run back. Set `CRASH_AT = None` and **leave `THREAD = "run-2"`**. Press Run.
+
+      The loop (lines 165 to 178) asks the checkpointer about each ticket before it runs anything:
+
+      - `snapshot.next` is not empty (line 168): the thread **stopped part-way**, so resume. The call is
+        `app.invoke(None, cfg)`: no new input, only the thread id. LangGraph loads the last checkpoint and runs
+        what `next` lists.
+      - `snapshot.values` is filled but `next` is empty (line 172): the thread **finished**, so run nothing.
+      - Neither: a thread never seen, so start it.
+
+      Ticket 1 resumes at `respond`. `classify`, `enrich` and `apply` are not run again, so no second model call
+      for the classification, no second approval, no second write to the CRM.
+    code: ["165-178"]
+    do: "Set CRASH_AT back to None, keep THREAD = \"run-2\", and Run. Compare with the run before."
+    show: [ckpt.resumed, ckpt.classify_runs, ckpt.apply_runs, ckpt.respond_runs, ckpt.patches, run.calls]
+    notice: |
+      `classify` ran once in this run, for ticket 2 only. Ticket 1's classification came from the checkpoint.
+      That is the saving: the work done before the crash is **not paid for twice**.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In the resume run, how many model calls did ticket 1 make?"
+        options:
+          - "One: `respond` only"
+          - "Two: `classify` and `respond`"
+          - "Zero: the whole reply came from the checkpoint"
+          - "Three"
+        answer: 0
+        explanation: "`classify` and `enrich` finished before the crash and were saved. Only `respond`, the node that never finished, ran again."
+
+  - id: g6
+    title: "Why the checkpoints live in a file"
+    teach: |
+      The checkpointer in this lesson is `SqliteSaver` (line 8), connected to a file, `checkpoints.db` (line 21):
+
+      `with SqliteSaver.from_conn_string(DB) as saver:` (line 162)
+
+      The file is the whole point. LangGraph also ships `InMemorySaver`, which keeps checkpoints in a Python
+      dictionary. It is fine for a test, but a dictionary dies with the process, so it would have saved nothing
+      you needed here: the very crash you are recovering from takes the checkpoints with it.
+
+      For anything that must survive a restart, use a saver that writes outside the process: a SQLite file for
+      one machine, Postgres for a service with several workers. The graph code does not change: only the saver
+      passed to `compile`.
+
+      This is also why `THREAD` has to be stable. The thread id is the **key** the saved history is stored
+      under. Lose it, or generate a fresh one every run, and the history is still on disk but nothing asks for it.
+    code: [8, 21, "162-163"]
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A service uses InMemorySaver. The server is restarted in the middle of a run. What happens to that run?"
+        options:
+          - "It cannot be resumed: its checkpoints were in the process that ended"
+          - "It resumes from its last checkpoint"
+          - "It resumes from the beginning, automatically"
+          - "The graph rebuilds its state from the model"
+        answer: 0
+        explanation: "In-memory checkpoints exist only while the process lives. A restart is exactly the failure checkpoints are meant to survive, so they must be stored outside the process."
+
+  - id: g7
+    title: "interrupt(): stop on purpose"
+    teach: |
+      Now the other half. Your run stopped once and showed Approve and Deny. Look at `apply_node` (lines 94 to
+      105). The key line is:
+
+      `ok = interrupt({"action": "change the requested discount", **change})` (line 102)
+
+      Calling `interrupt()` does three things:
+
+      1. LangGraph **saves a checkpoint** with the node marked as waiting.
+      2. The graph **stops**. `app.invoke` returns right away, with the question under the key
+         `"__interrupt__"`.
+      3. Later, when you resume the thread with an answer, **`interrupt()` returns that answer** inside the node,
+         and the node carries on from that line.
+
+      So `ok` is not computed by the graph: it is whatever a person answered. Nothing in the graph waited,
+      polled or held a connection: the process could have exited and come back a day later, because the
+      waiting is saved state, not a running thread.
+
+      The `PATCH` comes **after** the `interrupt()` on purpose (line 103): the write happens only if the answer
+      is yes.
+    code: ["94-105"]
+    do: "Read `apply_node`, then find the `interrupt()` line and the `PATCH` line."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What does `interrupt(...)` return inside the node, on the run that resumes it?"
+        options:
+          - "The value passed to `Command(resume=...)`: here, the person's answer"
+          - "The value it was called with"
+          - "Always `True`"
+          - "Nothing: it raises an exception"
+        answer: 0
+        explanation: "The first run stops at `interrupt()`. On resume the same call returns the resume value, so the node can use the answer."
+
+  - id: g8
+    title: "Approve or deny: the person's answer"
+    teach: |
+      The code that asks the person is `run_until_done` (lines 142 to 151):
+
+      1. `result = app.invoke(graph_input, cfg)` runs the graph until it ends **or stops**.
+      2. `while result.get("__interrupt__")` (line 144): it stopped, so read the question from
+         `result["__interrupt__"][0].value` (line 145).
+      3. `approve("set_discount", payload)` (line 147) is the same pause you met in lesson 5: the lab page shows
+         Approve and Deny and the code waits for the click. No click in time counts as **deny**, the safe default.
+      4. `app.invoke(Command(resume=ok), cfg)` (line 150) resumes the thread with the answer. `ok` becomes the
+         return value of `interrupt()`.
+
+      The graph is not waiting inside `approve()`: **your code** is. Between the two `invoke` calls the graph is
+      stopped and saved. You could replace `approve()` with anything: an email, a ticket, a Slack button. The
+      graph does not care who answers or how long it takes.
+
+      In the Checkpoints panel for Ticket 1, read the chips from left to right: `apply`, `interrupt(): asked a
+      person`, `answer: approve`, `apply (again)`, `PATCH sent`. Why is `apply` there twice? That is the next step.
+    code: ["142-151"]
+    do: "Read the chips for Ticket 1 in the Checkpoints panel from your first run."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Nobody clicks Approve or Deny within the time limit. What does `approve()` return?"
+        options:
+          - "A denial: no answer is treated as no"
+          - "An approval: the request was reasonable"
+          - "It waits for ever"
+          - "It raises an error that stops the run"
+        answer: 0
+        explanation: "The safe default for a write to a real system is not to do it. `approve()` turns a missing answer into a denial."
+
+  - id: g9
+    title: "Resuming replays the node"
+    teach: |
+      Here is the part that surprises people. When a thread resumes after `interrupt()`, **the node runs again
+      from its first line**. `interrupt()` does not freeze a node in the middle: it ends it, and on resume the
+      node is run again, and this time `interrupt()` hands back the answer instead of stopping.
+
+      That is why `apply` appears twice in the panel. Everything in `apply_node` **before** the `interrupt()`
+      line runs **once per attempt**: once to stop, once to resume.
+
+      Today that is harmless, because nothing happens before `interrupt()`. But picture a write placed there:
+      it would be sent when the run stops, and **again** when it resumes: two writes for one approved change.
+      The rule: **put side effects after `interrupt()`**, or make them **idempotent** (safe to repeat). The
+      first experiment lets you watch this go wrong.
+
+      The same rule covers crashes. A node that dies halfway is also run again from its first line on resume.
+      Checkpoints save the state **between** nodes, not the line a node had reached.
+    code: ["94-105"]
+    do: "Read it, then go on to the experiments."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A node sends an email, then calls `interrupt()`. The person approves and the run resumes. How many emails were sent?"
+        options:
+          - "Two: the node ran again from its first line"
+          - "One: the checkpoint remembered the email"
+          - "Zero: `interrupt()` blocks side effects"
+          - "It depends on the checkpointer"
+        answer: 0
+        explanation: "On resume the node restarts at its first line, so everything before `interrupt()` runs again. Put the send after it, or make it idempotent."
+
+experiments:
+  - id: e1
+    title: "Write before the pause"
+    question: "If the CRM write is placed before interrupt(), how many times is it sent for one approved change?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "With PATCH_FIRST = True, a new THREAD, no crash, and you click Approve: how many PATCH writes will the run send? (Before: 1.)"
+        answer_from: ckpt.patches
+        tol: 0
+        unit: "writes"
+      - id: p2
+        type: text
+        prompt: "Which of the person's choices (Approve or Deny) would still have sent a write, and why is that worse?"
+    change: |
+      Set `PATCH_FIRST = True` (line 20) and `THREAD = "run-3"` (line 18), leave `CRASH_AT = None`, then Run and
+      click Approve. Count the `PATCH sent` chips for Ticket 1. Then set `PATCH_FIRST` back to `False`.
+    observe:
+      - "Two `PATCH sent` chips for Ticket 1: one before the pause, one on the resumed `apply`"
+      - "The Fixture panel shows two PATCH requests, though you approved one change"
+      - "No crash was needed: the replay comes from the pause itself"
+    explain: |
+      With the write above `interrupt()`, it is sent when the node first runs, **before anyone has answered**,
+      and again when the node is replayed on resume. Two things went wrong at once: the change is written
+      twice, and it is written even if the person had answered Deny (try it: it would still show one write).
+
+      The fix is the placement in the starter: the write goes after `interrupt()` and only if `ok`. Where a
+      write cannot move, make it idempotent, for example a PATCH that sets a value (it is safe to repeat)
+      rather than one that adds to it.
+
+  - id: e2
+    title: "Run it again, unchanged"
+    question: "If a finished thread is run again with the same THREAD, what does the graph do?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "Right after a finished run, you press Run again with nothing changed. How many tickets will report `already finished`?"
+        answer_from: ckpt.skipped
+        tol: 0
+        unit: "tickets"
+      - id: p2
+        type: text
+        prompt: "How many model calls will that run make, and what would you change to make the graph work on the same tickets again?"
+    change: |
+      Run once with a new `THREAD` (for example `"run-4"`) and approve. Then, **without changing anything**, Run
+      again. Read the Checkpoints panel and the call count. To work the tickets again, change `THREAD` to
+      `"run-5"` and Run.
+    observe:
+      - "The second run shows `already finished: nothing ran` for both tickets, and makes no model calls"
+      - "A new THREAD name starts both tickets from scratch, with a new approval"
+    explain: |
+      Both tickets are finished under `run-4`, so `get_state` returns a snapshot with values and an empty
+      `next`: line 172 takes the branch that runs nothing. The graph did not forget, it **remembered that the
+      work was done**.
+
+      This is the same property that makes a retry safe after a crash: a finished unit of work is not redone.
+      It is also why the thread id has to name **one piece of work**, such as a ticket number or an order id:
+      reuse a name for different work and the graph will tell you it is already finished.
+
+  - id: e3
+    title: "Say no"
+    question: "When the person denies, which node answers, and is anything written?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "With a new THREAD and a click on Deny, how many PATCH writes will the run send?"
+        answer_from: ckpt.patches
+        tol: 0
+        unit: "writes"
+      - id: p2
+        type: numeric
+        prompt: "How many times will the `respond` node (the model call) run? (Hint: there are two tickets.)"
+        answer_from: ckpt.respond_runs
+        tol: 0
+        unit: "runs"
+    change: |
+      Set `THREAD = "run-6"`, Run, and click **Deny** this time. Read the chips for Ticket 1.
+    observe:
+      - "`answer: deny`, then `apply (again)`, then `declined`: no `PATCH sent`, no `respond` for Ticket 1"
+      - "The reply for ticket 1 is the fixed text from `declined`, written with no model call"
+      - "Ticket 2 is unaffected and still replies through `respond`"
+    explain: |
+      `interrupt()` returned `False`, so `apply_node` skipped the PATCH and returned `{"approved": False}`
+      (line 105). The conditional edge `after_apply` (lines 123 to 124) read that and chose `declined`
+      instead of `respond`. A **denial is just another value in the state**, and the graph routes on it like
+      on any other.
+
+      So the person's answer decides both what is written and which path the graph takes, and both are
+      saved in the checkpoint: a later resume would see the same answer and not ask again.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "A process is killed between two nodes of a checkpointed graph. A new process starts with the same thread id. What does `invoke(None, cfg)` do?"
+    options:
+      - "Runs the nodes that had not finished, starting from the last saved checkpoint"
+      - "Runs the whole graph again from the first node"
+      - "Raises an error because the input is missing"
+      - "Re-runs only the node that was running, and skips the rest of the graph"
+    answer: 0
+    explanation: "`None` means no new input. The checkpointer loads the thread's latest state and runs what its `next` lists, which is the unfinished part of the graph."
+  - id: q2
+    type: mcq
+    prompt: "Why must a node with side effects be written so that running it twice is safe?"
+    options:
+      - "On resume, a node that was interrupted or killed is re-run from its first line"
+      - "LangGraph always runs every node twice"
+      - "Checkpoints are only saved every second node"
+      - "The model repeats each tool call"
+    answer: 0
+    explanation: "Checkpoints save the state between nodes, not the line a node had reached. A resumed node starts at its top, so anything before `interrupt()` or before the crash can run again."
+  - id: q3
+    type: mcq
+    prompt: "Which pairing is right? A graph must (a) survive a restart while waiting for a person's answer, and (b) pass the person's answer back into the node."
+    options:
+      - "(a) a checkpointer that writes outside the process; (b) `Command(resume=answer)`, which `interrupt()` returns"
+      - "(a) `InMemorySaver`; (b) a global variable the node reads"
+      - "(a) a longer timeout on `invoke`; (b) a new thread id for the answer"
+      - "(a) `interrupt()` alone, no checkpointer; (b) `invoke(None)`"
+    answer: 0
+    explanation: "`interrupt()` needs a checkpointer to save the waiting state, and it needs one that outlives the process to survive a restart. The answer travels back as the resume value."
+
+tutor_notes: >
+  Built on measured runs (Opus 5.5, effort low, through the relay; langgraph 1.2.24, langgraph-checkpoint-sqlite). Task: two tickets, each its own thread (thread_id = THREAD + "-ticket-N"): ticket 1 a change request
+  for OPP-1044 (set the requested discount to 15%), ticket 2 a status question about OPP-1047. Graph: StateGraph(TicketState) with plain-data keys (n, ticket, classification dict, facts dict, approved bool|None,
+  reply str); nodes classify (model, messages.parse), enrich (GET /opportunities/<id>), apply (for a change request with a discount: PATCH /opportunities/<id> AFTER interrupt(), only if the answer is yes;
+  PATCH_FIRST=True moves the PATCH before interrupt()), respond (model), declined (fixed text, no model); conditional edge after apply goes to declined when approved is False. Compiled with SqliteSaver on
+  checkpoints.db in the step's folder, durability="sync". The driver per ticket: get_state(cfg): next non-empty means resume (invoke(None, cfg)); values filled and next empty means already finished; else start. After each
+  invoke, if the result has "__interrupt__" it calls labkit.approve("set_discount", payload) then invoke(Command(resume=ok), cfg) in a loop. CRASH_AT="respond" makes enter() call os._exit(1) for ticket 1 (no cleanup);
+  the next run with the same THREAD and CRASH_AT=None resumes at respond (classify, enrich and apply are not re-run for ticket 1; no second approval; no second PATCH). Prints @@ckpt lines: e=node {n,node}, patch,
+  interrupt {payload}, answer {approved}, crash, resume {next}, done_before, saved {thread, checkpoints[{step,next,has}]}; the Checkpoints panel draws them and hides them from the Console.
+  Verified: interrupt() returns the resume value; on resume the node re-runs from its top (a side effect before interrupt() runs twice); an interrupted invoke returns the state plus "__interrupt__" ([Interrupt(value=...)]);
+  get_state_history is newest first, one checkpoint per finished node plus the input (step -1); a raising node leaves the earlier checkpoints; a checkpointer and a thread_id are required for interrupt().
+  Facts: run.calls, run.cost_usd, ckpt.nodes_run, ckpt.classify_runs, ckpt.apply_runs, ckpt.respond_runs, ckpt.patches, ckpt.interrupts, ckpt.crashes, ckpt.resumed, ckpt.skipped, ckpt.started, ckpt.denied,
+  ckpt.checkpoints (parsed from the @@ckpt lines of one run). Misconceptions: a checkpoint is a snapshot of the process (no: it is the graph state between nodes); a resume continues the line a node had reached
+  (no: the node restarts from its first line); interrupt() waits inside the graph (no: the graph stops and is saved, the waiting is the caller's); InMemorySaver survives a restart (no); a finished thread runs again
+  under the same thread id (no: it reports finished); no answer means yes (no: approve() treats it as a denial).

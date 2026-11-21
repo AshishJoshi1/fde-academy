@@ -105,6 +105,13 @@ def fake_reply(body: dict) -> tuple[int, dict]:
             return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
                          "content": [{"type": "text", "text": json.dumps(made)}], "stop_reason": "end_turn",
                          "stop_sequence": None, "usage": {**usage, "output_tokens": 30}}
+        if "discount_pct" in props:   # s15's classifier: a change request for a "set the discount" ticket, else a status question
+            change = "set the discount" in text
+            made = {"category": "change_request" if change else "status_question", "opportunity_id": wanted[0],
+                    "discount_pct": 15.0 if change else None}
+            return 200, {"id": "msg_fake", "type": "message", "role": "assistant", "model": body.get("model"),
+                         "content": [{"type": "text", "text": json.dumps(made)}], "stop_reason": "end_turn",
+                         "stop_sequence": None, "usage": {**usage, "output_tokens": 30}}
         made = {k: (v["enum"][0] if "enum" in v else wanted[0] if "id" in k else 12 if v.get("type") == "number"
                     else "Thanks, we have it on file." if k == "text" else "proposal" if k == "stage" else "2026-11-02"
                     if k == "start_date" else "EUR") for k, v in props.items()}
@@ -346,6 +353,9 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
     print(f"  {len(steps)} guide steps")
     panels = api_get(base, token, f"/api/steps/{step_id}")["panels"]
     b.js("document.getElementById('run').click()")
+    if "ckpt" in panels:      # s15: the first ticket stops at interrupt(), and the run waits for Approve
+        b.wait("!document.getElementById('approval').hidden", "the Approve/Deny card", timeout=90)
+        b.js("document.getElementById('approve').click()")
     b.wait("document.getElementById('status').textContent.startsWith('ok')", "the first run", timeout=90)
     b.wait(f"!{STEP_TEXT}.includes('No run yet')", "your run's values")
     check_panels(b, panels, check, step_id)
@@ -405,7 +415,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
 
 def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
-    for name in ("timeline", "messages", "fixture", "memory", "chain", "route", "graph", "lanes"):
+    for name in ("timeline", "messages", "fixture", "memory", "chain", "route", "graph", "lanes", "ckpt"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
     if "chain" in panels:        # s11: every ticket's steps drawn from the @@step lines, which the console hides
@@ -415,6 +425,15 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
               b.js("document.getElementById('chain-steps').textContent.includes('replied')") and
               not b.js("document.getElementById('chain-steps').textContent.includes('rejected')"))
         check("console hides the @@step lines", not b.js("document.getElementById('console').textContent.includes('@@step')"))
+    if "ckpt" in panels:         # s15: a block per ticket, chips for what ran and stopped, the saved checkpoints; the console hides the lines
+        b.wait("document.querySelectorAll('#ckpt-view details').length >= 2", "the checkpoints panel")
+        view = "document.getElementById('ckpt-view').textContent"
+        check("checkpoints panel: a block per ticket, the pause, the write, the replayed node and the saved table",
+              b.js(f"{view}.includes('interrupt(): asked a person')") and b.js(f"{view}.includes('answer: approve')") and
+              b.js(f"{view}.includes('apply (again)')") and b.js(f"{view}.includes('PATCH sent')") and
+              b.js(f"{view}.includes('saved checkpoints on disk')") and b.js(f"{view}.includes('nothing yet')"))
+        check("the Approve/Deny card is gone once the run ends", b.js("document.getElementById('approval').hidden"))
+        check("console hides the @@ckpt lines", not b.js("document.getElementById('console').textContent.includes('@@ckpt')"))
     if "lanes" in panels:        # s14: a block per opportunity, a bar per worker, drawn from the @@lane lines, which the console hides
         b.wait("document.querySelectorAll('#lanes-view details').length >= 3", "the lanes panel")
         check("lanes panel: a block per opportunity with a bar per worker and a verdict",
@@ -448,6 +467,10 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
         if "fixture" in panels and step_id.endswith("s10"):   # the Agent SDK: a title call and the loop, tool names are mcp__meridian__*
             check("timeline: calls, an SDK tool row and its API request",
                   len(rows) >= 4 and any("mcp__meridian__" in r for r in rows) and any(r.startswith("GET ") or "GET /" in r for r in rows))
+        elif "ckpt" in panels:        # s15: classify and respond for two tickets, two reads and one write to the Meridian API
+            check("timeline: four calls, two reads and a write between them",
+                  sum(1 for r in rows if "Call " in r) >= 4 and sum(1 for r in rows if "GET /" in r) >= 2 and
+                  sum(1 for r in rows if "PATCH /" in r) >= 1)
         elif "lanes" in panels:       # s14: one notes call per opportunity, the plain workers' Meridian requests
             check("timeline: three calls and the Meridian requests",
                   sum(1 for r in rows if "Call " in r) >= 3 and sum(1 for r in rows if "GET /" in r) >= 9)

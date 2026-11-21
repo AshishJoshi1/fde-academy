@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ID = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]*$", max_length=40)]
 
 PanelName = Literal["console", "timeline", "trace", "messages", "tokens", "flow", "fixture",
-                    "why", "variables", "compare", "memory", "chain", "route", "graph", "lanes"]
+                    "why", "variables", "compare", "memory", "chain", "route", "graph", "lanes", "ckpt"]
 
 
 class Strict(BaseModel):
@@ -198,6 +198,18 @@ FACTS: dict[str, str] = {
     "graph.replied": "how many tickets ended with a reply in the state",
     "graph.failed": "how many tickets ended at the fail node",
     "graph.stopped": "how many tickets the recursion limit cut off before a reply or the fail node",
+    "ckpt.nodes_run": "how many node executions this run made, repeats included",
+    "ckpt.classify_runs": "how many times the classify node (a model call) ran in this run",
+    "ckpt.apply_runs": "how many times the apply node ran in this run (it runs again on resume)",
+    "ckpt.respond_runs": "how many times the respond node (a model call) ran in this run",
+    "ckpt.patches": "how many PATCH writes to the CRM the code sent in this run",
+    "ckpt.interrupts": "how many times the graph stopped at interrupt() in this run",
+    "ckpt.crashes": "1 when the code killed its own process (CRASH_AT), else 0",
+    "ckpt.resumed": "how many tickets resumed from a saved checkpoint instead of starting",
+    "ckpt.skipped": "how many tickets were already finished by an earlier run and ran nothing",
+    "ckpt.started": "how many tickets started from scratch in this run",
+    "ckpt.denied": "how many times a person answered no to the approval in this run",
+    "ckpt.checkpoints": "how many checkpoints ticket 1's saved history holds when the run ended",
     "lanes.opportunities": "how many opportunities were reviewed (a verdict record each)",
     "lanes.workers": "how many worker runs (lanes) there were in total",
     "lanes.wall_s": "wall-clock seconds the first opportunity took, from fan-out to verdict",

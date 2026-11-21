@@ -332,7 +332,7 @@ pre.json-view { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480p
 .tabs-pill { border: 0; background: var(--surface-sunken); padding: 3px; border-radius: var(--radius); display: inline-flex; }
 .tabs-pill .tab { border: 0; margin: 0; padding: 7px 12px; border-radius: 7px; }
 .tabs-pill .tab[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow-1); }
-[role="tabpanel"][hidden] { display: none; }
+[hidden] { display: none !important; }   /* .stack, .card and friends set display and would otherwise override the hidden attribute */
 
 /* ------------------------------------------------------------ cards, wells */
 .card {

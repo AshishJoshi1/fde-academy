@@ -344,6 +344,30 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["graph.failed"] = sum(1 for s in last.values() if s.get("failed_step"))
         f["graph.stopped"] = sum(1 for s in last.values() if not s.get("reply") and not s.get("failed_step"))
 
+    ck = []   # the checkpoint lesson prints one `@@ckpt {json}` line per node start, write, stop, resume and saved history
+    for e in _events(events, "console.out"):
+        text = str(e["data"].get("text", ""))
+        if text.startswith("@@ckpt "):
+            try:
+                ck.append(json.loads(text[7:]))
+            except ValueError:
+                pass
+    if ck:
+        nodes = [r.get("node") for r in ck if r.get("e") == "node"]
+        f["ckpt.nodes_run"] = len(nodes)
+        for name in ("classify", "apply", "respond"):
+            f[f"ckpt.{name}_runs"] = nodes.count(name)
+        f["ckpt.patches"] = sum(1 for r in ck if r.get("e") == "patch")
+        f["ckpt.interrupts"] = sum(1 for r in ck if r.get("e") == "interrupt")
+        f["ckpt.crashes"] = sum(1 for r in ck if r.get("e") == "crash")
+        f["ckpt.resumed"] = sum(1 for r in ck if r.get("e") == "resume")
+        f["ckpt.skipped"] = sum(1 for r in ck if r.get("e") == "done_before")
+        f["ckpt.started"] = len({r.get("n") for r in ck if r.get("e") == "node"}) - f["ckpt.resumed"]
+        f["ckpt.denied"] = sum(1 for r in ck if r.get("e") == "answer" and not r.get("approved"))
+        saved1 = [r for r in ck if r.get("e") == "saved" and r.get("n") == 1]
+        if saved1:
+            f["ckpt.checkpoints"] = len(saved1[-1].get("checkpoints", []))
+
     lanes = []   # the fan-out lesson prints one `@@lane {json}` line per worker, and one per verdict
     for e in _events(events, "console.out"):
         text = str(e["data"].get("text", ""))
