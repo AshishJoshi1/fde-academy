@@ -10,22 +10,25 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s04` "Gate and block" in the UI (s01 was started over on 2026-11-11; s01 steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done).
-  - **s02 "The manual loop"** to **s13 "LangGraph basics"** are built and ready at `/lab/m02.lab02.s02` to `.s13`.
+  - **s02 "The manual loop"** to **s14 "Fan-out and aggregation"** are built and ready at `/lab/m02.lab02.s02` to `.s14`.
   - **Spaced review:** none outstanding.
-  - **Flash cards:** 51 in the deck (3 added on 2026-11-21, 2nd session), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s13 are complete. s13 added the `graph` panel (reads `@@graph` lines from the console) and `graph.*` facts. `langgraph` is the optional `graph` extra in `pyproject.toml` (1.2.24 installed in the venv; a fresh venv needs `pip install -e ".[graph]"`). All tests pass; `tools/browser_check.py m02.lab02.s13` passes. The next lesson in the table is **s14 "Fan-out and aggregation"** (`docs/PLAN.md`, Module 02 outline, lesson 13), which needs an outline first.
-- **Trial-share work (decide first):** Ashish wants to share the lab with teammates. The approved-in-principle scope is in `C:\Users\AshishKumarJoshi\.claude\plans\how-much-effort-would-twinkly-origami.md` (copied into `docs/DECISIONS.md`): bring-your-own-key, per-user DB (already per-user), a zip builder with a test and an onboarding doc. **Opus 5.5 stays; no Sonnet-only change.** About 2 sessions. Open: Windows-only trial? Keep Haiku 4.5 in the picker?
-- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (zip builder and test first, then onboarding doc, then BYOK) or the next lesson. For the lesson: propose the guide-step titles for **lesson 13 "Fan-out and aggregation"** (`docs/PLAN.md`: parallel workers with `Send` or subagents, per-worker timeouts, failing honestly, supervisor against swarm; three checks in parallel, one deliberately slowed; parallel lanes view with a "slow this worker" switch) and get Ashish's OK. Then build it, reusing s13's graph. Done when `tools/browser_check.py <its step id>` passes. Read the LangGraph `Send` docs (subagent) before any code.
+  - **Flash cards:** 54 in the deck (3 added on 2026-11-21, 3rd session), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s14 are complete. s14 added the `lanes` panel (reads `@@lane` lines from the console) and `lanes.*` facts; the slow worker is a `SLOW` constant in the code, not a panel switch. All tests pass; `tools/browser_check.py m02.lab02.s14` passes; the Lanes panel was inspected on screen with the measured records. The next lesson in the table is **s15 "Checkpoints and human-in-the-loop"** (`docs/PLAN.md`, Module 02 outline, lesson 14), which needs an outline first.
+- **Open items for Ashish to decide:**
+  - **Trial-share work:** share the lab with teammates. Scope is in `docs/DECISIONS.md` (copied from `C:\Users\AshishKumarJoshi\.claude\plans\how-much-effort-would-twinkly-origami.md`): bring-your-own-key, per-user DB (already per-user), a zip builder with a test and an onboarding doc. **Opus 5.5 stays; no Sonnet-only change.** About 2 sessions. Open: Windows-only trial? Keep Haiku 4.5 in the picker?
+  - **Teach-only LangChain lesson:** outline proposed on 2026-11-21 (g1 what LangChain is; g2 LangChain, LangGraph and LangSmith; g3 s11's chain in LangChain terms; g4 what hand-written SDK calls keep visible; g5 what a framework gives and costs; g6 when to pick which; 3 quiz questions; no code, no live calls). Not yet approved; its place in the lesson order is undecided (`docs/PLAN.md`, Open items).
+- **Next first action:** in a fresh session (`/clear` first), ask Ashish which to do: the trial-share work (zip builder and test first, then onboarding doc, then BYOK), the LangChain teach-only lesson (get the outline approved, then write `content/.../step.yaml` with no code), or the next lesson. For the lesson: propose the guide-step titles for **lesson 14 "Checkpoints and human-in-the-loop"** (`docs/PLAN.md`: checkpointers, resume after a crash, `interrupt()`; kill a run halfway and resume; approve mid-graph, reusing the s05 approval pause) and get Ashish's OK. Then build it, reusing s13's graph. Done when `tools/browser_check.py <its step id>` passes. Read the LangGraph checkpointer and `interrupt` docs (subagent) before any code.
 
 ## Last session
-- **Date:** 2026-11-21 (2nd session, Sonnet 5.5).
-- **Done:** `/today`; **s13 "LangGraph basics" built** (PLAN table lesson 12): g1–g10, E1 (take the reducer off `trace`), E2 (take the guard off the retry edge), q1–q3; `main.py` rebuilds s11's chain as a `StateGraph` (nodes classify, enrich, respond, fail; conditional retry edges; `trace` with an `add` reducer; `app.stream(..., stream_mode="values")`). Measured live (Sonnet 5.5, low): 9 visits and 6 calls; bad ticket path `classify -> enrich -> enrich -> fail`; E1 prints `path: respond` with no error; E2 makes 12 visits on ticket 4, 21 in all, 7 calls, then `GraphRecursionError` (default limit 10,007).
-- **App:** `graph` panel (visits per ticket with the state after each, changed keys marked), `graph.*` facts, `@@graph` hidden from the Console, browser_check s13 branch. Tests pass.
-- **Cards:** 3 added (`overwrite-is-silent`, `graph-loop-is-yours-to-bound`, `graph-adds-no-model-calls`).
-- **Open questions:** the Graph panel was not inspected on screen; the trial-share questions above.
+- **Date:** 2026-11-21 (3rd session, Sonnet 5.5).
+- **Done:** `/today`; **s14 "Fan-out and aggregation" built** (PLAN table lesson 13): g1–g11 (g9 "Supervisor or swarm" is teach-only), E1 (slow one worker), E2 (a time limit shorter than the slow worker), E3 (turn off honest failure), q1–q3. `main.py` reviews three Meridian opportunities with three parallel workers per opportunity through `Send` (`rate` and `account` plain code, `notes` one model call), a per-worker `asyncio.wait_for`, outcomes `pass | fail | unknown`, and an aggregator with `RULE` as data. Measured live (Opus 5.5, low): baseline 2.4–3.0 s wall and 3 model calls; E1 `SLOW = "account"` gives 8.0 s wall against about 11 s one after another; E2 three `rate` workers time out at 5.0 s, OPP-1044 becomes `needs_review`; E3 all three approved, OPP-1044 included although its rate check fails. Verified in langgraph 1.2.24: parallel writers to a key with no reducer raise `InvalidUpdateError`. OPP-1043's `notes` verdict varies between runs (its note holds an embedded fake "System:" command).
+- **App:** `lanes` panel (a bar per worker on a shared time axis, wall against workers added up, the verdict), `lanes.*` facts, `@@lane` hidden from the Console, browser_check s14 branch. Tests pass. The Lanes panel was checked on screen with the measured records.
+- **Cards:** 3 added (`unknown-is-not-pass`, `wall-time-is-slowest-worker`, `parallel-writes-need-a-reducer`).
+- **Plan:** a teach-only LangChain lesson recorded as an open item in `docs/PLAN.md` (outline above, not yet approved).
+- **Open questions:** the trial-share questions (Windows-only? Haiku 4.5 in the picker?); approve the LangChain outline and choose its place in the order.
 
-## Previous session (2026-11-18)
-- **Done:** planning only: the trial-share work (BYOK, per-user DB, zip and onboarding doc) estimated; no code changed.
+## Previous session (2026-11-21, 2nd)
+- **Done:** s13 "LangGraph basics" built (graph panel, `graph.*` facts, 3 cards); see the Cost log.
 
 ## Tracked repos
 - `.` (fde-academy) → https://github.com/AshishJoshi1/fde-academy
@@ -51,7 +54,9 @@ This file is the single source of truth for where the build and the teaching sta
   - [x] s10 The Claude Agent SDK (lesson 9): content g1–g9 with E1 and q1–q3; no new app feature
   - [x] s11 Prompt chains (lesson 10): content g1–g9 with E1, E2 and q1–q3; chain panel, `chain.*` facts
   - [x] s12 Routing and early exit (lesson 11): content g1–g9 with E1, E2 and q1–q3; route panel, `route.*` facts
-  - [ ] Lessons 12–17: 02-B to 02-D need outlines
+  - [x] s13 LangGraph basics (lesson 12): content g1–g10 with E1, E2 and q1–q3; graph panel, `graph.*` facts
+  - [x] s14 Fan-out and aggregation (lesson 13): content g1–g11 with E1, E2, E3 and q1–q3; lanes panel, `lanes.*` facts
+  - [ ] Lessons 14–17: 02-B to 02-D need outlines (lesson 14 is checkpoints and human-in-the-loop)
 - [ ] Module 02 projects: discussed with Ashish after all 17 lessons
 
 ## Curriculum progress
@@ -59,7 +64,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 to s13 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s14 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -87,6 +92,7 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-17 (2nd) | `/today`; s11 "Prompt chains" built, measured and browser-checked; chain panel; 3 cards | $1.25 | about $0.10 measurement (not itemized; `labctl status` shows learner spend only) |
 | 2026-11-18 | `/today`; trial-share (BYOK, zip, onboarding) estimated and planned; no code | $0.64 (Sonnet 5.5; target $8) | $0.00 |
 | 2026-11-21 | `/today`; s12 "Routing and early exit" outlined, built, measured live and browser-checked; route panel; 2 cards | $1.05 (Sonnet 5.5; target $8) | about $0.10 measurement (about 40 live calls, not itemized) |
+| 2026-11-21 (2nd) | `/today`; s13 "LangGraph basics" outlined, built, measured live and browser-checked; graph panel; 3 cards | $0.96 (Sonnet 5.5; target $8) | about $0.05 measurement (5 live runs, not itemized) |
+| 2026-11-21 (3rd) | `/today`; s14 "Fan-out and aggregation" outlined, built, measured live and browser-checked; lanes panel; 3 cards; LangChain teach-only lesson planned | $1.82 (Sonnet 5.5; target $8) | about $0.05 measurement (5 live runs, not itemized; `labctl status` shows learner spend only) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
-| 2026-11-21 (2nd) | `/today`; s13 "LangGraph basics" outlined, built, measured live and browser-checked; graph panel; 3 cards | $0.96 (Sonnet 5.5; target $8) | about $0.05 measurement (5 live runs, not itemized) |

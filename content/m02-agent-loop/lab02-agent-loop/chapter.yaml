@@ -17,3 +17,4 @@ steps:
   - s11-prompt-chains
   - s12-routing
   - s13-langgraph-basics
+  - s14-fan-out

@@ -93,6 +93,10 @@
         <div class="pane-head"><h3 class="card-title">Graph · the nodes visited and the state after each</h3><span class="spacer"></span><span class="small muted" id="graph-count"></span></div>
         <div class="pane-body stack" id="graph-visits"><p class="small muted">Run the graph: each ticket shows the nodes it visited in order, and the state after every visit. A key that changed in that visit is marked.</p></div>
       </div>
+      <div class="pane" data-panel="lanes" hidden>
+        <div class="pane-head"><h3 class="card-title">Lanes · the parallel workers over time</h3><span class="spacer"></span><span class="small muted" id="lanes-count"></span></div>
+        <div class="pane-body stack" id="lanes-view"><p class="small muted">Run the review: each opportunity shows one bar per worker on a shared time axis, then the verdict. Bars that overlap ran at the same time.</p></div>
+      </div>
       <div class="pane" data-panel="chain" hidden>
         <div class="pane-head"><h3 class="card-title">Chain · input, output and validation per step</h3><span class="spacer"></span><span class="small muted" id="chain-count"></span></div>
         <div class="pane-body stack" id="chain-steps"><p class="small muted">Run the chain: every step of every ticket appears here with what went in, what came out and whether it passed.</p></div>

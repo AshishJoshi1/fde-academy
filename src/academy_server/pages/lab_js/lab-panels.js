@@ -3,6 +3,8 @@
 //   messages  the messages list each call sent: what it carried over, and what it added;
 //   fixture   the mock API's request log;
 //   chain     the steps of a prompt chain, from the `@@step {json}` lines the lesson code prints;
+//   lanes     the parallel workers of a fan-out as bars on a shared time axis, from the `@@lane {json}` lines the lesson code prints;
+//   lanes     the parallel workers of a fan-out as bars on a shared time axis, from the `@@lane {json}` lines the lesson code prints;
 //   graph     the nodes a LangGraph run visited and the state after each, from the `@@graph {json}` lines the lesson code prints;
 //   route     the router's decision per ticket, from the `@@route {json}` lines the lesson code prints;
 //   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
@@ -479,7 +481,48 @@
     });
   }
 
+  // ------------------------------------------------------------ lanes: parallel workers over time
+  var laneRecs = [];
+  function renderLanes() {
+    var box = $("lanes-view"), byOpp = {}, order = [], axis = 0;
+    box.textContent = "";
+    laneRecs.forEach(function (r) {
+      if (!byOpp[r.opp]) { byOpp[r.opp] = { lanes: [], verdict: null }; order.push(r.opp); }
+      if (r.kind === "verdict") byOpp[r.opp].verdict = r; else { byOpp[r.opp].lanes.push(r); axis = Math.max(axis, Number(r.end)); }
+    });
+    $("lanes-count").textContent = order.length ? order.length + " opportunit" + (order.length === 1 ? "y" : "ies") + " · axis 0 to " + axis.toFixed(1) + " s" : "";
+    if (!order.length) { box.append(el("p", "small muted", "Run the review: each opportunity shows one bar per worker on a shared time axis, then the verdict. Bars that overlap ran at the same time.")); return; }
+    var tone = { pass: "pill-good", fail: "pill-critical", unknown: "pill-warning" };
+    var color = { pass: "#2a7", fail: "#c33", unknown: "#d90" };
+    order.forEach(function (opp) {
+      var o = byOpp[opp], det = el("details", "disclosure"), sum = el("summary", null, opp + " · ");
+      var work = o.lanes.reduce(function (t, r) { return t + (Number(r.end) - Number(r.start)); }, 0);
+      if (o.verdict) sum.append(pill(o.verdict.verdict === "approve" ? "pill-good" : o.verdict.verdict === "reject" ? "pill-critical" : "pill-warning", o.verdict.verdict));
+      sum.append(document.createTextNode(o.verdict ? "  wall " + Number(o.verdict.wall).toFixed(1) + " s · workers added up " + work.toFixed(1) + " s" : "  running…"));
+      det.open = true;
+      det.append(sum);
+      var body = el("div", "stack");
+      o.lanes.slice().sort(function (a, b) { return a.check < b.check ? -1 : 1; }).forEach(function (r) {
+        var row = el("div", "small"), track = el("div", null), bar = el("div", null);
+        track.style.cssText = "position:relative;height:14px;background:rgba(127,127,127,.18);border-radius:3px;margin:2px 0";
+        bar.style.cssText = "position:absolute;top:0;bottom:0;border-radius:3px;min-width:3px;opacity:.9;background:" + (color[r.outcome] || "#d90");
+        bar.style.left = (100 * Number(r.start) / (axis || 1)) + "%";
+        bar.style.width = (100 * (Number(r.end) - Number(r.start)) / (axis || 1)) + "%";
+        bar.title = r.check + ": " + r.start + " s to " + r.end + " s";
+        track.append(bar);
+        var label = el("div", null, r.check + " · " + (Number(r.end) - Number(r.start)).toFixed(2) + " s · ");
+        label.append(pill(tone[r.outcome] || "pill-warning", r.outcome));
+        label.append(document.createTextNode("  " + r.detail));
+        row.append(label, track);
+        body.append(row);
+      });
+      det.append(body);
+      box.append(det);
+    });
+  }
+
   function render() {
+    if (on("lanes")) renderLanes();
     if (on("graph")) renderGraph();
     if (on("route")) renderRoutes();
     if (on("timeline")) renderTimeline();
@@ -488,11 +531,16 @@
     if (on("chain")) renderChain();
   }
   window.labViews = {
-    reset: function () { evs = []; chain = []; routes = []; visits = []; shownCall = null; render(); },
+    reset: function () { evs = []; chain = []; routes = []; visits = []; laneRecs = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
       if (ev.type === "run.exit" && on("memory")) loadMemory();
       if (on("chain") && ev.type === "console.out" && String(ev.data.text).indexOf("@@step ") === 0) {
         try { chain.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
+        if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
+        return;
+      }
+      if (on("lanes") && ev.type === "console.out" && String(ev.data.text).indexOf("@@lane ") === 0) {
+        try { laneRecs.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
         if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
         return;
       }

@@ -344,6 +344,32 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         f["graph.failed"] = sum(1 for s in last.values() if s.get("failed_step"))
         f["graph.stopped"] = sum(1 for s in last.values() if not s.get("reply") and not s.get("failed_step"))
 
+    lanes = []   # the fan-out lesson prints one `@@lane {json}` line per worker, and one per verdict
+    for e in _events(events, "console.out"):
+        text = str(e["data"].get("text", ""))
+        if text.startswith("@@lane "):
+            try:
+                lanes.append(json.loads(text[7:]))
+            except ValueError:
+                pass
+    if lanes:
+        workers = [r for r in lanes if r.get("kind") == "lane"]
+        verdicts = [r for r in lanes if r.get("kind") == "verdict"]
+        f["lanes.opportunities"] = len(verdicts)
+        f["lanes.workers"] = len(workers)
+        if verdicts:
+            first = [r for r in workers if r.get("opp") == verdicts[0].get("opp")]
+            f["lanes.wall_s"] = verdicts[0].get("wall")
+            f["lanes.work_s"] = round(sum(float(r["end"]) - float(r["start"]) for r in first), 1)
+            f["lanes.first_verdict"] = verdicts[0].get("verdict")
+            f["lanes.last_verdict"] = verdicts[-1].get("verdict")
+        f["lanes.timed_out"] = sum(1 for r in workers if str(r.get("detail", "")).startswith("timed out"))
+        f["lanes.unknown"] = sum(1 for r in workers if r.get("outcome") == "unknown")
+        f["lanes.failed_checks"] = sum(1 for r in workers if r.get("outcome") == "fail")
+        f["lanes.approved"] = sum(1 for v in verdicts if v.get("verdict") == "approve")
+        f["lanes.needs_review"] = sum(1 for v in verdicts if v.get("verdict") == "needs_review")
+        f["lanes.rejected"] = sum(1 for v in verdicts if v.get("verdict") == "reject")
+
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]
     f["approval.asked"] = len(asked)

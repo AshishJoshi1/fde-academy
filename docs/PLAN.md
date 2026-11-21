@@ -328,7 +328,7 @@ Seventeen lessons after s01, then the two guided projects. Each lesson's guide-s
 | 10 | Prompt chains | Typed, schema-validated hand-offs; retry once, then fail naming the step | classify → enrich → respond on 3 tickets | Step view: input, output, validation |
 | 11 | Routing and early exit | Classify once; route map and precedence as data; a cheap exit | Mixed and spam tickets; the cost of exiting early | Decision view |
 | 12 | LangGraph basics | State, nodes, conditional edges, reducers | Lesson 10's chain as a graph | Graph view: nodes visited, state after each |
-| 13 | Fan-out and aggregation | Parallel workers (`Send` or subagents), per-worker timeouts, failing honestly; supervisor against swarm | Three checks in parallel, one deliberately slowed | Parallel lanes; "slow this worker" switch |
+| 13 | Fan-out and aggregation | Parallel workers (`Send` or subagents), per-worker timeouts, failing honestly; supervisor against swarm | Three checks in parallel, one deliberately slowed | Parallel lanes view; the slow worker is a `SLOW` constant in the code, not a switch |
 | 14 | Checkpoints and human-in-the-loop | Checkpointers, resume after a crash, `interrupt()` | Kill a run halfway and resume; approve mid-graph | Kill and resume; the s05 approval pause reused |
 | **02-C** | | | | |
 | 15 | Prompt injection | Untrusted text as data; delimiting; a detection signal | `[ADMIN OVERRIDE]`-style tickets against your chain | Attack-case table |
@@ -378,4 +378,5 @@ Every module ends with its guided project ("Module projects") and `/quiz <module
 
 ## Open items
 - **The Module 02 projects** (including Project 02's SDK: its spec says the Claude Agent SDK, while the curriculum said a LangGraph `Send` fan-out): discussed with Ashish after all 17 lessons, not before.
+- **A teach-only LangChain lesson** (Ashish asked, 2026-11-21; outline proposed, not yet approved or built): what LangChain is (model wrappers, prompt templates, parsers, LCEL `|`), how LangChain, LangGraph and LangSmith relate, lesson 10's chain in LangChain terms, what hand-written SDK calls keep visible (request, `stop_reason`, usage) against what a framework hides, when to pick which. No code and no live calls. Its place in the lesson order is undecided.
 - The programme README with baseline rules B1–B5, which the Projects specs refer to, isn't on disk.

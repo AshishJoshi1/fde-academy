@@ -405,7 +405,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
 
 def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
-    for name in ("timeline", "messages", "fixture", "memory", "chain", "route", "graph"):
+    for name in ("timeline", "messages", "fixture", "memory", "chain", "route", "graph", "lanes"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
     if "chain" in panels:        # s11: every ticket's steps drawn from the @@step lines, which the console hides
@@ -415,6 +415,14 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
               b.js("document.getElementById('chain-steps').textContent.includes('replied')") and
               not b.js("document.getElementById('chain-steps').textContent.includes('rejected')"))
         check("console hides the @@step lines", not b.js("document.getElementById('console').textContent.includes('@@step')"))
+    if "lanes" in panels:        # s14: a block per opportunity, a bar per worker, drawn from the @@lane lines, which the console hides
+        b.wait("document.querySelectorAll('#lanes-view details').length >= 3", "the lanes panel")
+        check("lanes panel: a block per opportunity with a bar per worker and a verdict",
+              b.js("document.querySelectorAll('#lanes-view details').length") == 3 and
+              b.js("document.querySelectorAll('#lanes-view details div div div').length") >= 9 and
+              b.js("document.getElementById('lanes-view').textContent.includes('wall ')") and
+              b.js("document.getElementById('lanes-view').textContent.includes('workers added up')"))
+        check("console hides the @@lane lines", not b.js("document.getElementById('console').textContent.includes('@@lane')"))
     if "graph" in panels:        # s13: a block per ticket, a visit per node, drawn from the @@graph lines, which the console hides
         b.wait("document.querySelectorAll('#graph-visits details').length >= 3", "the graph panel")
         check("graph panel: a ticket block with its nodes in order and the state after each",
@@ -440,6 +448,9 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
         if "fixture" in panels and step_id.endswith("s10"):   # the Agent SDK: a title call and the loop, tool names are mcp__meridian__*
             check("timeline: calls, an SDK tool row and its API request",
                   len(rows) >= 4 and any("mcp__meridian__" in r for r in rows) and any(r.startswith("GET ") or "GET /" in r for r in rows))
+        elif "lanes" in panels:       # s14: one notes call per opportunity, the plain workers' Meridian requests
+            check("timeline: three calls and the Meridian requests",
+                  sum(1 for r in rows if "Call " in r) >= 3 and sum(1 for r in rows if "GET /" in r) >= 9)
         elif "graph" in panels:       # s13: the same six calls as the chain, enrich being plain code
             check("timeline: six calls and the Meridian requests between them",
                   sum(1 for r in rows if "Call " in r) >= 6 and sum(1 for r in rows if "GET /" in r) >= 3)

@@ -82,6 +82,10 @@ Moved out of `PROGRESS.md` so `/today` reads less. `/wrap` appends new decisions
   - **Router design:** classify once into `categories` (a list, so mixed tickets are reported whole), `confidence` (high or low) and an ID. `ROUTES` and `PRECEDENCE` are data; `pick_route` is the only logic; a route with a `canned` answer exits before enrich and respond. `change_request` sits ahead of the questions so a write request always reaches a person. Confidence is the model's own report: it gates to a `human` route but is never treated as a measured number.
   - **Decision view:** `route` panel reads `@@route {json}` lines (ticket, categories, confidence, route, rule, exit, ran, skipped, model_calls, reply) like the chain panel; `route.*` facts parse the same lines. Measured: see the s12 row in `docs/PLAN.md`.
 
+  - **s14 outline** approved with E3 kept and g9 (supervisor against swarm) teach-only. The step id is s14 although the PLAN table calls it lesson 13.
+  - **Fan-out design:** one graph run per opportunity (three `Send` workers: `rate` and `account` plain code, `notes` one model call); the worker catches its own timeout and errors and returns `unknown` as data, because an uncaught exception fails the whole step; the aggregation `RULE` is an ordered list. The slow worker is a `SLOW` constant, not a panel switch (simpler, same teaching). Lanes panel reads `@@lane {json}` lines (`kind` lane or verdict) and the `lanes.*` facts parse them.
+  - **Teach-only LangChain lesson** requested by Ashish (2026-11-21): outline proposed, awaiting approval, recorded in `docs/PLAN.md` Open items. The lessons use no LangChain: the Anthropic SDK directly, the Agent SDK (s10) and LangGraph without `langchain`.
+
 ## Cost analysis
 - **Estimate against actual:** the tutor was estimated at $7–13 and the whole session cost $4.87.
 - **Module 02 re-estimate** (from the s02 and s03 rows): a lesson session costs about $10–12 in Claude Code ($10.07 for s02; $12.02 for s03, which also built s02's new step and the Meridian page). 15 lessons are left (s04–s06, then lessons 6–17), so about $150–180, plus the two guided projects. Gateway measurement stays under $0.15 a lesson.

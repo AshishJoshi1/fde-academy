@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 ID = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_-]*$", max_length=40)]
 
 PanelName = Literal["console", "timeline", "trace", "messages", "tokens", "flow", "fixture",
-                    "why", "variables", "compare", "memory", "chain", "route", "graph"]
+                    "why", "variables", "compare", "memory", "chain", "route", "graph", "lanes"]
 
 
 class Strict(BaseModel):
@@ -198,6 +198,18 @@ FACTS: dict[str, str] = {
     "graph.replied": "how many tickets ended with a reply in the state",
     "graph.failed": "how many tickets ended at the fail node",
     "graph.stopped": "how many tickets the recursion limit cut off before a reply or the fail node",
+    "lanes.opportunities": "how many opportunities were reviewed (a verdict record each)",
+    "lanes.workers": "how many worker runs (lanes) there were in total",
+    "lanes.wall_s": "wall-clock seconds the first opportunity took, from fan-out to verdict",
+    "lanes.work_s": "the first opportunity's worker times added up: what running them one after another would cost",
+    "lanes.timed_out": "how many workers hit their own time limit and recorded `unknown`",
+    "lanes.unknown": "how many worker results were `unknown` (timeout or error)",
+    "lanes.failed_checks": "how many worker results were `fail`",
+    "lanes.approved": "how many opportunities got the verdict `approve`",
+    "lanes.needs_review": "how many opportunities got the verdict `needs_review`",
+    "lanes.rejected": "how many opportunities got the verdict `reject`",
+    "lanes.first_verdict": "the verdict of the first opportunity reviewed",
+    "lanes.last_verdict": "the verdict of the last opportunity reviewed",
     "approval.asked": "how many times your code paused to ask for Approve or Deny (labkit.approve)",
     "approval.approved": "of those, how many you approved",
     "approval.denied": "of those, how many were denied, timed out or cut off by the run ending",

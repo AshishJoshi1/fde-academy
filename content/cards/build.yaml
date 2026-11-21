@@ -566,3 +566,27 @@ cards:
     back: |
       None (s13: 6 model calls and 9 node visits, the same 6 as s11's chain; `enrich` is plain code, a visit that costs nothing). A graph is wiring: you get a printable path, the state after every node and loops as edges, and you pay in a library and new ways to go wrong.
     source: "content/m02-agent-loop/lab02-agent-loop/s13-langgraph-basics/step.yaml (g9, measured 2026-11-21)"
+
+  - id: unknown-is-not-pass
+    tag: engineering
+    front: |
+      A parallel worker times out. What should it record, and what does recording `pass` do?
+    back: |
+      `unknown`, so the aggregation rule sends the deal to review. `fail` would claim a finding the check never made; `pass` is fail-open. s14 E3: with `HONEST = False` all three `rate` workers timed out at 5.0 s and were recorded as pass, and OPP-1044 was approved although its rate check fails when it runs. Nothing errored or warned; the only trace was the detail text.
+    source: "content/m02-agent-loop/lab02-agent-loop/s14-fan-out/step.yaml (E3, measured 2026-11-21)"
+
+  - id: wall-time-is-slowest-worker
+    tag: engineering
+    front: |
+      Three independent checks run in parallel. What sets the wall time, and when does fan-out actually pay?
+    back: |
+      The slowest worker sets it; the work done is still the sum, and the model calls and cost are unchanged. It pays only when several workers are comparably slow. s14 baseline: 2.4 to 3.0 s, the one model call dominating, so two 30 ms workers saved almost nothing. With `account` held for 8 s the wall time was 8.0 s against about 11 s one after another (E1).
+    source: "content/m02-agent-loop/lab02-agent-loop/s14-fan-out/step.yaml (g5 and E1, measured 2026-11-21)"
+
+  - id: parallel-writes-need-a-reducer
+    tag: engineering
+    front: |
+      Parallel `Send` workers all write the same state key and it has no reducer. What happens, and where should a worker catch its errors?
+    back: |
+      LangGraph raises `InvalidUpdateError` ("Can receive only one value per step"), the opposite of s13's silent overwrite between sequential nodes. Give the key a reducer (s14: a dict merge, each worker returning `{its name: result}`). A worker that raises out of its node fails the whole step and cancels its siblings, so catch errors and timeouts inside the worker and return them as data.
+    source: "content/m02-agent-loop/lab02-agent-loop/s14-fan-out/step.yaml (g3 and g6; clash tested against langgraph 1.2.24 on 2026-11-21)"
