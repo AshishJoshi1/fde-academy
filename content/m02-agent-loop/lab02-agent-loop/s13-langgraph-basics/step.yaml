@@ -1,0 +1,388 @@
+id: s13
+title: "LangGraph basics"
+files:
+  main.py: starter/main.py
+solution:
+  main.py: solution/main.py
+panels: [console, graph, timeline, fixture]
+run:
+  fixture: meridian
+  timeout_s: 240
+hints:
+  - "main.py: the settings are lines 18 to 22, the tickets are lines 24 to 30, the state is lines 52 to 60, the three steps as plain functions are lines 71 to 110, the nodes are lines 113 to 133, the retry edge is lines 137 to 144, the graph is lines 147 to 156 and the loop that runs one ticket is lines 166 to 183."
+  - "The Graph panel shows one block per ticket: the nodes it visited in order, and under each visit the state after it, with the keys that changed marked. The Console shows only what the code prints for you."
+
+guide:
+  - id: g1
+    title: "Why a graph"
+    teach: |
+      In lesson 10 your code ran `classify`, then `enrich`, then `respond` with a loop and a helper that retried.
+      The order lived in the *shape of the code*. A **graph** moves it into data: you name the steps (**nodes**),
+      say which node can follow which (**edges**), and let a runtime walk them. LangGraph is that runtime.
+
+      Why bother, when the chain already worked?
+
+      - **The shape can be read.** Nodes and edges are a list you can print and draw, not control flow you have
+        to trace.
+      - **One shared state.** Every node reads one object and returns what it changed. After every node you can
+        look at the whole state.
+      - **Loops and branches are edges**, so a retry, a route or a human pause is a line in the graph and not a
+        new `while` loop.
+
+      The price: one more library, and a few words to learn (state, node, edge, reducer). This lesson rebuilds
+      lesson 10's chain as a graph, with the **same work and the same calls**, so the only new thing is the
+      plumbing.
+    do: "Read it, then go on."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "In a LangGraph graph, where does the order of the steps live?"
+        options:
+          - "In data: nodes you name and edges that say which node can follow which"
+          - "In the model, which picks the next step"
+          - "In the prompt"
+          - "In a database"
+        answer: 0
+        explanation: "You declare the nodes and the edges, and the runtime follows them. The model does not choose the path unless you build an edge that asks it to."
+
+  - id: g2
+    title: "The task again"
+    code: ["24-30", 20]
+    teach: |
+      The task is lesson 10's: answer three customer **tickets** about opportunities in the Meridian CRM. Open
+      `main.py`. The tickets are on **lines 24 to 30**, and `BAD_TICKET` (**line 20**) adds a fourth about an
+      opportunity that doesn't exist, which you will use in step 7.
+
+      The three typed hand-offs, `Classification`, `Facts` and `Reply` (**lines 34 to 48**), and the three step
+      functions `classify`, `enrich` and `respond` (**lines 71 to 110**) are copied from lesson 10 unchanged:
+      the model calls, the schema checks and the percentage rule. `enrich` is still plain code, so it makes no
+      model call.
+
+      What is new is everything below line 110: how those functions are *wired together*.
+    do: "Read lines 24 to 30 and skim lines 71 to 110. You have met all of it."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What changes between lesson 10's chain and this graph?"
+        options:
+          - "How the steps are wired together. The steps themselves are the same"
+          - "The model and the tickets"
+          - "The Meridian API"
+          - "The schemas"
+        answer: 0
+        explanation: "Same tickets, same schemas, same step functions. Only the wiring changes, so any difference you see comes from the graph."
+
+  - id: g3
+    title: "State is a typed dict"
+    code: ["52-60"]
+    teach: |
+      The **state** (`TicketState`, **lines 52 to 60**) is one `TypedDict`: every value a node may need or
+      produce has a key. It holds the `ticket`, then the three hand-offs as they appear (`classification`,
+      `facts`, `reply`), then bookkeeping: `error`, `tries`, `failed_step` and `trace`.
+
+      The graph starts a ticket from an initial state (**line 168**), with the hand-offs set to `None`. Every
+      node is then called with the *current* state. A node does not edit it. It **returns a dict with only the
+      keys it changed**, and LangGraph merges that into the state.
+
+      That merge is the heart of the lesson. Which key keeps its old value, which is replaced, and which is
+      added to is decided by the key's **reducer**, in step 8.
+    do: "Read lines 52 to 60. Find the three keys that hold a step's result, and the four that are bookkeeping."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "A node returns {\"facts\": f}. What happens to the other keys of the state?"
+        options:
+          - "They keep their values: only the returned keys are merged in"
+          - "They are reset to None"
+          - "The graph raises an error"
+          - "They are copied into `facts`"
+        answer: 0
+        explanation: "A node returns a partial update. Keys it does not return are untouched, so each node only has to know about its own result."
+
+  - id: g4
+    title: "A node is a function, and your first run"
+    code: ["113-130", 71]
+    teach: |
+      A **node** is a function from state to a partial update. `classify_node` (**line 120**) calls the
+      lesson-10 `classify` and returns `{"classification": ...}`. The helper `attempt` (**lines 113 to 117**) is
+      shared by all three step nodes: if the work succeeds it adds `error: None`, `tries: 0` and the node's
+      name to `trace`; if a check fails it returns the error, one more try, and the same `trace` entry.
+
+      No node raises into the graph. A failing check becomes **data in the state** (`error`), and an edge
+      decides what to do about it. You will see which edge in step 7.
+
+      Press **Run** now. In the **Graph** panel, each ticket is a block: the nodes it visited, in order. Open a
+      visit: the state is shown after that node, and a key that node changed is marked.
+    do: "Press **Run**. In the Graph panel open ticket 1 and its `classify` visit. Which keys changed?"
+    show: [run.calls, graph.tickets, graph.visits, graph.replied]
+    notice: |
+      After `classify` only `classification` (and `trace`) changed: `facts` and `reply` are still `None`. After
+      `enrich`, `facts` is filled in. Each node moves the state forward by exactly its own piece.
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many node visits did the graph make for the three tickets?"
+        answer_from: graph.visits
+        explanation: "Nine: classify, enrich and respond for each of the three tickets. A visit is one node running once."
+
+  - id: g5
+    title: "Edges and compile"
+    code: ["147-156"]
+    teach: |
+      **Lines 147 to 156** build the graph. `StateGraph(TicketState)` says what the state looks like.
+      `add_node` registers each function under a name. `add_edge(START, "classify")` says where a run begins and
+      `add_edge("fail", END)` where it stops. `compile()` checks the wiring and gives you a runnable `app`.
+
+      The three step nodes are joined by **conditional edges** (**lines 153 and 154**), which you read in step 7.
+      With no failures they behave like plain edges: `classify` → `enrich` → `respond` → `END`.
+
+      Notice what `enrich` is here: a node that calls **no model**. A node is any function, so plain code and
+      model calls sit side by side in the same graph, as they did in the chain. The Timeline shows it: model
+      calls only around `enrich`, and a Meridian request in between.
+    do: "Open the Timeline and find where the Meridian requests sit between the model calls."
+    show: [run.calls, run.cost_usd]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many model calls did the graph make for the three tickets?"
+        answer_from: run.calls
+        explanation: "Six: classify and respond for each ticket. Enrich is plain code, so the nodes visited (nine) are more than the model calls (six)."
+
+  - id: g6
+    title: "The run, node by node"
+    code: [160, 166, 172, 175]
+    teach: |
+      How does the Graph panel know what each node did? **Line 172** runs the graph with `app.stream(...,
+      stream_mode="values")`. Instead of one answer at the end, it yields the **whole state after every node**.
+      **Line 175** (`show`) prints one `@@graph` line per chunk, and the panel draws them.
+
+      The first chunk is the input, before any node ran, so **line 173** skips it by checking that `trace` has
+      an entry. That is also how the panel names each visit: the **last entry of `trace`** is the node that just
+      ran.
+
+      This is the payoff of a graph. In lesson 10 you wrote `trace(...)` calls by hand around every step. Here
+      the runtime hands you the state at every step, and you only have to print it.
+    do: "Open ticket 2 in the Graph panel and read the three visits in order. Find where `reply` first stops being `None`."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "How does the code know which node produced each streamed chunk?"
+        options:
+          - "Each node appends its name to `trace`, and the last entry is the node that just ran"
+          - "LangGraph adds the node name to the ticket"
+          - "It cannot know"
+          - "Nodes print their own names"
+        answer: 0
+        explanation: "With stream_mode=\"values\" a chunk is just the state, so the node's name is carried in the state itself, in `trace`."
+
+  - id: g7
+    title: "Conditional edges: retry, then fail"
+    code: ["137-144", 153, 154, 20, 132]
+    teach: |
+      A **conditional edge** is a function that looks at the state and returns the name of the next node.
+      `retry_or` (**lines 137 to 144**) builds one for each step:
+
+      - no `error` in the state → go on to the next node;
+      - an error, and `tries` is still below `ATTEMPTS` → return the name of the node that just failed
+        (`trace[-1]`): the graph **loops back** to it and the step runs again;
+      - an error and the tries are used up → go to `fail` (**line 132**), which records `failed_step` and ends.
+
+      That is lesson 10's "retry once, then fail naming the step", now as an edge. Set `BAD_TICKET = True`
+      (**line 20**) and Run. Ticket 4 asks about `OPP-1999`, which doesn't exist. Open it in the Graph panel:
+      `enrich` was visited **twice** with the same 404, and then `fail`.
+    do: "Set `BAD_TICKET = True` and press **Run**. Open ticket 4 in the Graph panel and read its four visits. Then set it back to `False`."
+    show: [graph.visits, graph.errors, graph.failed, graph.replied]
+    notice: |
+      Ticket 4's path is `classify -> enrich -> enrich -> fail`. The retry changed nothing, because a missing
+      record gives the same 404 every time. Tickets 1 to 3 are unaffected: each ticket is its own run of the graph.
+    check:
+      - id: c1
+        type: mcq
+        prompt: "What makes the graph go back to `enrich` after a failure?"
+        options:
+          - "The edge function returns \"enrich\" because the state has an error and tries are left"
+          - "LangGraph retries every failed node by itself"
+          - "The model decides to try again"
+          - "An exception is caught by the runtime"
+        answer: 0
+        explanation: "Nothing is automatic. The loop is an edge you wrote: the function returns the failed node's name, and the guard `state[\"tries\"] >= ATTEMPTS` is what lets it stop."
+
+  - id: g8
+    title: "Reducers"
+    code: [60, 115, 117, 134]
+    teach: |
+      Look at **line 60**: `trace: Annotated[list, add]`. The second part, `add` (from `operator`), is the
+      key's **reducer**: the rule for combining the old value with an update. Every key without one has the
+      default rule: **the new value replaces the old one**.
+
+      Each node returns `"trace": [name]`, a list with *one* entry (**lines 115 and 117**). With the `add` reducer
+      the graph computes `old_trace + [name]`, so `trace` grows into the whole path:
+      `['classify', 'enrich', 'respond']`. That is how the panel and the final `path:` line know the route.
+
+      Without a reducer, `{"trace": ["respond"]}` would **replace** the list and only the last node would
+      survive. Nothing would warn you. That is experiment 1.
+
+      Return only the **new** entries from a node. If a node returned the whole list again, `add` would
+      concatenate it onto itself and duplicate every entry.
+    do: "Find the `trace` line in the Graph panel for ticket 1, and watch it grow from one entry to three."
+    check:
+      - id: c1
+        type: mcq
+        prompt: "Two nodes in a row each return {\"trace\": [\"a\"]} and {\"trace\": [\"b\"]}. With no reducer on `trace`, what is the state afterwards?"
+        options:
+          - "[\"b\"]: the last write replaces the earlier one"
+          - "[\"a\", \"b\"]"
+          - "An error: two nodes wrote the same key"
+          - "[\"a\"]: the first write wins"
+        answer: 0
+        explanation: "The default rule is overwrite. A reducer such as `add` is what turns a key into an accumulator."
+
+  - id: g9
+    title: "Your run, as a bill"
+    teach: |
+      Make sure `BAD_TICKET` is `False` and Run once more, or reopen your earlier plain run. The graph made
+      **nine node visits** and **six model calls** for three tickets. Lesson 10's chain made the same six
+      calls for the same tickets: **the graph added no model calls**. It is only wiring.
+
+      So what did you buy? A path you can print, a state you can inspect after every node, and loops and
+      branches that are edges. What it cost: a library to learn, and a place to get things wrong that a plain
+      loop doesn't have, as the next experiments show.
+    do: "Press **Run** with `BAD_TICKET = False`. Note the model calls and the node visits."
+    show: [run.calls, run.cost_usd, graph.visits, graph.replied]
+    check:
+      - id: c1
+        type: numeric
+        prompt: "How many of the three tickets ended with a reply in the state?"
+        answer_from: graph.replied
+        explanation: "All three, each on its first try: no node recorded an error."
+
+  - id: g10
+    title: "Experiments, then the quiz"
+    teach: |
+      Two experiments. First: take the reducer off `trace` and see what survives. Second: take the guard off the
+      retry edge and see what stops a loop. Then the quiz.
+    quiz: true
+
+experiments:
+  - id: e1
+    title: "Take the reducer off trace"
+    question: "With no reducer on `trace`, each node overwrites the list. What does the run lose, and does anything tell you?"
+    predict:
+      - id: p1
+        type: mcq
+        prompt: "With TRACE_REDUCER = False, what will ticket 1's final `path:` line show?"
+        options:
+          - "classify -> enrich -> respond (unchanged)"
+          - "respond (only the last node)"
+          - "An error, so no path"
+          - "Nothing: the line is empty"
+        answer: 1
+      - id: p2
+        type: text
+        prompt: "Will the replies change? What else in the lab will you be able to read from `trace` after the change?"
+    change: |
+      Set `TRACE_REDUCER = False` (line 18) and Run. Read the Console's `path:` lines and open a ticket in the
+      Graph panel. Then put it back to `True`.
+    observe:
+      - "The `path:` line shows only `respond`: each node overwrote the list with its own name"
+      - "The replies are the same: the work was untouched, only the memory of the path was lost"
+      - "In the Graph panel the `trace` key never grows: it holds one entry after every visit"
+    explain: |
+      Measured (Sonnet 5.5, effort low): with the `add` reducer taken off, every ticket still got the **same
+      kind of reply** and the graph raised **no error and no warning**. The only change is that `trace` holds
+      one entry, the last node, so `path:` printed `respond` for all three tickets.
+
+      That is the danger of the default rule. **Overwrite is silent.** A missing reducer doesn't crash. It
+      quietly drops data you meant to accumulate, and you find out only when you read the field. The cure is to
+      decide, for every key that several nodes write, whether it is a *value* (overwrite is right) or a *log* (it
+      needs a reducer such as `add`).
+
+      One more thing: `retry_or` uses `trace[-1]` to find the node to go back to. That still works with one
+      entry, which is why nothing broke. A rule that read the earlier entries would have.
+
+  - id: e2
+    title: "Take the guard off the retry edge"
+    question: "A conditional edge that loops back is a loop. What stops it when your own guard is gone?"
+    predict:
+      - id: p1
+        type: numeric
+        prompt: "With BAD_TICKET = True and RETRY_GUARD = False, how many node visits will the graph make in total? (The three good tickets take 9.)"
+        answer_from: graph.visits
+        tol: 2
+        unit: "visits"
+      - id: p2
+        type: numeric
+        prompt: "How many model calls will the whole run make? (Before: 6.)"
+        answer_from: run.calls
+        tol: 0
+        unit: "calls"
+    change: |
+      Set `BAD_TICKET = True` (line 20) and `RETRY_GUARD = False` (line 19) and Run. Read ticket 4 in the Graph
+      panel and the Console. Then put both back to their old values.
+    observe:
+      - "Ticket 4 visits `enrich` over and over, with the same 404 each time, and the Console prints `STOPPED by the recursion limit (12)`"
+      - "Tickets 1 to 3 are unaffected, and the run makes only one model call more than before: `enrich` is plain code"
+    explain: |
+      Measured (Sonnet 5.5, effort low): ticket 4 made **12 node visits**, one `classify` and eleven `enrich`,
+      and then LangGraph raised `GraphRecursionError`. The whole run made **21 visits** (9 for the good tickets and
+      12 for ticket 4) and **7 model calls**: the one extra is ticket 4's `classify`. The loop itself cost no
+      tokens only because the node it repeated is plain code. Had it been `classify` or `respond`, every lap
+      would have been a billed model call.
+
+      Two lessons.
+
+      - **A loop in a graph is yours to bound.** The graph keeps no retry count of its own: `tries` is a key
+        *you* wrote and an `if` *you* wrote. Remove the `if` and nothing in your graph stops it.
+      - **The recursion limit is a safety net, not a design.** It counts node visits, and it is on by default,
+        but at **10,007** in this LangGraph version. A runaway loop of model calls would make about ten thousand of
+        them before stopping. That is why line 22 sets `RECURSION_LIMIT = 12` and passes it on line 172.
+
+      Set your own low limit, and a guard in the edge that fails with a reason. The limit tells you something
+      went wrong. The guard tells you *what*.
+
+quiz:
+  - id: q1
+    type: mcq
+    prompt: "A node returns {\"classification\": c}. After the node runs, what is true of the state's `facts` key?"
+    options:
+      - "It keeps whatever value it had before"
+      - "It is reset to None"
+      - "It is deleted"
+      - "It is set to the same value as `classification`"
+    answer: 0
+    explanation: "A node returns a partial update, and only the returned keys are merged. The rest are untouched."
+  - id: q2
+    type: mcq
+    prompt: "Three nodes each return {\"log\": [\"x\"]} for a key with no reducer. What does `log` hold at the end, and what does LangGraph say?"
+    options:
+      - "[\"x\"], and nothing: the last write replaces the earlier ones silently"
+      - "[\"x\", \"x\", \"x\"], and nothing"
+      - "[\"x\"], with a warning for each overwrite"
+      - "An error, because three nodes wrote the same key"
+    answer: 0
+    explanation: "The default rule is overwrite, with no warning. Giving the key a reducer such as `operator.add` makes it accumulate."
+  - id: q3
+    type: mcq
+    prompt: "A conditional edge sends a failed node back to itself with no check on how many times it has failed. The failure never goes away. What happens?"
+    options:
+      - "The graph loops until it hits the recursion limit and raises GraphRecursionError"
+      - "LangGraph gives up after one retry"
+      - "The graph skips the node"
+      - "The state is reset and the run starts over"
+    answer: 0
+    explanation: "The runtime has no retry count. Only the recursion limit stops the loop, and its default is very high, so set a low limit yourself and put the real guard in the edge."
+
+tutor_notes: >
+  Built on measured runs (Sonnet 5.5, effort low, through the relay; langgraph 1.2.24). Plain run: 9 node visits (classify, enrich, respond for 3 tickets), 6 model calls,
+  same as lesson 10's chain; enrich is plain code. The graph: StateGraph(TicketState) with a TypedDict state; nodes classify, enrich, respond, fail; add_edge(START, "classify"),
+  add_edge("fail", END); each step has a conditional edge built by retry_or(next_node) with a path_map {next: next, step: step, "fail": "fail"}. The state has trace
+  Annotated[list, operator.add], error, tries, failed_step. Each step node returns a partial update via attempt(): on success error None, tries 0, trace [name]; on a
+  check failure error text, tries + 1, trace [name]. retry_or: no error -> next; error and tries >= ATTEMPTS (with RETRY_GUARD) -> "fail"; otherwise trace[-1] (the node that
+  just failed). main.py runs app.stream(state, {"recursion_limit": 12}, stream_mode="values") and prints one @@graph line per chunk after the first (the input); the Graph panel
+  draws them and hides them from the Console, marking keys that changed since the last visit. BAD_TICKET: ticket 4 (OPP-1999): path classify -> enrich -> enrich -> fail, 13
+  visits in all, 2 errors, 1 failed, FAILED at 'enrich': Meridian answered 404. TRACE_REDUCER False: every path: line is "respond", replies unchanged, no error or warning.
+  BAD_TICKET + RETRY_GUARD False: ticket 4 makes 12 visits (1 classify, 11 enrich) and the Console prints STOPPED by the recursion limit (12); 21 visits, 7 calls in all.
+  Default recursion limit in langgraph 1.2.24 is 10,007 (not 25), exception langgraph.errors.GraphRecursionError (a RecursionError). stream_mode "updates" yields {node: delta};
+  "values" yields the whole state after each superstep, starting with the input. Facts: run.calls, run.cost_usd, graph.tickets, graph.visits, graph.errors, graph.replied,
+  graph.failed, graph.stopped (parsed from the @@graph lines). Misconceptions: a graph retries by itself (no: the loop is an edge you wrote); a node edits the state (no: it returns
+  a partial update); a missing reducer warns (no: it overwrites silently); the recursion limit is a design tool (no: it is a net, and its default is high).

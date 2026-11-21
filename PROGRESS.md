@@ -10,19 +10,19 @@ This file is the single source of truth for where the build and the teaching sta
   - `tools/browser_check.py <step-id>` passes before a lesson is handed over;
   - every `/wrap` logs the session's `/cost` figure in the "Cost log" below and proposes 1–3 flash cards.
 - **Teaching:** Module 02, Lab 02. Ashish is on `m02.lab02.s04` "Gate and block" in the UI (s01 was started over on 2026-11-11; s01 steps 2–9, E2–E5, the quiz and the tutor hands-on H1–H3 aren't done).
-  - **s02 "The manual loop"** to **s12 "Routing and early exit"** are built and ready at `/lab/m02.lab02.s02` to `.s12`.
+  - **s02 "The manual loop"** to **s13 "LangGraph basics"** are built and ready at `/lab/m02.lab02.s02` to `.s13`.
   - **Spaced review:** none outstanding.
-  - **Flash cards:** 48 in the deck (2 added on 2026-11-21), 1 reviewed (`cache-share`, known).
-- **Building:** s01 to s12 are complete. s12 added the `route` panel (reads `@@route` lines from the console) and `route.*` facts. All tests pass; `tools/browser_check.py m02.lab02.s12` passes. The next lesson in the table is **s13 "LangGraph basics"** (`docs/PLAN.md`, Module 02 outline, lesson 12), which needs an outline first.
+  - **Flash cards:** 51 in the deck (3 added on 2026-11-21, 2nd session), 1 reviewed (`cache-share`, known).
+- **Building:** s01 to s13 are complete. s13 added the `graph` panel (reads `@@graph` lines from the console) and `graph.*` facts. `langgraph` is the optional `graph` extra in `pyproject.toml` (1.2.24 installed in the venv; a fresh venv needs `pip install -e ".[graph]"`). All tests pass; `tools/browser_check.py m02.lab02.s13` passes. The next lesson in the table is **s14 "Fan-out and aggregation"** (`docs/PLAN.md`, Module 02 outline, lesson 13), which needs an outline first.
 - **Trial-share work (decide first):** Ashish wants to share the lab with teammates. The approved-in-principle scope is in `C:\Users\AshishKumarJoshi\.claude\plans\how-much-effort-would-twinkly-origami.md` (copied into `docs/DECISIONS.md`): bring-your-own-key, per-user DB (already per-user), a zip builder with a test and an onboarding doc. **Opus 5.5 stays; no Sonnet-only change.** About 2 sessions. Open: Windows-only trial? Keep Haiku 4.5 in the picker?
-- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (propose its outline: zip builder and test first, then onboarding doc, then BYOK) or the next lesson. For the lesson: propose the guide-step titles for **lesson 12 "LangGraph basics"** (`docs/PLAN.md`: state, nodes, conditional edges, reducers; lesson 10's chain as a graph; graph view of nodes visited and state after each) and get Ashish's OK. Then build it. Done when `tools/browser_check.py <its step id>` passes. Read the LangGraph docs (subagent) before any code.
+- **Next first action:** in a fresh session (`/clear` first), ask Ashish whether to start the trial-share work (zip builder and test first, then onboarding doc, then BYOK) or the next lesson. For the lesson: propose the guide-step titles for **lesson 13 "Fan-out and aggregation"** (`docs/PLAN.md`: parallel workers with `Send` or subagents, per-worker timeouts, failing honestly, supervisor against swarm; three checks in parallel, one deliberately slowed; parallel lanes view with a "slow this worker" switch) and get Ashish's OK. Then build it, reusing s13's graph. Done when `tools/browser_check.py <its step id>` passes. Read the LangGraph `Send` docs (subagent) before any code.
 
 ## Last session
-- **Date:** 2026-11-21 (Sonnet 5.5).
-- **Done:** `/today`; **s12 "Routing and early exit" built** (PLAN table lesson 11): g1–g9, E1 (reorder PRECEDENCE), E2 (early exit off), q1–q3; `main.py` with `EARLY_EXIT`, `VAGUE_TICKET` and `CONFIDENCE_GATE` switches and five tickets (a mixed one and a spam one). Measured live (Opus 5.5, low): 9 calls; E1 puts tickets 1, 2 and 4 on `status_question` and ticket 4's reply drops the follow-up promise; E2 makes 10 calls and a model writes to the spammer; ticket 6 (vague) goes to `human` in 1 call with the gate on, and to `status_question` in 2 calls with it off.
-- **App:** `route` panel (decision view), `route.*` facts, `@@route` hidden from the Console, browser_check s12 branch and a router answer in its fake gateway. Tests pass.
-- **Cards:** 2 added (`early-exit-is-a-boundary`, `confidence-is-self-reported`).
-- **Open questions:** the Route panel was not inspected on screen; the trial-share questions above.
+- **Date:** 2026-11-21 (2nd session, Sonnet 5.5).
+- **Done:** `/today`; **s13 "LangGraph basics" built** (PLAN table lesson 12): g1–g10, E1 (take the reducer off `trace`), E2 (take the guard off the retry edge), q1–q3; `main.py` rebuilds s11's chain as a `StateGraph` (nodes classify, enrich, respond, fail; conditional retry edges; `trace` with an `add` reducer; `app.stream(..., stream_mode="values")`). Measured live (Sonnet 5.5, low): 9 visits and 6 calls; bad ticket path `classify -> enrich -> enrich -> fail`; E1 prints `path: respond` with no error; E2 makes 12 visits on ticket 4, 21 in all, 7 calls, then `GraphRecursionError` (default limit 10,007).
+- **App:** `graph` panel (visits per ticket with the state after each, changed keys marked), `graph.*` facts, `@@graph` hidden from the Console, browser_check s13 branch. Tests pass.
+- **Cards:** 3 added (`overwrite-is-silent`, `graph-loop-is-yours-to-bound`, `graph-adds-no-model-calls`).
+- **Open questions:** the Graph panel was not inspected on screen; the trial-share questions above.
 
 ## Previous session (2026-11-18)
 - **Done:** planning only: the trial-share work (BYOK, per-user DB, zip and onboarding doc) estimated; no code changed.
@@ -59,7 +59,7 @@ Lesson ids follow the curriculum's module order, not the build order: Lab 01 (th
 
 | Module | Lessons built | Taught | Quiz score | Project built |
 |---|---|---|---|---|
-| 02 The Agent Loop | s01 (guided, with tutor), s02 to s12 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
+| 02 The Agent Loop | s01 (guided, with tutor), s02 to s13 (guided) | s01 started over on 2026-11-11 (step 1 of 9 was done before); tutor tried once; s02 to s08 not started | – | after the 17 lessons: 01 ticket triage, 02 vendor screening |
 | 01 Foundations (A, G, F, E, B; C and D are electives) | – | – | – | – |
 | 03 Retrieval | – | – | – | 03 policy RAG |
 | 04 Evals & Observability | – | – | – | eval reports, CI gate |
@@ -89,3 +89,4 @@ Claude Code $ is the session's `/cost` total. Gateway $ comes from `labctl statu
 | 2026-11-21 | `/today`; s12 "Routing and early exit" outlined, built, measured live and browser-checked; route panel; 2 cards | $1.05 (Sonnet 5.5; target $8) | about $0.10 measurement (about 40 live calls, not itemized) |
 
 - Estimates, breakdowns and the decisions log: `docs/DECISIONS.md`.
+| 2026-11-21 (2nd) | `/today`; s13 "LangGraph basics" outlined, built, measured live and browser-checked; graph panel; 3 cards | $0.96 (Sonnet 5.5; target $8) | about $0.05 measurement (5 live runs, not itemized) |

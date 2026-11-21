@@ -16,3 +16,4 @@ steps:
   - s10-agent-sdk
   - s11-prompt-chains
   - s12-routing
+  - s13-langgraph-basics

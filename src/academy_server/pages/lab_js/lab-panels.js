@@ -3,6 +3,7 @@
 //   messages  the messages list each call sent: what it carried over, and what it added;
 //   fixture   the mock API's request log;
 //   chain     the steps of a prompt chain, from the `@@step {json}` lines the lesson code prints;
+//   graph     the nodes a LangGraph run visited and the state after each, from the `@@graph {json}` lines the lesson code prints;
 //   route     the router's decision per ticket, from the `@@route {json}` lines the lesson code prints;
 //   memory    the files the memory tool left in the step's folder (read from disk after each run, so they persist).
 // Built from the run's events alone, so a reopened run looks exactly as it did live.
@@ -445,7 +446,41 @@
     });
   }
 
+  // ------------------------------------------------------------ the graph: nodes visited, state after each
+  var visits = [];
+  function renderGraph() {
+    var box = $("graph-visits"), byTicket = {}, order = [];
+    box.textContent = "";
+    visits.forEach(function (v) { if (!byTicket[v.ticket]) { byTicket[v.ticket] = []; order.push(v.ticket); } byTicket[v.ticket].push(v); });
+    $("graph-count").textContent = visits.length ? visits.length + " visit" + (visits.length === 1 ? "" : "s") + " · " + order.length + " ticket" + (order.length === 1 ? "" : "s") : "";
+    if (!visits.length) { box.append(el("p", "small muted", "Run the graph: each ticket shows the nodes it visited in order, and the state after every visit. A key that changed in that visit is marked.")); return; }
+    order.forEach(function (n) {
+      var vs = byTicket[n], last = vs[vs.length - 1].state, det = el("details", "disclosure"), sum = el("summary", null, "Ticket " + n + " · ");
+      sum.append(last.reply ? pill("pill-good", "replied") : last.failed_step ? pill("pill-critical", "failed at " + last.failed_step) : pill("pill-warning", "cut off"));
+      sum.append(document.createTextNode("  " + vs.map(function (v) { return v.node; }).join(" → ")));
+      det.open = true;
+      det.append(sum);
+      var body = el("div", "stack"), prev = {};
+      vs.forEach(function (v) {
+        var d = el("details", "disclosure"), s = el("summary", null, "visit " + v.visit + " · " + v.node + " ");
+        if (v.state.error) s.append(pill("pill-critical", "error"));
+        d.append(s);
+        if (v.state.error) d.append(el("div", "small muted", v.state.error));
+        var lines = Object.keys(v.state).map(function (k) {
+          var now = JSON.stringify(v.state[k]), mark = JSON.stringify(prev[k]) !== now ? "   ← changed" : "";
+          return k + ": " + now + mark;
+        });
+        d.append(el("pre", "json-view", lines.join("\n")));
+        prev = v.state;
+        body.append(d);
+      });
+      det.append(body);
+      box.append(det);
+    });
+  }
+
   function render() {
+    if (on("graph")) renderGraph();
     if (on("route")) renderRoutes();
     if (on("timeline")) renderTimeline();
     if (on("messages")) renderMessages();
@@ -453,11 +488,16 @@
     if (on("chain")) renderChain();
   }
   window.labViews = {
-    reset: function () { evs = []; chain = []; routes = []; shownCall = null; render(); },
+    reset: function () { evs = []; chain = []; routes = []; visits = []; shownCall = null; render(); },
     event: function (ev) {   // many events arrive at once when a past run is reopened: draw once
       if (ev.type === "run.exit" && on("memory")) loadMemory();
       if (on("chain") && ev.type === "console.out" && String(ev.data.text).indexOf("@@step ") === 0) {
         try { chain.push(JSON.parse(ev.data.text.slice(7))); } catch (e) { return; }
+        if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
+        return;
+      }
+      if (on("graph") && ev.type === "console.out" && String(ev.data.text).indexOf("@@graph ") === 0) {
+        try { visits.push(JSON.parse(ev.data.text.slice(8))); } catch (e) { return; }
         if (!timer) timer = setTimeout(function () { timer = null; render(); }, 60);
         return;
       }

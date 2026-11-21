@@ -405,7 +405,7 @@ def walk(b: Browser, base: str, token: str, step_id: str, out: Path) -> list[str
 
 def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> None:
     """The run views a step turns on drew the first run; the ones it doesn't stay hidden."""
-    for name in ("timeline", "messages", "fixture", "memory", "chain", "route"):
+    for name in ("timeline", "messages", "fixture", "memory", "chain", "route", "graph"):
         shown = not b.js(f"document.querySelector('.pane[data-panel={name}]').hidden")
         check(f"{name} panel {'shown' if name in panels else 'hidden'}", shown == (name in panels))
     if "chain" in panels:        # s11: every ticket's steps drawn from the @@step lines, which the console hides
@@ -415,6 +415,13 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
               b.js("document.getElementById('chain-steps').textContent.includes('replied')") and
               not b.js("document.getElementById('chain-steps').textContent.includes('rejected')"))
         check("console hides the @@step lines", not b.js("document.getElementById('console').textContent.includes('@@step')"))
+    if "graph" in panels:        # s13: a block per ticket, a visit per node, drawn from the @@graph lines, which the console hides
+        b.wait("document.querySelectorAll('#graph-visits details').length >= 3", "the graph panel")
+        check("graph panel: a ticket block with its nodes in order and the state after each",
+              b.js("document.getElementById('graph-visits').textContent.includes('classify → enrich → respond')") and
+              b.js("document.getElementById('graph-visits').textContent.includes('← changed')") and
+              b.js("document.getElementById('graph-visits').textContent.includes('replied')"))
+        check("console hides the @@graph lines", not b.js("document.getElementById('console').textContent.includes('@@graph')"))
     if "route" in panels:        # s12: a decision block per ticket, drawn from the @@route lines, which the console hides
         b.wait("document.querySelectorAll('#route-decisions details').length >= 5", "the route panel")
         check("route panel: a block per ticket, the spam ticket exits early",
@@ -433,6 +440,9 @@ def check_panels(b: Browser, panels: list[str], check, step_id: str = "") -> Non
         if "fixture" in panels and step_id.endswith("s10"):   # the Agent SDK: a title call and the loop, tool names are mcp__meridian__*
             check("timeline: calls, an SDK tool row and its API request",
                   len(rows) >= 4 and any("mcp__meridian__" in r for r in rows) and any(r.startswith("GET ") or "GET /" in r for r in rows))
+        elif "graph" in panels:       # s13: the same six calls as the chain, enrich being plain code
+            check("timeline: six calls and the Meridian requests between them",
+                  sum(1 for r in rows if "Call " in r) >= 6 and sum(1 for r in rows if "GET /" in r) >= 3)
         elif "route" in panels:       # s12: classify and respond for four tickets, classify alone for the spam ticket
             check("timeline: nine calls and the Meridian requests between them",
                   sum(1 for r in rows if "Call " in r) >= 9 and sum(1 for r in rows if "GET /" in r) >= 4)

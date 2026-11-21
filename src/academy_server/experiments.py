@@ -325,6 +325,25 @@ def run_facts(events: list[dict[str, Any]], prev_events: list[dict[str, Any]] | 
         for name in ("human", "failed", "status_question", "change_request"):
             f[f"route.{name}"] = sum(1 for r in routes if r.get("route") == name)
 
+    visits = []   # the LangGraph lesson prints one `@@graph {json}` line per node visit
+    for e in _events(events, "console.out"):
+        text = str(e["data"].get("text", ""))
+        if text.startswith("@@graph "):
+            try:
+                visits.append(json.loads(text[8:]))
+            except ValueError:
+                pass
+    if visits:
+        last: dict[Any, dict[str, Any]] = {}
+        for v in visits:
+            last[v.get("ticket")] = v.get("state") or {}
+        f["graph.tickets"] = len(last)
+        f["graph.visits"] = len(visits)
+        f["graph.errors"] = sum(1 for v in visits if (v.get("state") or {}).get("error"))
+        f["graph.replied"] = sum(1 for s in last.values() if s.get("reply"))
+        f["graph.failed"] = sum(1 for s in last.values() if s.get("failed_step"))
+        f["graph.stopped"] = sum(1 for s in last.values() if not s.get("reply") and not s.get("failed_step"))
+
     asked = _events(events, "approval.requested")
     answered = [a["data"].get("outcome") for a in _events(events, "approval.answered")]
     f["approval.asked"] = len(asked)

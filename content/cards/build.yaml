@@ -542,3 +542,27 @@ cards:
     back: |
       A wrong route sends a wrong reply to a customer, and a person's check is the cheaper failure. But the model's confidence is its own report, not a measured probability: use it as a gate, not as a number to trust (s12: the vague ticket was `low` and took the human route in 1 call).
     source: "content/m02-agent-loop/lab02-agent-loop/s12-routing/step.yaml (g8, measured 2026-11-21)"
+
+  - id: overwrite-is-silent
+    tag: engineering
+    front: |
+      A LangGraph state key is written by several nodes and has no reducer. What happens, and how do you avoid it?
+    back: |
+      The last write replaces the earlier ones, with no error and no warning (s13 E1: `path:` printed only `respond`, replies unchanged). For every key several nodes write, decide whether it is a value (overwrite is right) or a log (give it a reducer such as `operator.add`).
+    source: "content/m02-agent-loop/lab02-agent-loop/s13-langgraph-basics/step.yaml (E1, measured 2026-11-21)"
+
+  - id: graph-loop-is-yours-to-bound
+    tag: engineering
+    front: |
+      A conditional edge sends a failed node back to itself. What stops the loop, and what is the recursion limit's default?
+    back: |
+      Only a guard you wrote (a `tries` key and an `if` in the edge). LangGraph keeps no retry count, and its recursion limit defaults to 10,007 in 1.2.24, so a runaway loop of model calls would bill thousands of times. Set a low limit (s13: 12, ticket 4 made 12 visits, then `GraphRecursionError`) and put the real guard in the edge, which also says why it stopped.
+    source: "content/m02-agent-loop/lab02-agent-loop/s13-langgraph-basics/step.yaml (E2, measured 2026-11-21)"
+
+  - id: graph-adds-no-model-calls
+    tag: engineering
+    front: |
+      You rebuild a prompt chain as a graph. How many more model calls does it make, and what do you get?
+    back: |
+      None (s13: 6 model calls and 9 node visits, the same 6 as s11's chain; `enrich` is plain code, a visit that costs nothing). A graph is wiring: you get a printable path, the state after every node and loops as edges, and you pay in a library and new ways to go wrong.
+    source: "content/m02-agent-loop/lab02-agent-loop/s13-langgraph-basics/step.yaml (g9, measured 2026-11-21)"
